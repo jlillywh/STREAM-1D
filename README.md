@@ -11,7 +11,7 @@ The core design philosophy is explicitly baked into our name:
 * **RE - River Engine:** A dedicated physics core designed for river mechanics. It integrates non-linear cross-section slicing, multi-zone composite roughness calculations, and standard inline structures.
 * **A - for Analysis of:** Formulated as a highly modular, decoupled analytical tool, exposing distinct geometric processing stages separate from reach-wide hydraulic sweeps to optimize real-time user interactivity.
 * **M - Modeling Systems:** Built to expand from simple channel sweeps to complex hydraulic networks, incorporating dynamic channel densification, predictive stability metrics, and branching flow path graph topologies.
-* **1D - in 1D:** Optimized for high-fidelity one-dimensional hydraulic routing, solving the governing energy and momentum equations at blistering, microsecond speeds.
+* **1D - in 1D:** Optimized for high-fidelity one-dimensional hydraulic routing, solving the governing energy and momentum equations.
 
 Operating asynchronously inside background Web Workers, STREAMS-1D delivers real-time, interactive 60 FPS visual simulations without ever locking up the client-side user interface.
 
