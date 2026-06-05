@@ -2,19 +2,18 @@
 
 **Stateless Transferable River Engine for Analysis of Modeling Systems (in 1D)**
 
-STREAMS-1D is a high-performance, stateless 1D river hydraulics engine written in Rust and compiled to WebAssembly (WASM). Designed for modern web browsers, it operates entirely in background Web Workers, using zero-copy transferable memory patterns to deliver interactive 60 FPS visual results without blocking the user interface.
+STREAMS-1D is a high-performance, web-native river hydraulics engine built in Rust and compiled to WebAssembly (WASM). Rather than porting legacy desktop software paradigms to the web, STREAMS-1D is engineered from the ground up to exploit the modern browser's concurrent architecture. 
 
----
+The core design philosophy is explicitly baked into our name:
 
-## Key Features
+* **S - Stateless:** The engine operates entirely as a collection of pure, deterministic mathematical pipelines. It maintains no global mutable state and does not interact with file systems. You provide input arrays; it returns output arrays.
+* **T - Transferable:** Built specifically for zero-copy concurrency. The engine leverages browser *Transferable Objects* to pass flat typed memory arrays (`ArrayBuffer`) across thread boundaries. By transferring memory ownership instead of cloning data, it completely eliminates deep-copy serialization latency and garbage collection stutters.
+* **R - River Engine:** A dedicated physics core designed for river mechanics. It integrates non-linear cross-section slicing, multi-zone composite roughness calculations, and standard inline structures.
+* **E - for Analysis of:** Formulated as a highly modular, decoupled analytical tool, exposing distinct geometric processing stages separate from reach-wide hydraulic sweeps to optimize real-time user interactivity.
+* **M - Modeling Systems:** Built to expand from simple channel sweeps to complex hydraulic networks, incorporating dynamic channel densification, predictive stability metrics, and branching flow path graph topologies.
+* **1D - in 1D:** Optimized for high-fidelity one-dimensional hydraulic routing, solving the governing energy and momentum equations at blistering, microsecond speeds.
 
-- **Stateless & Pure:** Exposure of purely deterministic mathematical pipelines. The engine does not interact with files or maintain global state. It ingests typed arrays and returns typed arrays.
-- **Unit Agnostic I/O with Metric Core:** Ingests inputs and produces outputs in either Metric (SI) or US Customary units. To maintain mathematical simplicity and prevent conversion bugs, all internal solver calculations are executed in Metric.
-- **Cross-Section Geometry Processor:** Transforms arbitrary X,Y station-elevation coordinate pairs into dense hydraulic properties lookup tables ($y \to A, P, T, K$). It automatically computes composite roughness using the Horton-Einstein method.
-- **Steady-State GVF Solver:** Computes backwater and drawdown curves using the 1D Energy Equation and the Standard Step Method. Handles subcritical, supercritical, and mixed flow regimes (transitioning via hydraulic jumps based on Specific Force/Momentum conservation).
-- **Unsteady-State Routing Solver:** Solves the 1D Saint-Venant equations dynamically using the implicit Preissmann four-point finite-difference scheme and solves the tridiagonal matrix system in $O(N)$ time via the block Thomas algorithm.
-
----
+Operating asynchronously inside background Web Workers, STREAMS-1D delivers real-time, interactive 60 FPS visual simulations without ever locking up the client-side user interface.
 
 ## Repository Structure
 
