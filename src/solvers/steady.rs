@@ -20,6 +20,8 @@ pub struct SteadyInputs {
     pub downstream_wsel: Option<f64>,
     /// Upstream WSEL boundary condition (optional, in user units).
     pub upstream_wsel: Option<f64>,
+    /// Maximum distance between adjacent sections before automatic interpolation (optional, in user units).
+    pub max_spacing: Option<f64>,
 }
 
 /// Output results from the steady-state solver.
@@ -99,10 +101,13 @@ impl GeometryTable {
     }
 }
 
-/// Solves critical depth (yc) relative to bottom elevation for a cross section.
-pub fn solve_critical_depth(xs: &CrossSection, table: &GeometryTable, q: f64) -> f64 {
-    let y_min = xs.y.iter().cloned().fold(f64::INFINITY, f64::min);
-    let y_max = xs.y.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+/// Solves critical depth (yc) relative to bottom elevation for a cross section lookup table.
+pub fn solve_critical_depth_table(table: &GeometryTable, q: f64) -> f64 {
+    if table.rows.is_empty() {
+        return 0.0;
+    }
+    let y_min = table.rows[0].elevation;
+    let y_max = table.rows[table.rows.len() - 1].elevation;
 
     let mut low = 0.0;
     let mut high = (y_max - y_min).max(10.0);
@@ -137,6 +142,11 @@ pub fn solve_critical_depth(xs: &CrossSection, table: &GeometryTable, q: f64) ->
         best_yc = mid;
     }
     best_yc
+}
+
+/// Solves critical depth (yc) relative to bottom elevation for a cross section.
+pub fn solve_critical_depth(_xs: &CrossSection, table: &GeometryTable, q: f64) -> f64 {
+    solve_critical_depth_table(table, q)
 }
 
 /// Steps from section 1 (known WSEL) to section 2 (unknown WSEL) using the Standard Step Method.
@@ -275,35 +285,84 @@ pub fn solve_steady(inputs: &SteadyInputs) -> SteadyResult {
     xs_list.sort_by(|a, b| b.station.partial_cmp(&a.station).unwrap());
     let m = xs_list.len();
 
-    // Generate geometry tables and calculate critical depths
+    // Generate geometry tables and calculate bed elevations
     let tables: Vec<GeometryTable> = xs_list.iter().map(|xs| xs.generate_lookup_table(num_slices)).collect();
     let z_mins: Vec<f64> = xs_list.iter().map(|xs| xs.y.iter().cloned().fold(f64::INFINITY, f64::min)).collect();
-    let ycs: Vec<f64> = xs_list.iter().zip(&tables).map(|(xs, table)| solve_critical_depth(xs, table, q)).collect();
-    let critical_wsels: Vec<f64> = z_mins.iter().zip(&ycs).map(|(&z, &yc)| z + yc).collect();
+
+    // DENSIFICATION STEP: Automatic Reach Interpolation
+    let max_sp = inputs.max_spacing.map(|sp| {
+        if raw_units == UnitSystem::USCustomary { sp * FT_TO_M } else { sp }
+    });
+
+    let mut densified_tables = Vec::new();
+    let mut densified_z_mins = Vec::new();
+    let mut densified_stations = Vec::new();
+    let mut original_to_densified = Vec::new();
+
+    for i in 0..m {
+        let current_idx = densified_tables.len();
+        original_to_densified.push(current_idx);
+
+        densified_tables.push(tables[i].clone());
+        densified_z_mins.push(z_mins[i]);
+        densified_stations.push(xs_list[i].station);
+
+        if i < m - 1 {
+            let dx = xs_list[i].station - xs_list[i + 1].station;
+            if let Some(limit) = max_sp {
+                if limit > 0.0 && dx > limit {
+                    let num_spaces = (dx / limit).ceil() as usize;
+                    let ds = dx / num_spaces as f64;
+                    for k in 1..num_spaces {
+                        let t = k as f64 / num_spaces as f64;
+                        let s_interp = xs_list[i].station - k as f64 * ds;
+                        
+                        let (t_interp, z_interp) = crate::geometry::processor::interpolate_geometry_table(
+                            &tables[i],
+                            z_mins[i],
+                            &tables[i + 1],
+                            z_mins[i + 1],
+                            t,
+                            num_slices,
+                        );
+                        
+                        densified_tables.push(t_interp);
+                        densified_z_mins.push(z_interp);
+                        densified_stations.push(s_interp);
+                    }
+                }
+            }
+        }
+    }
+
+    let dm = densified_tables.len();
+
+    // Calculate critical depths and elevations for the densified grid
+    let ycs: Vec<f64> = densified_tables.iter().map(|table| solve_critical_depth_table(table, q)).collect();
+    let critical_wsels: Vec<f64> = densified_z_mins.iter().zip(&ycs).map(|(&z, &yc)| z + yc).collect();
 
     let regime = inputs.regime; // 0=Subcritical, 1=Supercritical, 2=Mixed
-    let mut wsel_metric = vec![0.0; m];
+    let mut wsel_metric = vec![0.0; dm];
 
     // Boundary conditions in metric
     let ds_bc = inputs.downstream_wsel.map(|w| if raw_units == UnitSystem::USCustomary { w * FT_TO_M } else { w });
     let us_bc = inputs.upstream_wsel.map(|w| if raw_units == UnitSystem::USCustomary { w * FT_TO_M } else { w });
 
     // SWEEP 1: SUBCRITICAL (Downstream to Upstream)
-    let mut sub_wsel = vec![0.0; m];
+    let mut sub_wsel = vec![0.0; dm];
     if regime == 0 || regime == 2 {
-        // Set downstream boundary (index m-1)
-        sub_wsel[m - 1] = ds_bc.unwrap_or(critical_wsels[m - 1]);
-        if sub_wsel[m - 1] < critical_wsels[m - 1] {
-            sub_wsel[m - 1] = critical_wsels[m - 1]; // Clamp to critical depth for subcritical profiles
+        sub_wsel[dm - 1] = ds_bc.unwrap_or(critical_wsels[dm - 1]);
+        if sub_wsel[dm - 1] < critical_wsels[dm - 1] {
+            sub_wsel[dm - 1] = critical_wsels[dm - 1];
         }
 
-        for i in (0..m - 1).rev() {
-            let length = xs_list[i].station - xs_list[i + 1].station;
+        for i in (0..dm - 1).rev() {
+            let length = densified_stations[i] - densified_stations[i + 1];
             sub_wsel[i] = solve_step(
-                &tables[i + 1],
+                &densified_tables[i + 1],
                 sub_wsel[i + 1],
-                &tables[i],
-                z_mins[i],
+                &densified_tables[i],
+                densified_z_mins[i],
                 ycs[i],
                 q,
                 length,
@@ -315,21 +374,20 @@ pub fn solve_steady(inputs: &SteadyInputs) -> SteadyResult {
     }
 
     // SWEEP 2: SUPERCRITICAL (Upstream to Downstream)
-    let mut super_wsel = vec![0.0; m];
+    let mut super_wsel = vec![0.0; dm];
     if regime == 1 || regime == 2 {
-        // Set upstream boundary (index 0)
         super_wsel[0] = us_bc.unwrap_or(critical_wsels[0]);
         if super_wsel[0] > critical_wsels[0] {
-            super_wsel[0] = critical_wsels[0]; // Clamp to critical depth for supercritical profiles
+            super_wsel[0] = critical_wsels[0];
         }
 
-        for i in 0..m - 1 {
-            let length = xs_list[i].station - xs_list[i + 1].station;
+        for i in 0..dm - 1 {
+            let length = densified_stations[i] - densified_stations[i + 1];
             super_wsel[i + 1] = solve_step(
-                &tables[i],
+                &densified_tables[i],
                 super_wsel[i],
-                &tables[i + 1],
-                z_mins[i + 1],
+                &densified_tables[i + 1],
+                densified_z_mins[i + 1],
                 ycs[i + 1],
                 q,
                 length,
@@ -347,13 +405,9 @@ pub fn solve_steady(inputs: &SteadyInputs) -> SteadyResult {
         wsel_metric = super_wsel;
     } else {
         // Mixed regime selection
-        // HEC-RAS / standard hydraulic practice selects based on specific force (momentum)
-        // If subcritical WSEL has higher specific force, the jump has already occurred (or is subcritical).
-        for i in 0..m {
-            let sub_m = tables[i].calculate_specific_force(sub_wsel[i], q);
-            let super_m = tables[i].calculate_specific_force(super_wsel[i], q);
-            
-            // The flow chooses the profile with the higher specific force (momentum conservation)
+        for i in 0..dm {
+            let sub_m = densified_tables[i].calculate_specific_force(sub_wsel[i], q);
+            let super_m = densified_tables[i].calculate_specific_force(super_wsel[i], q);
             if sub_m >= super_m {
                 wsel_metric[i] = sub_wsel[i];
             } else {
@@ -362,19 +416,15 @@ pub fn solve_steady(inputs: &SteadyInputs) -> SteadyResult {
         }
     }
 
-    // POST-PROCESSING: Calculate outputs and convert back to user units
+    // POST-PROCESSING: Calculate outputs for original sections and convert back to user units
     let mut out_wsel = vec![0.0; m];
     let mut out_yc = vec![0.0; m];
     let mut out_vel = vec![0.0; m];
     let mut out_area = vec![0.0; m];
     let mut out_fr = vec![0.0; m];
 
-    // Map the sorted results back to matching inputs index order.
-    // Inputs order matches `inputs.cross_sections`.
-    // Let's build a map from original index to sorted index.
     let mut original_mapping = vec![0; m];
     for (orig_idx, orig_xs) in inputs.cross_sections.iter().enumerate() {
-        // Find sorted index matching station
         let mut sorted_idx = 0;
         for (s_idx, s_xs) in xs_list.iter().enumerate() {
             if (s_xs.station - (orig_xs.station * if raw_units == UnitSystem::USCustomary { FT_TO_M } else { 1.0 })).abs() < 1e-4 {
@@ -386,10 +436,12 @@ pub fn solve_steady(inputs: &SteadyInputs) -> SteadyResult {
     }
 
     for orig_idx in 0..m {
-        let sorted_idx = original_mapping[orig_idx];
+        let sorted_xs_idx = original_mapping[orig_idx];
+        let sorted_idx = original_to_densified[sorted_xs_idx];
+        
         let wsel_val = wsel_metric[sorted_idx];
         let yc_val = critical_wsels[sorted_idx];
-        let table = &tables[sorted_idx];
+        let table = &densified_tables[sorted_idx];
         let row = table.interpolate(wsel_val);
 
         let velocity = if row.area > 1e-6 { q / row.area } else { 0.0 };
@@ -487,6 +539,7 @@ mod tests {
             regime: 0, // Subcritical
             downstream_wsel: Some(1.2), // high tailwater boundary, creating backwater
             upstream_wsel: None,
+            max_spacing: None,
         };
 
         let result = solve_steady(&inputs);
@@ -507,6 +560,52 @@ mod tests {
         for &fr in &result.froude {
             assert!(fr < 1.0, "Froude was {}", fr);
         }
+    }
+
+    #[test]
+    fn test_steady_reach_densification() {
+        // Set up 2 cross-sections spaced 1000m apart.
+        // Bed slope is 0.001 (z1 = 1.0m, z2 = 0.0m).
+        // Rectangular channel: width = 10m.
+        let xs1000 = CrossSection {
+            station: 1000.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![6.0, 1.0, 1.0, 6.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+        };
+        let xs0 = CrossSection {
+            station: 0.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![5.0, 0.0, 0.0, 5.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+        };
+
+        // Run with a max spacing of 100.0m (which should create 9 intermediate cross sections, total 11 sections internally)
+        let inputs = SteadyInputs {
+            cross_sections: vec![xs1000, xs0],
+            flow_rate: 15.0,
+            num_slices: Some(50),
+            coeff_contraction: None,
+            coeff_expansion: None,
+            regime: 0, // Subcritical
+            downstream_wsel: Some(1.2), // tailwater depth = 1.2m
+            upstream_wsel: None,
+            max_spacing: Some(100.0),
+        };
+
+        let result = solve_steady(&inputs);
+
+        // Verification
+        // The solver should converge successfully. Check that output size matches original input size (2)
+        assert_eq!(result.wsel.len(), 2);
+        // Downstream boundary condition is preserved
+        assert_eq!(result.wsel[1], 1.2);
+        // Upstream water surface elevation should be solved successfully and be greater than bed level (1.0m)
+        assert!(result.wsel[0] > 1.0);
     }
 }
 

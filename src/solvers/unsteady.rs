@@ -22,6 +22,8 @@ pub struct UnsteadyInputs {
     pub theta: Option<f64>,
     /// Number of uniform vertical slices for geometry lookup tables (default 100).
     pub num_slices: Option<usize>,
+    /// Maximum distance between adjacent sections before automatic interpolation (optional, in user units).
+    pub max_spacing: Option<f64>,
 }
 
 /// Output results from the unsteady-state solver.
@@ -33,6 +35,10 @@ pub struct UnsteadyResult {
     pub q: Vec<Vec<f64>>,
     /// Time history of flow velocities [step][section] (in user units).
     pub velocity: Vec<Vec<f64>>,
+    /// Maximum Courant number encountered during initial conditions.
+    pub max_courant: Option<f64>,
+    /// Recommended optimal time-step size to ensure stability (in seconds).
+    pub recommended_dt: Option<f64>,
 }
 
 /// Helper to compute numerical derivative of conveyance K with respect to elevation y.
@@ -248,8 +254,123 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
         q_current[sorted_idx] = if raw_units == UnitSystem::USCustomary { q_val * crate::utils::CFS_TO_CMS } else { q_val };
     }
 
-    // Pre-build geometry tables
+    // Pre-build geometry tables for sorted cross sections
     let tables: Vec<GeometryTable> = xs_list.iter().map(|xs| xs.generate_lookup_table(num_slices)).collect();
+    let z_mins: Vec<f64> = xs_list.iter().map(|xs| xs.y.iter().cloned().fold(f64::INFINITY, f64::min)).collect();
+
+    // DENSIFICATION STEP: Automatic Reach Interpolation
+    let max_sp = inputs.max_spacing.map(|sp| {
+        if raw_units == UnitSystem::USCustomary { sp * FT_TO_M } else { sp }
+    });
+
+    let mut densified_tables = Vec::new();
+    let mut densified_z_mins = Vec::new();
+    let mut densified_stations = Vec::new();
+    let mut densified_xs = Vec::new();
+    let mut densified_y_current = Vec::new();
+    let mut densified_q_current = Vec::new();
+    let mut original_to_densified = Vec::new();
+
+    for i in 0..m {
+        let current_idx = densified_tables.len();
+        original_to_densified.push(current_idx);
+
+        densified_tables.push(tables[i].clone());
+        densified_z_mins.push(z_mins[i]);
+        densified_stations.push(xs_list[i].station);
+        densified_xs.push(xs_list[i].clone());
+        densified_y_current.push(y_current[i]);
+        densified_q_current.push(q_current[i]);
+
+        if i < m - 1 {
+            let dx = xs_list[i].station - xs_list[i + 1].station;
+            if let Some(limit) = max_sp {
+                if limit > 0.0 && dx > limit {
+                    let num_spaces = (dx / limit).ceil() as usize;
+                    let ds = dx / num_spaces as f64;
+                    for k in 1..num_spaces {
+                        let t = k as f64 / num_spaces as f64;
+                        let s_interp = xs_list[i].station - k as f64 * ds;
+                        
+                        let (t_interp, z_interp) = crate::geometry::processor::interpolate_geometry_table(
+                            &tables[i],
+                            z_mins[i],
+                            &tables[i + 1],
+                            z_mins[i + 1],
+                            t,
+                            num_slices,
+                        );
+                        
+                        let y_interp = (1.0 - t) * y_current[i] + t * y_current[i + 1];
+                        let q_interp = (1.0 - t) * q_current[i] + t * q_current[i + 1];
+
+                        let mut xs_interp = xs_list[i].clone();
+                        xs_interp.station = s_interp;
+
+                        densified_tables.push(t_interp);
+                        densified_z_mins.push(z_interp);
+                        densified_stations.push(s_interp);
+                        densified_xs.push(xs_interp);
+                        densified_y_current.push(y_interp);
+                        densified_q_current.push(q_interp);
+                    }
+                }
+            }
+        }
+    }
+
+    let dm = densified_tables.len();
+
+    // Calculate Courant number (Cr) and recommended dt based on initial conditions on the densified grid
+    let mut max_courant = 0.0;
+    let mut recommended_dt = f64::INFINITY;
+
+    for k in 0..dm {
+        let y_val = densified_y_current[k];
+        let q_val = densified_q_current[k];
+        let row = densified_tables[k].interpolate(y_val);
+        
+        let area = row.area;
+        let top_width = row.top_width;
+        let vel = if area > 1e-6 { q_val / area } else { 0.0 };
+        let d_hyd = if top_width > 1e-6 { area / top_width } else { 0.0 };
+        let celerity = (G_METRIC * d_hyd).sqrt();
+        let wave_speed = vel.abs() + celerity;
+
+        let dx = if dm < 2 {
+            1.0
+        } else if k == 0 {
+            densified_stations[0] - densified_stations[1]
+        } else if k == dm - 1 {
+            densified_stations[dm - 2] - densified_stations[dm - 1]
+        } else {
+            let dx_prev = densified_stations[k - 1] - densified_stations[k];
+            let dx_next = densified_stations[k] - densified_stations[k + 1];
+            dx_prev.min(dx_next)
+        };
+
+        if dx > 1e-9 {
+            let cr = (wave_speed * dt) / dx;
+            if cr > max_courant {
+                max_courant = cr;
+            }
+            if wave_speed > 1e-6 {
+                let dt_opt = (5.0 * dx) / wave_speed;
+                if dt_opt < recommended_dt {
+                    recommended_dt = dt_opt;
+                }
+            }
+        }
+    }
+
+    let (max_courant_val, recommended_dt_val) = if dm >= 2 {
+        (
+            Some(max_courant),
+            if recommended_dt.is_infinite() { None } else { Some(recommended_dt) }
+        )
+    } else {
+        (None, None)
+    };
 
     // Prepare time hydrographs in metric
     let mut q_up_hydrograph = vec![0.0; inputs.num_steps];
@@ -278,17 +399,17 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
 
         // Solve next time step
         if let Some((y_next, q_next)) = solve_unsteady_step(
-            &tables,
-            &xs_list,
-            &y_current,
-            &q_current,
+            &densified_tables,
+            &densified_xs,
+            &densified_y_current,
+            &densified_q_current,
             dt,
             q_up_next,
             y_down_next,
             theta,
         ) {
-            y_current = y_next;
-            q_current = q_next;
+            densified_y_current = y_next;
+            densified_q_current = q_next;
         } else {
             // If the matrix solver fails to invert (rare), maintain current state as fallback
         }
@@ -299,11 +420,12 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
         let mut step_vel = vec![0.0; m];
 
         for orig_idx in 0..m {
-            let sorted_idx = original_mapping[orig_idx];
-            let w_val = y_current[sorted_idx];
-            let q_val = q_current[sorted_idx];
+            let sorted_xs_idx = original_mapping[orig_idx];
+            let sorted_idx = original_to_densified[sorted_xs_idx];
+            let w_val = densified_y_current[sorted_idx];
+            let q_val = densified_q_current[sorted_idx];
             
-            let row = tables[sorted_idx].interpolate(w_val);
+            let row = densified_tables[sorted_idx].interpolate(w_val);
             let vel_val = if row.area > 1e-6 { q_val / row.area } else { 0.0 };
 
             if raw_units == UnitSystem::USCustomary {
@@ -326,6 +448,8 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
         wsel: history_wsel,
         q: history_q,
         velocity: history_vel,
+        max_courant: max_courant_val,
+        recommended_dt: recommended_dt_val,
     }
 }
 
@@ -375,6 +499,7 @@ mod tests {
             downstream_wsel_hydrograph: vec![1.0; 5],
             theta: Some(0.6),
             num_slices: Some(50),
+            max_spacing: None,
         };
 
         let result = solve_unsteady(&inputs);
@@ -390,6 +515,60 @@ mod tests {
                 assert!((q_val - 14.0).abs() < 1e-1, "Step {} Node {} Q was {}", step, node, q_val);
             }
         }
+    }
+
+    #[test]
+    fn test_unsteady_reach_densification() {
+        // Set up 2 cross-sections spaced 1000m apart.
+        // Bed slope is 0.001 (z1 = 1.0m, z2 = 0.0m).
+        // Rectangular channel: width = 10m.
+        let xs1000 = CrossSection {
+            station: 1000.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![6.0, 1.0, 1.0, 6.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+        };
+        let xs0 = CrossSection {
+            station: 0.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![5.0, 0.0, 0.0, 5.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+        };
+
+        // Run with a max spacing of 100.0m (which should create 9 intermediate cross sections, total 11 sections internally)
+        let inputs = UnsteadyInputs {
+            cross_sections: vec![xs1000, xs0],
+            initial_wsel: vec![2.0, 1.0], // constant depth = 1.0m
+            initial_q: vec![14.0, 14.0],
+            dt: 10.0,
+            num_steps: 5,
+            upstream_q_hydrograph: vec![14.0; 5],
+            downstream_wsel_hydrograph: vec![1.0; 5],
+            theta: Some(0.6),
+            num_slices: Some(50),
+            max_spacing: Some(100.0),
+        };
+
+        let result = solve_unsteady(&inputs);
+
+        // Verification
+        // The solver should converge successfully. Check that output size matches original input size (2)
+        assert_eq!(result.wsel.len(), 5);
+        assert_eq!(result.wsel[0].len(), 2);
+        
+        // Downstream boundary condition is preserved at the end of the reach
+        assert!((result.wsel[4][1] - 1.0).abs() < 1e-1);
+
+        // Check that max_courant and recommended_dt are calculated
+        assert!(result.max_courant.is_some());
+        assert!(result.recommended_dt.is_some());
+        
+        let cr = result.max_courant.unwrap();
+        assert!(cr > 0.0, "max_courant was {}", cr);
     }
 }
 

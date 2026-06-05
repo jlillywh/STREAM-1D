@@ -343,9 +343,84 @@ impl GeometryTable {
     }
 }
 
+/// Interpolates a new GeometryTable between table1 (at bed z1) and table2 (at bed z2) at interpolation factor t (0.0 to 1.0).
+pub fn interpolate_geometry_table(
+    table1: &GeometryTable,
+    z1: f64,
+    table2: &GeometryTable,
+    z2: f64,
+    t: f64,
+    num_slices: usize,
+) -> (GeometryTable, f64) {
+    let z_interp = (1.0 - t) * z1 + t * z2;
+
+    // Find maximum depth of both sections
+    let max_d1 = table1.rows.last().map(|r| r.elevation - z1).unwrap_or(10.0);
+    let max_d2 = table2.rows.last().map(|r| r.elevation - z2).unwrap_or(10.0);
+    let max_d = max_d1.max(max_d2);
+
+    let mut rows = Vec::new();
+    let step = max_d / (num_slices - 1) as f64;
+
+    for i in 0..num_slices {
+        let depth = i as f64 * step;
+
+        let row1 = table1.interpolate(z1 + depth);
+        let row2 = table2.interpolate(z2 + depth);
+
+        rows.push(GeometryRow {
+            elevation: z_interp + depth,
+            area: (1.0 - t) * row1.area + t * row2.area,
+            perimeter: (1.0 - t) * row1.perimeter + t * row2.perimeter,
+            top_width: (1.0 - t) * row1.top_width + t * row2.top_width,
+            conveyance: (1.0 - t) * row1.conveyance + t * row2.conveyance,
+        });
+    }
+
+    (GeometryTable { rows }, z_interp)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_geometry_table_interpolation() {
+        // Table 1: Rectangular channel 10m wide, bed z1 = 1.0m
+        let xs1 = CrossSection {
+            station: 1000.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![6.0, 1.0, 1.0, 6.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+        };
+        let table1 = xs1.generate_lookup_table(10);
+
+        // Table 2: Rectangular channel 20m wide, bed z2 = 0.0m
+        let xs2 = CrossSection {
+            station: 0.0,
+            x: vec![0.0, 0.0, 20.0, 20.0],
+            y: vec![5.0, 0.0, 0.0, 5.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+        };
+        let table2 = xs2.generate_lookup_table(10);
+
+        // Interpolate at t = 0.5 (midpoint)
+        let (table_interp, z_interp) = interpolate_geometry_table(&table1, 1.0, &table2, 0.0, 0.5, 50);
+
+        // Bed elevation should be 0.5m
+        assert_eq!(z_interp, 0.5);
+
+        // Query at depth 1.0m (absolute elevation z_interp + 1.0 = 1.5m)
+        // Expected width = 15m. Expected area = 15.0 m2. Expected perimeter = 15 + 1 + 1 = 17m.
+        let row = table_interp.interpolate(1.5);
+        assert!((row.area - 15.0).abs() < 1e-2, "Area was {}", row.area);
+        assert!((row.perimeter - 17.0).abs() < 1e-2, "Perimeter was {}", row.perimeter);
+        assert!((row.top_width - 15.0).abs() < 1e-2, "Top width was {}", row.top_width);
+    }
 
     #[test]
     fn test_rectangular_channel() {
