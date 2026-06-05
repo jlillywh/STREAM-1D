@@ -8,8 +8,8 @@ The core design philosophy is explicitly baked into our name:
 
 * **S - Stateless:** The engine operates entirely as a collection of pure, deterministic mathematical pipelines. It maintains no global mutable state and does not interact with file systems. You provide input arrays; it returns output arrays.
 * **T - Transferable:** Built specifically for zero-copy concurrency. The engine leverages browser *Transferable Objects* to pass flat typed memory arrays (`ArrayBuffer`) across thread boundaries. By transferring memory ownership instead of cloning data, it completely eliminates deep-copy serialization latency and garbage collection stutters.
-* **R - River Engine:** A dedicated physics core designed for river mechanics. It integrates non-linear cross-section slicing, multi-zone composite roughness calculations, and standard inline structures.
-* **E - for Analysis of:** Formulated as a highly modular, decoupled analytical tool, exposing distinct geometric processing stages separate from reach-wide hydraulic sweeps to optimize real-time user interactivity.
+* **RE - River Engine:** A dedicated physics core designed for river mechanics. It integrates non-linear cross-section slicing, multi-zone composite roughness calculations, and standard inline structures.
+* **A - for Analysis of:** Formulated as a highly modular, decoupled analytical tool, exposing distinct geometric processing stages separate from reach-wide hydraulic sweeps to optimize real-time user interactivity.
 * **M - Modeling Systems:** Built to expand from simple channel sweeps to complex hydraulic networks, incorporating dynamic channel densification, predictive stability metrics, and branching flow path graph topologies.
 * **1D - in 1D:** Optimized for high-fidelity one-dimensional hydraulic routing, solving the governing energy and momentum equations at blistering, microsecond speeds.
 
