@@ -6,7 +6,11 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 source "$HOME/.cargo/env"
 
 # Build wheel and install into the Binder Jupyter Python env.
-# (maturin develop requires an activated virtualenv, which Binder does not provide)
 export CARGO_BUILD_JOBS=2
 maturin build --release --features python -o dist
-pip install dist/*.whl
+python -m pip install dist/*.whl --no-cache-dir --force-reinstall
+
+# The verification notebook runs from python/, which shadows site-packages.
+# Copy the compiled extension next to the package source for that import path.
+EXT=$(python -c "import streams1d._streams1d as m; print(m.__file__)")
+cp "$EXT" python/streams1d/
