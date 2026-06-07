@@ -5,6 +5,8 @@ set -euo pipefail
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 source "$HOME/.cargo/env"
 
-# Build and install the streams1d python bindings (limit jobs for Binder memory)
+# Build wheel and install into the Binder Jupyter Python env.
+# (maturin develop requires an activated virtualenv, which Binder does not provide)
 export CARGO_BUILD_JOBS=2
-maturin develop --features python
+maturin build --release --features python -o dist
+pip install dist/*.whl
