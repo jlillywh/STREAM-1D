@@ -1,33 +1,22 @@
 # STREAMS-1D
 
-**Stateless Transferable River Engine for Analysis of Modeling Systems (in 1D)**
+**An open-source 1D open-channel hydraulics engine for the web and Python.**
 
-STREAMS-1D is an open-channel hydraulics engine written in Rust and compiled to WebAssembly (WASM). It is designed to run directly in browser threads, allowing for client-side calculation of water surface profiles without relying on a remote server or desktop installation.
+STREAMS-1D is a 1D hydraulics engine written in Rust. It solves the 1D Saint-Venant equations for steady and unsteady flow routing. The core solver is decoupled from any specific user interface and compiles to two primary targets: WebAssembly (WASM) for client-side execution in the browser, and a native Python extension for automated scripting and batch processing. 
 
-## Project Purpose & Goals
+## Project Goals
 
-The purpose of STREAMS-1D is to provide a platform-independent, embeddable 1D hydraulic solver that can connect to web applications, design tools, and GIS databases. Compiling the core logic to WebAssembly enables execution on any platform with a modern web browser (including Windows, macOS, Linux, and mobile operating systems).
+* **Embeddable Execution:** Run hydraulic simulations natively in web dashboards or Python data pipelines without requiring desktop software installations.
+* **Structural Hydraulics:** Model complex channel networks, including multi-roughness cross-sections, culverts, bridge piers, and roadway overtopping.
+* **Stable Unsteady Routing:** Handle transient boundary conditions, steep hydrographs, and mixed flow regimes without numerical divergence.
+* **Real-Time Calculation:** Exploit Rust's multi-threading to update water surface profiles instantly as geometry or boundary conditions change.
 
-The technical development goals of the project are:
-1. **Platform-Independent Integration:** Providing a decoupled solver core that can be integrated directly into web-based workflows and portals, removing dependencies on desktop execution environments.
-2. **Structural Hydraulics Expansion:** Developing numerical modeling capabilities for inline structures, including multi-roughness culverts, bridge pier obstructions, and roadway overtopping elements. Future work aims to add gate, flume, and spillway formulations.
-3. **Unsteady Solver Stabilization:** Stabilizing the dynamic routing solver (which solves the 1D Saint-Venant equations) to handle transient boundaries, steep hydrographs, and connected channel networks without numerical divergence.
-4. **Interactive Profile Updates:** Operating the solver in background Web Workers utilizing transferable typed arrays to update profile plots as geometry parameters are edited.
+## Architecture
 
----
-
-## Core Design Philosophy
-
-The design philosophy is explicitly baked into our name:
-
-* **S - Stateless (Zero Local Overhead):** The engine operates as a direct mathematical pipeline. It requires no installation, desktop setups, or local file administration. You input geometric cross-sections, and it instantly computes hydraulic profiles.
-* **T - Transferable (Real-Time 60 FPS Feedback):** Built with multi-threaded browser processing. Geometry modifications and flow adjustments are processed instantly in background threads, showing backwater curves dynamically as you type or drag points without freezing your screen.
-* **RE - River Engine:** A dedicated physics core designed for open channel hydraulics, integrating non-linear cross-section slicing, multi-zone composite roughness calculations, and standard inline structures (culverts and bridges).
-* **A - for Analysis of:** Exposes intermediate geometric properties (area, conveyance, and top-width lookup tables) separately from the hydraulic sweeps, allowing engineers to isolate and analyze channel capacity at specific cross-sections.
-* **M - Modeling Systems:** Capable of scaling from simple uniform channels to complex branching river networks, with robust mixed flow regime transitions (hydraulic jumps) and spatial step densification.
-* **1D - in 1D:** Optimized for high-fidelity one-dimensional hydraulic routing, solving the governing energy (Standard Step Method) and momentum (unsteady Saint-Venant) equations.
-
-Operating asynchronously inside background Web Workers, STREAMS-1D delivers real-time, interactive 60 FPS visual simulations without ever locking up the client-side user interface.
+* **Stateless:** The engine requires no project files, local file administration, or hidden global states. It operates as a direct mathematical pipeline: input arrays in, output arrays out.
+* **Transferable:** Uses zero-copy memory transfers in WASM to process geometry and flow modifications in background threads, enabling 60 FPS profile updates without blocking the main UI thread.
+* **Open-Channel Focus:** Natively handles non-linear cross-section lookup tables and composite Manning's *n* values.
+* **Modular Analysis:** Exposes intermediate hydraulic properties (area, conveyance, top-width) so engineers can analyze channel capacity without running a full unsteady simulation.
 
 ## Repository Structure
 
