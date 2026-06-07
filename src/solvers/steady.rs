@@ -2,7 +2,7 @@ use crate::utils::{G_METRIC, UnitSystem, FT_TO_M};
 use crate::geometry::{CrossSection, GeometryTable};
 
 /// Input parameters for the steady-state solver.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct SteadyInputs {
     /// Cross-sections defining the river reach.
     pub cross_sections: Vec<CrossSection>,
@@ -22,6 +22,55 @@ pub struct SteadyInputs {
     pub upstream_wsel: Option<f64>,
     /// Maximum distance between adjacent sections before automatic interpolation (optional, in user units).
     pub max_spacing: Option<f64>,
+    /// Culvert stations (optional)
+    #[serde(default)]
+    pub culvert_stations: Option<Vec<f64>>,
+    /// Culvert shape types (optional, 0 = Circular, 1 = Box, 2 = Arch)
+    #[serde(default)]
+    pub culvert_shape_types: Option<Vec<i32>>,
+    /// Culvert spans/diameters (optional, in feet/meters)
+    #[serde(default)]
+    pub culvert_spans: Option<Vec<f64>>,
+    /// Culvert rises (optional, in feet/meters)
+    #[serde(default)]
+    pub culvert_rises: Option<Vec<f64>>,
+    /// Culvert Manning's n roughness coefficients (optional)
+    #[serde(default)]
+    pub culvert_roughness_ns: Option<Vec<f64>>,
+    /// Culvert lengths (optional, in feet/meters)
+    #[serde(default)]
+    pub culvert_lengths: Option<Vec<f64>>,
+    /// Culvert entrance loss coefficients Ke (optional)
+    #[serde(default)]
+    pub culvert_entrance_loss_coeffs: Option<Vec<f64>>,
+    /// Culvert exit loss coefficients Kx (optional)
+    #[serde(default)]
+    pub culvert_exit_loss_coeffs: Option<Vec<f64>>,
+
+    /// Stations where bridges are located (in user units, e.g. feet or meters)
+    #[serde(default)]
+    pub bridge_stations: Option<Vec<f64>>,
+    /// Elevation of the lowest point of the bridge deck at each bridge
+    #[serde(default)]
+    pub bridge_low_chords: Option<Vec<f64>>,
+    /// Elevation of the top of the roadway deck at each bridge
+    #[serde(default)]
+    pub bridge_high_chords: Option<Vec<f64>>,
+    /// Thickness/width of a single pier at each bridge
+    #[serde(default)]
+    pub bridge_pier_widths: Option<Vec<f64>>,
+    /// Number of piers at each bridge
+    #[serde(default)]
+    pub bridge_num_piers: Option<Vec<i32>>,
+    /// Pier shape classification (0 = Square, 1 = Semicircular, 2 = Twin Cylinders, 3 = Sharp/Triangular)
+    #[serde(default)]
+    pub bridge_pier_shapes: Option<Vec<i32>>,
+    /// Weir discharge coefficient Cw for overtopping flow (e.g., default 2.6 US, 1.44 Metric)
+    #[serde(default)]
+    pub bridge_weir_coeffs: Option<Vec<f64>>,
+    /// Orifice discharge coefficient Cd for pressure flow (e.g., default 0.5 or 0.6)
+    #[serde(default)]
+    pub bridge_orifice_coeffs: Option<Vec<f64>>,
 }
 
 /// Output results from the steady-state solver.
@@ -358,18 +407,149 @@ pub fn solve_steady(inputs: &SteadyInputs) -> SteadyResult {
 
         for i in (0..dm - 1).rev() {
             let length = densified_stations[i] - densified_stations[i + 1];
-            sub_wsel[i] = solve_step(
-                &densified_tables[i + 1],
-                sub_wsel[i + 1],
-                &densified_tables[i],
-                densified_z_mins[i],
-                ycs[i],
-                q,
-                length,
-                c_contraction,
-                c_expansion,
-                true,
-            ).unwrap_or(critical_wsels[i]);
+
+            // Check if there is a bridge in this reach interval
+            let mut bridge_idx = None;
+            if let Some(ref b_stations) = inputs.bridge_stations {
+                for (b_idx, &b_st) in b_stations.iter().enumerate() {
+                    let b_st_metric = if raw_units == UnitSystem::USCustomary {
+                        b_st * FT_TO_M
+                    } else {
+                        b_st
+                    };
+                    if b_st_metric >= densified_stations[i + 1] - 1e-4
+                        && b_st_metric < densified_stations[i] + 1e-4
+                    {
+                        bridge_idx = Some(b_idx);
+                        break;
+                    }
+                }
+            }
+
+            // Check if there is a culvert in this reach interval
+            let mut culvert_idx = None;
+            if let Some(ref c_stations) = inputs.culvert_stations {
+                for (c_idx, &c_st) in c_stations.iter().enumerate() {
+                    let c_st_metric = if raw_units == UnitSystem::USCustomary {
+                        c_st * FT_TO_M
+                    } else {
+                        c_st
+                    };
+                    if c_st_metric >= densified_stations[i + 1] - 1e-4
+                        && c_st_metric < densified_stations[i] + 1e-4
+                    {
+                        culvert_idx = Some(c_idx);
+                        break;
+                    }
+                }
+            }
+
+            if let Some(b_idx) = bridge_idx {
+                let low_chord = inputs.bridge_low_chords.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0.0);
+                let high_chord = inputs.bridge_high_chords.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0.0);
+                let pier_width = inputs.bridge_pier_widths.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0.0);
+                let num_piers = inputs.bridge_num_piers.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0);
+                let pier_shape = inputs.bridge_pier_shapes.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0);
+                let weir_coeff = inputs.bridge_weir_coeffs.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(if raw_units == UnitSystem::USCustomary { 2.6 } else { 1.44 });
+                let orifice_coeff = inputs.bridge_orifice_coeffs.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0.5);
+
+                let tw_wsel_user = if raw_units == UnitSystem::USCustomary {
+                    sub_wsel[i + 1] / FT_TO_M
+                } else {
+                    sub_wsel[i + 1]
+                };
+                let z_down_user = if raw_units == UnitSystem::USCustomary {
+                    densified_z_mins[i + 1] / FT_TO_M
+                } else {
+                    densified_z_mins[i + 1]
+                };
+                let z_up_user = if raw_units == UnitSystem::USCustomary {
+                    densified_z_mins[i] / FT_TO_M
+                } else {
+                    densified_z_mins[i]
+                };
+
+                let wsel_up_user = crate::solvers::bridge::solve_bridge_wsel(
+                    inputs.flow_rate,
+                    low_chord,
+                    high_chord,
+                    pier_width,
+                    num_piers,
+                    pier_shape,
+                    weir_coeff,
+                    orifice_coeff,
+                    z_down_user,
+                    z_up_user,
+                    tw_wsel_user,
+                    raw_units,
+                    &densified_tables[i],
+                    &densified_tables[i + 1],
+                );
+
+                sub_wsel[i] = if raw_units == UnitSystem::USCustomary {
+                    wsel_up_user * FT_TO_M
+                } else {
+                    wsel_up_user
+                };
+            } else if let Some(c_idx) = culvert_idx {
+                let shape_type = inputs.culvert_shape_types.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0);
+                let span = inputs.culvert_spans.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(4.0);
+                let rise = inputs.culvert_rises.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(4.0);
+                let roughness_n = inputs.culvert_roughness_ns.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.013);
+                let culv_len = inputs.culvert_lengths.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(100.0);
+                let entrance_loss_coeff = inputs.culvert_entrance_loss_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.5);
+                let exit_loss_coeff = inputs.culvert_exit_loss_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(1.0);
+
+                let tw_wsel_user = if raw_units == UnitSystem::USCustomary {
+                    sub_wsel[i + 1] / FT_TO_M
+                } else {
+                    sub_wsel[i + 1]
+                };
+                let z_down_user = if raw_units == UnitSystem::USCustomary {
+                    densified_z_mins[i + 1] / FT_TO_M
+                } else {
+                    densified_z_mins[i + 1]
+                };
+                let z_up_user = if raw_units == UnitSystem::USCustomary {
+                    densified_z_mins[i] / FT_TO_M
+                } else {
+                    densified_z_mins[i]
+                };
+
+                let wsel_up_user = crate::solvers::culvert::solve_culvert_wsel(
+                    inputs.flow_rate,
+                    shape_type,
+                    span,
+                    rise,
+                    roughness_n,
+                    culv_len,
+                    entrance_loss_coeff,
+                    exit_loss_coeff,
+                    z_down_user,
+                    z_up_user,
+                    tw_wsel_user,
+                    raw_units,
+                );
+
+                sub_wsel[i] = if raw_units == UnitSystem::USCustomary {
+                    wsel_up_user * FT_TO_M
+                } else {
+                    wsel_up_user
+                };
+            } else {
+                sub_wsel[i] = solve_step(
+                    &densified_tables[i + 1],
+                    sub_wsel[i + 1],
+                    &densified_tables[i],
+                    densified_z_mins[i],
+                    ycs[i],
+                    q,
+                    length,
+                    c_contraction,
+                    c_expansion,
+                    true,
+                ).unwrap_or(critical_wsels[i]);
+            }
         }
     }
 
@@ -383,18 +563,59 @@ pub fn solve_steady(inputs: &SteadyInputs) -> SteadyResult {
 
         for i in 0..dm - 1 {
             let length = densified_stations[i] - densified_stations[i + 1];
-            super_wsel[i + 1] = solve_step(
-                &densified_tables[i],
-                super_wsel[i],
-                &densified_tables[i + 1],
-                densified_z_mins[i + 1],
-                ycs[i + 1],
-                q,
-                length,
-                c_contraction,
-                c_expansion,
-                false,
-            ).unwrap_or(critical_wsels[i + 1]);
+
+            // Check if there is a bridge in this reach interval
+            let mut bridge_idx = None;
+            if let Some(ref b_stations) = inputs.bridge_stations {
+                for (b_idx, &b_st) in b_stations.iter().enumerate() {
+                    let b_st_metric = if raw_units == UnitSystem::USCustomary {
+                        b_st * FT_TO_M
+                    } else {
+                        b_st
+                    };
+                    if b_st_metric >= densified_stations[i + 1] - 1e-4
+                        && b_st_metric < densified_stations[i] + 1e-4
+                    {
+                        bridge_idx = Some(b_idx);
+                        break;
+                    }
+                }
+            }
+
+            // Check if there is a culvert in this reach interval
+            let mut culvert_idx = None;
+            if let Some(ref c_stations) = inputs.culvert_stations {
+                for (c_idx, &c_st) in c_stations.iter().enumerate() {
+                    let c_st_metric = if raw_units == UnitSystem::USCustomary {
+                        c_st * FT_TO_M
+                    } else {
+                        c_st
+                    };
+                    if c_st_metric >= densified_stations[i + 1] - 1e-4
+                        && c_st_metric < densified_stations[i] + 1e-4
+                    {
+                        culvert_idx = Some(c_idx);
+                        break;
+                    }
+                }
+            }
+
+            if bridge_idx.is_some() || culvert_idx.is_some() {
+                super_wsel[i + 1] = critical_wsels[i + 1];
+            } else {
+                super_wsel[i + 1] = solve_step(
+                    &densified_tables[i],
+                    super_wsel[i],
+                    &densified_tables[i + 1],
+                    densified_z_mins[i + 1],
+                    ycs[i + 1],
+                    q,
+                    length,
+                    c_contraction,
+                    c_expansion,
+                    false,
+                ).unwrap_or(critical_wsels[i + 1]);
+            }
         }
     }
 
@@ -540,6 +761,15 @@ mod tests {
             downstream_wsel: Some(1.2), // high tailwater boundary, creating backwater
             upstream_wsel: None,
             max_spacing: None,
+            culvert_stations: None,
+            culvert_shape_types: None,
+            culvert_spans: None,
+            culvert_rises: None,
+            culvert_roughness_ns: None,
+            culvert_lengths: None,
+            culvert_entrance_loss_coeffs: None,
+            culvert_exit_loss_coeffs: None,
+            ..Default::default()
         };
 
         let result = solve_steady(&inputs);
@@ -595,6 +825,15 @@ mod tests {
             downstream_wsel: Some(1.2), // tailwater depth = 1.2m
             upstream_wsel: None,
             max_spacing: Some(100.0),
+            culvert_stations: None,
+            culvert_shape_types: None,
+            culvert_spans: None,
+            culvert_rises: None,
+            culvert_roughness_ns: None,
+            culvert_lengths: None,
+            culvert_entrance_loss_coeffs: None,
+            culvert_exit_loss_coeffs: None,
+            ..Default::default()
         };
 
         let result = solve_steady(&inputs);
@@ -606,6 +845,198 @@ mod tests {
         assert_eq!(result.wsel[1], 1.2);
         // Upstream water surface elevation should be solved successfully and be greater than bed level (1.0m)
         assert!(result.wsel[0] > 1.0);
+    }
+
+    #[test]
+    fn test_steady_integrated_culvert() {
+        // Concrete circular pipe: D = 5.0 ft, L = 100 ft, Q = 100 cfs, slope = 0.01
+        // Channel reach with 3 sections at stations 200, 100, and 0 in US Customary.
+        // Station 100 is just upstream of the culvert inlet (which sits between 100 and 0).
+        let xs200 = CrossSection {
+            station: 200.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![10.0 + 2.0, 2.0, 2.0, 10.0 + 2.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::USCustomary,
+        };
+        let xs100 = CrossSection {
+            station: 100.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![10.0 + 1.0, 1.0, 1.0, 10.0 + 1.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::USCustomary,
+        };
+        let xs0 = CrossSection {
+            station: 0.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![10.0, 0.0, 0.0, 10.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::USCustomary,
+        };
+
+        let inputs = SteadyInputs {
+            cross_sections: vec![xs200, xs100, xs0],
+            flow_rate: 100.0,
+            num_slices: Some(50),
+            coeff_contraction: None,
+            coeff_expansion: None,
+            regime: 0, // Subcritical
+            downstream_wsel: Some(3.0), // TW = 3 ft above invert
+            upstream_wsel: None,
+            max_spacing: None,
+            culvert_stations: Some(vec![50.0]), // culvert located between 0 and 100 (at station 50)
+            culvert_shape_types: Some(vec![0]), // Circular
+            culvert_spans: Some(vec![5.0]),
+            culvert_rises: Some(vec![5.0]),
+            culvert_roughness_ns: Some(vec![0.012]),
+            culvert_lengths: Some(vec![100.0]),
+            culvert_entrance_loss_coeffs: Some(vec![0.5]),
+            culvert_exit_loss_coeffs: Some(vec![1.0]),
+            ..Default::default()
+        };
+
+        let result = solve_steady(&inputs);
+
+        // Verification of integrated culvert model
+        // Downstream section station 0 (index 2) WSEL is tailwater: 3.0 ft.
+        assert_eq!(result.wsel[2], 3.0);
+
+        // Upstream section station 100 (index 1) WSEL is solved by culvert inlet control (~1.0 + 4.25 = 5.25 ft).
+        // Let's verify it matches to within 0.05 ft.
+        let hw_wsel = result.wsel[1];
+        assert!((hw_wsel - 5.25).abs() < 0.05, "expected ~5.25, got {}", hw_wsel);
+
+        // Upstream section station 200 (index 0) WSEL is GVF solved starting from station 100's solved WSEL.
+        assert!(result.wsel[0] > 2.0);
+    }
+
+    #[test]
+    fn test_steady_culvert_sensitivity() {
+        let xs200 = CrossSection {
+            station: 200.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![12.0, 2.0, 2.0, 12.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::USCustomary,
+        };
+        let xs100 = CrossSection {
+            station: 100.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![11.0, 1.0, 1.0, 11.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::USCustomary,
+        };
+        let xs0 = CrossSection {
+            station: 0.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![10.0, 0.0, 0.0, 10.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::USCustomary,
+        };
+
+        let mut inputs = SteadyInputs {
+            cross_sections: vec![xs200, xs100, xs0],
+            flow_rate: 100.0,
+            num_slices: Some(50),
+            coeff_contraction: None,
+            coeff_expansion: None,
+            regime: 0,
+            downstream_wsel: Some(3.0),
+            upstream_wsel: None,
+            max_spacing: None,
+            culvert_stations: Some(vec![50.0]),
+            culvert_shape_types: Some(vec![1]), // Box
+            culvert_spans: Some(vec![8.0]),
+            culvert_rises: Some(vec![6.0]),
+            culvert_roughness_ns: Some(vec![0.012]),
+            culvert_lengths: Some(vec![100.0]),
+            culvert_entrance_loss_coeffs: Some(vec![0.5]),
+            culvert_exit_loss_coeffs: Some(vec![1.0]),
+            ..Default::default()
+        };
+
+        let result_wide = solve_steady(&inputs);
+        
+        inputs.culvert_spans = Some(vec![0.1]);
+        let result_narrow = solve_steady(&inputs);
+
+        println!("Wide WSEL: {:?}", result_wide.wsel);
+        println!("Narrow WSEL: {:?}", result_narrow.wsel);
+        assert!(
+            result_narrow.wsel[1] > result_wide.wsel[1],
+            "Narrow culvert WSEL ({}) should be greater than wide culvert WSEL ({})",
+            result_narrow.wsel[1],
+            result_wide.wsel[1]
+        );
+    }
+
+    #[test]
+    fn test_steady_integrated_bridge() {
+        // Simple reach: stations 200, 100, 0
+        // Rectangular channel: width = 10m
+        // Bed elevations: 0.2m, 0.1m, 0.0m
+        // Flow rate: 15.0 cms
+        let xs200 = CrossSection {
+            station: 200.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![10.0 + 0.2, 0.2, 0.2, 10.0 + 0.2],
+            n_stations: vec![0.0],
+            n_values: vec![0.03],
+            unit_system: UnitSystem::Metric,
+        };
+        let xs100 = CrossSection {
+            station: 100.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![10.0 + 0.1, 0.1, 0.1, 10.0 + 0.1],
+            n_stations: vec![0.0],
+            n_values: vec![0.03],
+            unit_system: UnitSystem::Metric,
+        };
+        let xs0 = CrossSection {
+            station: 0.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![10.0, 0.0, 0.0, 10.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.03],
+            unit_system: UnitSystem::Metric,
+        };
+
+        let inputs = SteadyInputs {
+            cross_sections: vec![xs200, xs100, xs0],
+            flow_rate: 15.0,
+            num_slices: Some(50),
+            coeff_contraction: None,
+            coeff_expansion: None,
+            regime: 0,
+            downstream_wsel: Some(3.0),
+            upstream_wsel: None,
+            max_spacing: None,
+            bridge_stations: Some(vec![50.0]), // bridge at station 50 (between 0 and 100)
+            bridge_low_chords: Some(vec![5.0]),
+            bridge_high_chords: Some(vec![7.0]),
+            bridge_pier_widths: Some(vec![0.5]),
+            bridge_num_piers: Some(vec![2]),
+            bridge_pier_shapes: Some(vec![0]),
+            bridge_weir_coeffs: Some(vec![1.44]),
+            bridge_orifice_coeffs: Some(vec![0.5]),
+            ..Default::default()
+        };
+
+        let result = solve_steady(&inputs);
+
+        // Verification
+        // WSEL at station 0 (index 2) should be 3.0 (downstream boundary)
+        assert_eq!(result.wsel[2], 3.0);
+        // WSEL at station 100 (index 1) should be solved by the bridge code
+        // Since tw=3.0, it is low flow (below low-chord 5.0). So it includes Yarnell head loss.
+        // Let's verify it solved WSEL and it is > downstream bed + tailwater depth
+        assert!(result.wsel[1] > 3.0, "WSEL upstream of bridge should have backwater, got {}", result.wsel[1]);
     }
 }
 

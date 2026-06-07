@@ -285,25 +285,18 @@ impl GeometryTable {
             };
         }
 
-        // Clamp to lowest elevation if below minimum
-        if elev <= self.rows[0].elevation {
-            return GeometryRow {
-                elevation: elev,
-                area: 0.0,
-                perimeter: 0.0,
-                top_width: 0.0,
-                conveyance: 0.0,
-            };
-        }
+        // Clamp to minimum elevation corresponding to a minimum depth of 0.05 meters (stabilization)
+        let min_elev = self.rows[0].elevation + 0.05;
+        let target_elev = elev.max(min_elev);
 
         // Clamp to highest elevation if above maximum
-        if elev >= self.rows[n_rows - 1].elevation {
+        if target_elev >= self.rows[n_rows - 1].elevation {
             let last = self.rows[n_rows - 1];
             // Extrapolate area and top width based on last top width
-            let dy = elev - last.elevation;
+            let dy = target_elev - last.elevation;
             let new_area = last.area + last.top_width * dy;
             return GeometryRow {
-                elevation: elev,
+                elevation: target_elev,
                 area: new_area,
                 perimeter: last.perimeter + 2.0 * dy, // Simple boundary wall extension
                 top_width: last.top_width,
@@ -316,7 +309,7 @@ impl GeometryTable {
         let mut high = n_rows - 1;
         while high - low > 1 {
             let mid = (low + high) / 2;
-            if self.rows[mid].elevation <= elev {
+            if self.rows[mid].elevation <= target_elev {
                 low = mid;
             } else {
                 high = mid;
@@ -331,10 +324,10 @@ impl GeometryTable {
             return r1;
         }
 
-        let t = (elev - r1.elevation) / dy;
+        let t = (target_elev - r1.elevation) / dy;
 
         GeometryRow {
-            elevation: elev,
+            elevation: target_elev,
             area: r1.area + t * (r2.area - r1.area),
             perimeter: r1.perimeter + t * (r2.perimeter - r1.perimeter),
             top_width: r1.top_width + t * (r2.top_width - r1.top_width),
