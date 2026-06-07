@@ -1,7 +1,10 @@
 #!/bin/bash
+set -euo pipefail
+
 # Install Rust and Cargo for the Binder environment
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-source $HOME/.cargo/env
+source "$HOME/.cargo/env"
 
-# Build and install the streams1d python bindings
+# Build and install the streams1d python bindings (limit jobs for Binder memory)
+export CARGO_BUILD_JOBS=2
 maturin develop --features python
