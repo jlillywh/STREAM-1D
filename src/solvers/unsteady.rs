@@ -57,6 +57,7 @@ fn compute_dk_dy(table: &GeometryTable, elev: f64) -> f64 {
 pub fn solve_unsteady_step(
     tables: &[GeometryTable],
     xs_list: &[CrossSection],
+    z_mins: &[f64],
     y_current: &[f64], // current WSEL (metric)
     q_current: &[f64], // current Q (metric)
     dt: f64,
@@ -127,8 +128,8 @@ pub fn solve_unsteady_step(
         let d_sf_d_q = 2.0 * q_avg.abs() / (k_avg_clamp * k_avg_clamp);
         
         // Compute local depths to suppress derivatives at dry/shallow nodes
-        let z_min_i = xs_list[i].y.iter().cloned().fold(f64::INFINITY, f64::min);
-        let z_min_ip = xs_list[i + 1].y.iter().cloned().fold(f64::INFINITY, f64::min);
+        let z_min_i = z_mins[i];
+        let z_min_ip = z_mins[i + 1];
         let depth_i = (y_current[i] - z_min_i).max(0.0);
         let depth_ip = (y_current[i + 1] - z_min_ip).max(0.0);
 
@@ -253,7 +254,7 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
     let raw_units = inputs.cross_sections.first().map(|xs| xs.unit_system).unwrap_or(UnitSystem::Metric);
     let dt = inputs.dt;
     let num_slices = inputs.num_slices.unwrap_or(100);
-    let theta = inputs.theta.unwrap_or(0.85).clamp(0.8, 1.0);
+    let theta = inputs.theta.unwrap_or(0.85).clamp(0.85, 1.0);
     let c_contraction = inputs.coeff_contraction.unwrap_or(0.1);
     let c_expansion = inputs.coeff_expansion.unwrap_or(0.3);
 
@@ -278,9 +279,46 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
     // Setup initial conditions in metric
     let mut y_current = vec![0.0; m];
     let mut q_current = vec![0.0; m];
+
+    let initial_wsel_warmed = if !inputs.initial_wsel.is_empty() {
+        let steady_inputs = crate::solvers::steady::SteadyInputs {
+            cross_sections: inputs.cross_sections.clone(),
+            flow_rate: inputs.initial_q.first().cloned().unwrap_or(0.0),
+            num_slices: inputs.num_slices,
+            coeff_contraction: inputs.coeff_contraction,
+            coeff_expansion: inputs.coeff_expansion,
+            regime: 0, // Subcritical GVF sweep
+            downstream_wsel: inputs.downstream_wsel_hydrograph.first().cloned(),
+            upstream_wsel: None,
+            max_spacing: inputs.max_spacing,
+            culvert_stations: None,
+            culvert_shape_types: None,
+            culvert_spans: None,
+            culvert_rises: None,
+            culvert_roughness_ns: None,
+            culvert_lengths: None,
+            culvert_entrance_loss_coeffs: None,
+            culvert_exit_loss_coeffs: None,
+            culvert_barrels: None,
+            bridge_stations: None,
+            bridge_low_chords: None,
+            bridge_high_chords: None,
+            bridge_pier_widths: None,
+            bridge_num_piers: None,
+            bridge_pier_shapes: None,
+            bridge_weir_coeffs: None,
+            bridge_orifice_coeffs: None,
+            ..Default::default()
+        };
+        let steady_res = crate::solvers::steady::solve_steady(&steady_inputs);
+        steady_res.wsel
+    } else {
+        inputs.initial_wsel.clone()
+    };
+
     for orig_idx in 0..m {
         let sorted_idx = original_mapping[orig_idx];
-        let wsel_val = inputs.initial_wsel[orig_idx];
+        let wsel_val = initial_wsel_warmed[orig_idx];
         let q_val = inputs.initial_q[orig_idx];
         
         y_current[sorted_idx] = if raw_units == UnitSystem::USCustomary { wsel_val * FT_TO_M } else { wsel_val };
@@ -455,6 +493,7 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
         if let Some((y_next, q_next)) = solve_unsteady_step(
             &densified_tables,
             &densified_xs,
+            &densified_z_mins,
             &densified_y_current,
             &densified_q_current,
             dt,

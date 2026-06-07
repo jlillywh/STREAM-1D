@@ -46,6 +46,18 @@ pub struct SteadyInputs {
     /// Culvert exit loss coefficients Kx (optional)
     #[serde(default)]
     pub culvert_exit_loss_coeffs: Option<Vec<f64>>,
+    /// Culvert number of barrels (optional)
+    #[serde(default)]
+    pub culvert_barrels: Option<Vec<i32>>,
+    /// Culvert Manning's n roughness coefficients for bottom/sediment (optional)
+    #[serde(default)]
+    pub culvert_roughness_n_bottoms: Option<Vec<f64>>,
+    /// Culvert depths to use bottom roughness n (optional, in feet/meters)
+    #[serde(default)]
+    pub culvert_depth_bottom_ns: Option<Vec<f64>>,
+    /// Culvert depths blocked/filled with sediment (optional, in feet/meters)
+    #[serde(default)]
+    pub culvert_depth_blockeds: Option<Vec<f64>>,
 
     /// Stations where bridges are located (in user units, e.g. feet or meters)
     #[serde(default)]
@@ -71,6 +83,32 @@ pub struct SteadyInputs {
     /// Orifice discharge coefficient Cd for pressure flow (e.g., default 0.5 or 0.6)
     #[serde(default)]
     pub bridge_orifice_coeffs: Option<Vec<f64>>,
+
+    /// Downstream boundary condition type (0 = Known WSEL, 1 = Critical Depth, 2 = Normal Depth, 3 = Rating Curve)
+    #[serde(default)]
+    pub downstream_bc_type: Option<i32>,
+    /// Downstream friction slope for normal depth boundary condition
+    #[serde(default)]
+    pub downstream_bc_slope: Option<f64>,
+    /// Downstream rating curve flows
+    #[serde(default)]
+    pub downstream_bc_rating_q: Option<Vec<f64>>,
+    /// Downstream rating curve water surface elevations
+    #[serde(default)]
+    pub downstream_bc_rating_wsel: Option<Vec<f64>>,
+
+    /// Upstream boundary condition type (0 = Known WSEL, 1 = Critical Depth, 2 = Normal Depth, 3 = Rating Curve)
+    #[serde(default)]
+    pub upstream_bc_type: Option<i32>,
+    /// Upstream friction slope for normal depth boundary condition
+    #[serde(default)]
+    pub upstream_bc_slope: Option<f64>,
+    /// Upstream rating curve flows
+    #[serde(default)]
+    pub upstream_bc_rating_q: Option<Vec<f64>>,
+    /// Upstream rating curve water surface elevations
+    #[serde(default)]
+    pub upstream_bc_rating_wsel: Option<Vec<f64>>,
 }
 
 /// Output results from the steady-state solver.
@@ -86,6 +124,10 @@ pub struct SteadyResult {
     pub area: Vec<f64>,
     /// Froude numbers at each cross-section.
     pub froude: Vec<f64>,
+    /// Top width of flow at each cross-section (in user units).
+    pub top_width: Vec<f64>,
+    /// Energy grade line friction slope (dimensionless) at each cross-section.
+    pub eg_slope: Vec<f64>,
 }
 
 impl GeometryTable {
@@ -198,6 +240,81 @@ pub fn solve_critical_depth(_xs: &CrossSection, table: &GeometryTable, q: f64) -
     solve_critical_depth_table(table, q)
 }
 
+/// Solves normal depth (yn) for a given cross section lookup table using bisection search.
+/// Returns absolute WSEL in metric.
+pub fn solve_normal_depth_table(table: &GeometryTable, q: f64, slope: f64) -> f64 {
+    if table.rows.is_empty() {
+        return 0.0;
+    }
+    let slope_val = if slope <= 0.0 { 0.01 } else { slope };
+    let target_k = q / slope_val.sqrt();
+
+    let y_min = table.rows[0].elevation;
+    let y_max = table.rows[table.rows.len() - 1].elevation;
+
+    let mut low = y_min;
+    let mut high = y_max;
+    let mut best_y = y_min;
+
+    for _ in 0..50 {
+        let mid = 0.5 * (low + high);
+        let row = table.interpolate(mid);
+        if row.conveyance < target_k {
+            low = mid;
+        } else {
+            high = mid;
+        }
+        best_y = mid;
+    }
+    best_y
+}
+
+/// Interpolates stage-discharge coordinates to find boundary WSEL at flow rate Q (in user units).
+/// Returns WSEL in user units, or None if coordinates are empty/invalid.
+pub fn interpolate_rating_curve(q: f64, rating_q: &[f64], rating_wsel: &[f64]) -> Option<f64> {
+    if rating_q.is_empty() || rating_wsel.is_empty() {
+        return None;
+    }
+    let n = rating_q.len().min(rating_wsel.len());
+    if n == 0 {
+        return None;
+    }
+    if n == 1 {
+        return Some(rating_wsel[0]);
+    }
+
+    // Zip and sort by flow rate Q
+    let mut pairs: Vec<(f64, f64)> = rating_q.iter().zip(rating_wsel.iter()).take(n).map(|(&qi, &wi)| (qi, wi)).collect();
+    pairs.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+
+    // Clamp to nearest if out of bounds
+    if q <= pairs[0].0 {
+        return Some(pairs[0].1);
+    }
+    if q >= pairs[n - 1].0 {
+        return Some(pairs[n - 1].1);
+    }
+
+    // Find interval and interpolate
+    for i in 0..n - 1 {
+        let q1 = pairs[i].0;
+        let w1 = pairs[i].1;
+        let q2 = pairs[i + 1].0;
+        let w2 = pairs[i + 1].1;
+        if q >= q1 && q <= q2 {
+            let dq = q2 - q1;
+            if dq.abs() < 1e-9 {
+                return Some(w1);
+            }
+            let t = (q - q1) / dq;
+            return Some(w1 + t * (w2 - w1));
+        }
+    }
+
+    Some(pairs[0].1)
+}
+
+
 /// Steps from section 1 (known WSEL) to section 2 (unknown WSEL) using the Standard Step Method.
 pub fn solve_step(
     table1: &GeometryTable,
@@ -210,20 +327,24 @@ pub fn solve_step(
     c_contraction: f64,
     c_expansion: f64,
     is_subcritical: bool,
+    use_channel1: bool,
+    use_channel2: bool,
 ) -> Option<f64> {
     let row1 = table1.interpolate(y1);
-    if row1.area < 1e-6 {
+    let area1 = if use_channel1 { row1.channel_area } else { row1.area };
+    if area1 < 1e-6 {
         return None;
     }
-    let hv1 = (q * q) / (2.0 * G_METRIC * row1.area * row1.area);
+    let hv1 = (q * q) / (2.0 * G_METRIC * area1 * area1);
     let k1 = row1.conveyance;
 
     let target_residual = |y2: f64| -> Option<f64> {
         let row2 = table2.interpolate(y2);
-        if row2.area < 1e-6 {
+        let area2 = if use_channel2 { row2.channel_area } else { row2.area };
+        if area2 < 1e-6 {
             return None;
         }
-        let hv2 = (q * q) / (2.0 * G_METRIC * row2.area * row2.area);
+        let hv2 = (q * q) / (2.0 * G_METRIC * area2 * area2);
         let k2 = row2.conveyance;
 
         let k_avg = 0.5 * (k1 + k2);
@@ -394,13 +515,68 @@ pub fn solve_steady(inputs: &SteadyInputs) -> SteadyResult {
     let mut wsel_metric = vec![0.0; dm];
 
     // Boundary conditions in metric
-    let ds_bc = inputs.downstream_wsel.map(|w| if raw_units == UnitSystem::USCustomary { w * FT_TO_M } else { w });
-    let us_bc = inputs.upstream_wsel.map(|w| if raw_units == UnitSystem::USCustomary { w * FT_TO_M } else { w });
+    let ds_bc_type = inputs.downstream_bc_type.unwrap_or(0);
+    let ds_wsel_metric = match ds_bc_type {
+        1 => Some(critical_wsels[dm - 1]),
+        2 => {
+            let slope = inputs.downstream_bc_slope.unwrap_or(0.01);
+            Some(solve_normal_depth_table(&densified_tables[dm - 1], q, slope))
+        }
+        3 => {
+            if let (Some(rq), Some(rw)) = (&inputs.downstream_bc_rating_q, &inputs.downstream_bc_rating_wsel) {
+                interpolate_rating_curve(inputs.flow_rate, rq, rw).map(|w| {
+                    if raw_units == UnitSystem::USCustomary { w * FT_TO_M } else { w }
+                })
+            } else {
+                None
+            }
+        }
+        _ => inputs.downstream_wsel.map(|w| if raw_units == UnitSystem::USCustomary { w * FT_TO_M } else { w }),
+    }.unwrap_or(critical_wsels[dm - 1]);
+
+    let us_bc_type = inputs.upstream_bc_type.unwrap_or(0);
+    let us_wsel_metric = match us_bc_type {
+        1 => Some(critical_wsels[0]),
+        2 => {
+            let slope = inputs.upstream_bc_slope.unwrap_or(0.01);
+            Some(solve_normal_depth_table(&densified_tables[0], q, slope))
+        }
+        3 => {
+            if let (Some(rq), Some(rw)) = (&inputs.upstream_bc_rating_q, &inputs.upstream_bc_rating_wsel) {
+                interpolate_rating_curve(inputs.flow_rate, rq, rw).map(|w| {
+                    if raw_units == UnitSystem::USCustomary { w * FT_TO_M } else { w }
+                })
+            } else {
+                None
+            }
+        }
+        _ => inputs.upstream_wsel.map(|w| if raw_units == UnitSystem::USCustomary { w * FT_TO_M } else { w }),
+    }.unwrap_or(critical_wsels[0]);
+
+    let mut culvert_adjacent_indices = std::collections::HashSet::new();
+    if let Some(ref c_stations) = inputs.culvert_stations {
+        for &c_st in c_stations {
+            let c_st_metric = if raw_units == UnitSystem::USCustomary {
+                c_st * FT_TO_M
+            } else {
+                c_st
+            };
+            for j in 0..dm - 1 {
+                if c_st_metric >= densified_stations[j + 1] - 1e-4
+                    && c_st_metric < densified_stations[j] + 1e-4
+                {
+                    culvert_adjacent_indices.insert(j);
+                    culvert_adjacent_indices.insert(j + 1);
+                    break;
+                }
+            }
+        }
+    }
 
     // SWEEP 1: SUBCRITICAL (Downstream to Upstream)
     let mut sub_wsel = vec![0.0; dm];
     if regime == 0 || regime == 2 {
-        sub_wsel[dm - 1] = ds_bc.unwrap_or(critical_wsels[dm - 1]);
+        sub_wsel[dm - 1] = ds_wsel_metric;
         if sub_wsel[dm - 1] < critical_wsels[dm - 1] {
             sub_wsel[dm - 1] = critical_wsels[dm - 1];
         }
@@ -499,6 +675,10 @@ pub fn solve_steady(inputs: &SteadyInputs) -> SteadyResult {
                 let culv_len = inputs.culvert_lengths.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(100.0);
                 let entrance_loss_coeff = inputs.culvert_entrance_loss_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.5);
                 let exit_loss_coeff = inputs.culvert_exit_loss_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(1.0);
+                let barrels = inputs.culvert_barrels.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(1).max(1) as f64;
+                let manning_n_bottom = inputs.culvert_roughness_n_bottoms.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(roughness_n);
+                let depth_bottom_n = inputs.culvert_depth_bottom_ns.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
+                let depth_blocked = inputs.culvert_depth_blockeds.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
 
                 let tw_wsel_user = if raw_units == UnitSystem::USCustomary {
                     sub_wsel[i + 1] / FT_TO_M
@@ -516,20 +696,61 @@ pub fn solve_steady(inputs: &SteadyInputs) -> SteadyResult {
                     densified_z_mins[i]
                 };
 
-                let wsel_up_user = crate::solvers::culvert::solve_culvert_wsel(
-                    inputs.flow_rate,
-                    shape_type,
-                    span,
-                    rise,
-                    roughness_n,
-                    culv_len,
-                    entrance_loss_coeff,
-                    exit_loss_coeff,
-                    z_down_user,
-                    z_up_user,
-                    tw_wsel_user,
-                    raw_units,
-                );
+                // Compute downstream velocity for exit loss calculation (using channel_area for contracted flow)
+                let ds_row = densified_tables[i + 1].interpolate(sub_wsel[i + 1]);
+                let ds_area_user = if raw_units == UnitSystem::USCustomary {
+                    ds_row.channel_area / (FT_TO_M * FT_TO_M)
+                } else {
+                    ds_row.channel_area
+                };
+                let ds_velocity_user = if ds_area_user > 1e-9 {
+                    inputs.flow_rate / ds_area_user
+                } else {
+                    0.0
+                };
+
+                // Iteratively solve for upstream WSEL and upstream velocity
+                let mut wsel_up_user = tw_wsel_user; // initial guess
+                let table_up = &densified_tables[i];
+
+                for _ in 0..3 {
+                    let wsel_up_metric = if raw_units == UnitSystem::USCustomary {
+                        wsel_up_user * FT_TO_M
+                    } else {
+                        wsel_up_user
+                    };
+                    let us_row = table_up.interpolate(wsel_up_metric);
+                    let us_area_user = if raw_units == UnitSystem::USCustomary {
+                        us_row.channel_area / (FT_TO_M * FT_TO_M)
+                    } else {
+                        us_row.channel_area
+                    };
+                    let us_velocity_user = if us_area_user > 1e-9 {
+                        inputs.flow_rate / us_area_user
+                    } else {
+                        0.0
+                    };
+
+                    wsel_up_user = crate::solvers::culvert::solve_culvert_wsel(
+                        inputs.flow_rate / barrels,
+                        shape_type,
+                        span,
+                        rise,
+                        roughness_n,
+                        culv_len,
+                        entrance_loss_coeff,
+                        exit_loss_coeff,
+                        z_down_user,
+                        z_up_user,
+                        tw_wsel_user,
+                        raw_units,
+                        manning_n_bottom,
+                        depth_bottom_n,
+                        depth_blocked,
+                        ds_velocity_user,
+                        us_velocity_user,
+                    );
+                }
 
                 sub_wsel[i] = if raw_units == UnitSystem::USCustomary {
                     wsel_up_user * FT_TO_M
@@ -548,6 +769,8 @@ pub fn solve_steady(inputs: &SteadyInputs) -> SteadyResult {
                     c_contraction,
                     c_expansion,
                     true,
+                    culvert_adjacent_indices.contains(&(i + 1)),
+                    culvert_adjacent_indices.contains(&i),
                 ).unwrap_or(critical_wsels[i]);
             }
         }
@@ -556,7 +779,7 @@ pub fn solve_steady(inputs: &SteadyInputs) -> SteadyResult {
     // SWEEP 2: SUPERCRITICAL (Upstream to Downstream)
     let mut super_wsel = vec![0.0; dm];
     if regime == 1 || regime == 2 {
-        super_wsel[0] = us_bc.unwrap_or(critical_wsels[0]);
+        super_wsel[0] = us_wsel_metric;
         if super_wsel[0] > critical_wsels[0] {
             super_wsel[0] = critical_wsels[0];
         }
@@ -614,6 +837,8 @@ pub fn solve_steady(inputs: &SteadyInputs) -> SteadyResult {
                     c_contraction,
                     c_expansion,
                     false,
+                    culvert_adjacent_indices.contains(&i),
+                    culvert_adjacent_indices.contains(&(i + 1)),
                 ).unwrap_or(critical_wsels[i + 1]);
             }
         }
@@ -638,11 +863,6 @@ pub fn solve_steady(inputs: &SteadyInputs) -> SteadyResult {
     }
 
     // POST-PROCESSING: Calculate outputs for original sections and convert back to user units
-    let mut out_wsel = vec![0.0; m];
-    let mut out_yc = vec![0.0; m];
-    let mut out_vel = vec![0.0; m];
-    let mut out_area = vec![0.0; m];
-    let mut out_fr = vec![0.0; m];
 
     let mut original_mapping = vec![0; m];
     for (orig_idx, orig_xs) in inputs.cross_sections.iter().enumerate() {
@@ -655,6 +875,14 @@ pub fn solve_steady(inputs: &SteadyInputs) -> SteadyResult {
         }
         original_mapping[orig_idx] = sorted_idx;
     }
+
+    let mut out_wsel = vec![0.0; m];
+    let mut out_yc = vec![0.0; m];
+    let mut out_vel = vec![0.0; m];
+    let mut out_area = vec![0.0; m];
+    let mut out_fr = vec![0.0; m];
+    let mut out_top_width = vec![0.0; m];
+    let mut out_eg_slope = vec![0.0; m];
 
     for orig_idx in 0..m {
         let sorted_xs_idx = original_mapping[orig_idx];
@@ -678,13 +906,18 @@ pub fn solve_steady(inputs: &SteadyInputs) -> SteadyResult {
             out_yc[orig_idx] = yc_val / FT_TO_M;
             out_vel[orig_idx] = velocity / FT_TO_M;
             out_area[orig_idx] = row.area / (FT_TO_M * FT_TO_M);
+            out_top_width[orig_idx] = row.top_width / FT_TO_M;
         } else {
             out_wsel[orig_idx] = wsel_val;
             out_yc[orig_idx] = yc_val;
             out_vel[orig_idx] = velocity;
             out_area[orig_idx] = row.area;
+            out_top_width[orig_idx] = row.top_width;
         }
         out_fr[orig_idx] = froude;
+
+        let sf = if row.conveyance > 1e-6 { (q / row.conveyance).powi(2) } else { 0.0 };
+        out_eg_slope[orig_idx] = sf;
     }
 
     SteadyResult {
@@ -693,6 +926,8 @@ pub fn solve_steady(inputs: &SteadyInputs) -> SteadyResult {
         velocity: out_vel,
         area: out_area,
         froude: out_fr,
+        top_width: out_top_width,
+        eg_slope: out_eg_slope,
     }
 }
 
@@ -1037,6 +1272,77 @@ mod tests {
         // Since tw=3.0, it is low flow (below low-chord 5.0). So it includes Yarnell head loss.
         // Let's verify it solved WSEL and it is > downstream bed + tailwater depth
         assert!(result.wsel[1] > 3.0, "WSEL upstream of bridge should have backwater, got {}", result.wsel[1]);
+    }
+
+    #[test]
+    fn test_steady_normal_depth_boundary() {
+        let xs100 = CrossSection {
+            station: 100.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![5.0, 0.0, 0.0, 5.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+        };
+        let xs0 = CrossSection {
+            station: 0.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![5.0, 0.0, 0.0, 5.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+        };
+
+        let inputs = SteadyInputs {
+            cross_sections: vec![xs100, xs0],
+            flow_rate: 15.0,
+            num_slices: Some(50),
+            regime: 0, // Subcritical
+            downstream_bc_type: Some(2), // Normal Depth
+            downstream_bc_slope: Some(0.001),
+            ..Default::default()
+        };
+
+        let result = solve_steady(&inputs);
+        // Verify downstream WSEL is normal depth elevation (y_min=0.0 + yn ~ 1.05m)
+        let ds_wsel = result.wsel[1];
+        assert!(ds_wsel > 0.9 && ds_wsel < 1.2, "Expected normal depth WSEL ~1.05m, got {}", ds_wsel);
+    }
+
+    #[test]
+    fn test_steady_rating_curve_boundary() {
+        let xs100 = CrossSection {
+            station: 100.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![5.0, 0.0, 0.0, 5.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+        };
+        let xs0 = CrossSection {
+            station: 0.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![5.0, 0.0, 0.0, 5.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+        };
+
+        let inputs = SteadyInputs {
+            cross_sections: vec![xs100, xs0],
+            flow_rate: 15.0, // Should interpolate to 2.5
+            num_slices: Some(50),
+            regime: 0,
+            downstream_bc_type: Some(3), // Rating Curve
+            downstream_bc_rating_q: Some(vec![0.0, 10.0, 20.0]),
+            downstream_bc_rating_wsel: Some(vec![1.0, 2.0, 3.0]),
+            ..Default::default()
+        };
+
+        let result = solve_steady(&inputs);
+        // Verify downstream WSEL is 2.5
+        let ds_wsel = result.wsel[1];
+        assert!((ds_wsel - 2.5).abs() < 1e-5, "Expected 2.5, got {}", ds_wsel);
     }
 }
 

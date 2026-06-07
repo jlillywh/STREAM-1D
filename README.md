@@ -44,19 +44,94 @@ streams1d/
 When Manning's roughness coefficient ($n$) varies across a cross-section, the composite roughness $n_{composite}$ for a wetted perimeter $P$ composed of $M$ segments is:
 $$n_{composite} = \left( \frac{\sum_{j=1}^{M} P_j n_j^{1.5}}{P} \right)^{2/3}$$
 
-### 2. Gradually Varied Flow Energy balance
+For culverts with varying bottom and top roughness, the Horton-Einstein composite Manning's $n$ is evaluated when the water depth exceeds the specified bottom roughness depth ($d_{bottom}$):
+$$n_c = \left[ \frac{P_{bottom} n_{bottom}^{1.5} + P_{top} n_{top}^{1.5}}{P_{total}} \right]^{2/3}$$
+
+### 2. Gradually Varied Flow Energy Balance
 The Standard Step Method solves the 1D Energy Equation between two adjacent cross-sections:
-$$Y_2 + \frac{Q^2}{2g A_2^2} = Y_1 + \frac{Q^2}{2g A_1^2} + h_f + h_o$$
-where friction loss ($h_f$) is approximated via average conveyance:
-$$h_f = L \bar{S}_f = L \left( \frac{Q}{\bar{K}} \right)^2, \quad \bar{K} = \frac{K_1 + K_2}{2}$$
+$$WSEL_2 + \alpha_2 \frac{V_2^2}{2g} = WSEL_1 + \alpha_1 \frac{V_1^2}{2g} + h_f + h_o$$
+where:
+* $\alpha_1, \alpha_2$ are the Coriolis velocity distribution coefficients (typically $1.0$, scaled locally to $1.3$ at contracted structural boundaries).
+* Friction loss ($h_f$) is calculated using the average conveyance:
+  $$h_f = L \bar{S}_f = L \left( \frac{Q}{\bar{K}} \right)^2, \quad \bar{K} = \frac{K_1 + K_2}{2}$$
+* Minor expansion/contraction losses are represented by $h_o$:
+  $$h_o = C_{c/e} \left| \alpha_2 \frac{V_2^2}{2g} - \alpha_1 \frac{V_1^2}{2g} \right|$$
 
 ### 3. Mixed Regime Selection (Specific Force / Momentum)
 For mixed regime profiles, hydraulic jump locations are resolved by selecting the water surface that conserves momentum (highest Specific Force $M$):
 $$M = \frac{Q^2}{g A} + A \bar{y}, \quad A \bar{y} = \int_{Y_{min}}^{WSEL} A(y) dy$$
 
 ### 4. 1D Saint-Venant Equations (Unsteady Routing)
-- **Continuity:** $\frac{\partial A}{\partial t} + \frac{\partial Q}{\partial x} = 0$
-- **Momentum:** $\frac{\partial Q}{\partial t} + \frac{\partial}{\partial x} \left(\frac{Q^2}{A}\right) + gA\left(\frac{\partial y}{\partial x} - S_0 + S_f\right) = 0$
+* **Continuity:** $\frac{\partial A}{\partial t} + \frac{\partial Q}{\partial x} = 0$
+* **Momentum:** $\frac{\partial Q}{\partial t} + \frac{\partial}{\partial x} \left(\frac{Q^2}{A}\right) + gA\left(\frac{\partial y}{\partial x} - S_0 + S_f\right) = 0$
+
+### 5. Structure Hydraulics: Culvert Solver
+The culvert solver evaluates both inlet and outlet control to determine the controlling upstream water surface elevation:
+$$WSEL_{up} = \max(WSEL_{inlet}, WSEL_{outlet})$$
+
+#### A. Inlet Control (FHWA Nomograph Formulations)
+Based on Federal Highway Administration (FHWA) standards, the inlet control headwater depth ($HW$) relative to the barrel rise ($D$) is computed for:
+* **Unsubmerged Flow ($\frac{Q}{AD^{0.5}} \le 3.0$):**
+  $$\frac{HW}{D} = \frac{H_c}{D} + K \left[\frac{Q}{A D^{0.5}}\right]^M - 0.5 S$$
+* **Submerged Flow ($\frac{Q}{AD^{0.5}} \ge 4.0$):**
+  $$\frac{HW}{D} = c \left[\frac{Q}{A D^{0.5}}\right]^2 + Y - 0.5 S$$
+* **Transition Zone ($3.0 < \frac{Q}{AD^{0.5}} < 4.0$):**
+  Linear interpolation between unsubmerged and submerged formulas.
+* *Note: The shape parameters $K, M, c, Y$ are selected based on the culvert geometry (Box, Circular, Arch, ConSpan) and entrance loss coefficient ($K_e$).*
+
+#### B. Outlet Control (Energy losses)
+The outlet control upstream elevation is computed via energy headwater balance:
+$$WSEL_{outlet} = WSEL_{down} + \alpha_{down} \frac{V_{down}^2}{2g} + h_e + h_f + h_o - \alpha_{up} \frac{V_{up}^2}{2g}$$
+where:
+* **Entrance Loss:** $h_e = K_e \frac{V_{barrel}^2}{2g}$
+* **Exit Loss (Velocity Head Recovery):** $h_o = K_x \max\left(0, \frac{V_{barrel}^2 - V_{down}^2}{2g}\right)$
+* **Friction Loss:** $h_f = L S_f$ (where friction slope $S_f$ utilizes composite Manning's $n_c$ and hydraulic radius $R_{barrel}$ evaluated at the barrel depth $y_{barrel} = \max(y_c, \min(D, y_{down}))$).
+
+#### C. Sediment Blockage (Blocked Depth)
+If a sediment/blockage depth ($d_b$) is specified:
+* The active flow area is reduced: $A_{effective}(y) = A(y) - A(d_b)$.
+* The wetted perimeter is modified to account for the horizontal sediment bed: $P_{effective}(y) = P(y) - P(d_b) + T(d_b)$, where $T(d_b)$ is the top width at the blockage height.
+* The physical invert elevation is shifted upward: $z_{invert\_eff} = z_{invert} + d_b$.
+
+---
+
+### 6. Structure Hydraulics: Bridge Solver
+The bridge solver evaluates backwater losses through pier obstructions, deck pressure flow, and roadway overtopping:
+
+#### A. Low Flow Pier Loss (Yarnell Pier Equation)
+For unsubmerged flow through the bridge deck, the energy loss ($H_L$) due to pier obstruction is modeled using Yarnell's equation:
+$$H_L = 2 K_p (K_p + 10 \beta - 0.6) \alpha \left(\frac{V_{ds}^2}{2g}\right)$$
+where:
+* $K_p$ is the pier shape coefficient (ranging from $0.90$ for semicircular/triangular to $1.25$ for square piers).
+* $\beta$ is the area obstruction ratio: $\beta = A_{piers} / A_{total}$.
+* $V_{ds}$ is the downstream velocity.
+
+#### B. High Flow: Pressure (Orifice) Flow
+When the water surface reaches the low chord of the bridge deck, pressure flow governs:
+$$Q = C_d A_{net} \sqrt{2g (WSEL_{up} - WSEL_{down})}$$
+where $A_{net}$ is the net opening area (gross area minus submerged pier obstruction area) and $C_d$ is the orifice discharge coefficient.
+
+#### C. High Flow: Weir Overtopping (Combined Flow)
+When upstream headwater exceeds the high chord of the roadway, flow is split between pressure flow under the deck and weir overtopping:
+$$Q_{total} = Q_{pressure} + Q_{weir}$$
+$$Q_{weir} = C_w L_{road} (WSEL_{up} - H_{road})^{1.5}$$
+The solver uses a bisection search to iteratively converge on the upstream $WSEL_{up}$ that balances $Q_{total}$.
+
+---
+
+### 7. Core Solver Assumptions & Corrections
+
+#### A. Ineffective Flow Area Blockages
+Standard 1D solvers can overestimate active flow area near roadway embankments by including stagnant overbank storage. This leads to underestimated velocities and energy heads.
+* **Assumption:** The overbanks upstream and downstream of structural embankments do not convey flow.
+* **Implementation:** STREAM-1D computes the active **`channel_area`** lookup table (representing the main channel flow only). For cross-sections directly adjacent to bridges and culverts, the solver automatically calculates velocities and energy slopes using `channel_area` rather than the total area, blocking ineffective zones up to the roadway elevation.
+
+#### B. Contracted Flow Velocity Distribution ($\alpha$)
+At the entrance/exit boundaries of structures, flow contraction is highly non-uniform.
+* **Assumption:** Standard 1-D velocity distribution coefficients of $\alpha = 1.0$ under-represent the true boundary velocity head.
+* **Implementation:** A local correction factor of $\alpha \approx 1.3$ is applied to velocity heads at cross-sections adjacent to structures (e.g. inlet/outlet boundary stations). This matches HEC-RAS's localized velocity head expansion/contraction recovery.
+
+---
 
 ---
 

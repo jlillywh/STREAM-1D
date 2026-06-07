@@ -15,6 +15,8 @@ pub struct CrossSection {
     pub n_values: Vec<f64>,
     /// The unit system used in these raw inputs.
     pub unit_system: UnitSystem,
+    /// Optional overbank flags corresponding to each coordinate point.
+    pub is_overbank: Option<Vec<bool>>,
 }
 
 /// A single row in the hydraulic lookup table.
@@ -25,6 +27,7 @@ pub struct GeometryRow {
     pub perimeter: f64,
     pub top_width: f64,
     pub conveyance: f64,
+    pub channel_area: f64,
 }
 
 /// A lookup table mapping elevation to geometric properties.
@@ -52,6 +55,7 @@ impl CrossSection {
             n_stations: n_stations_metric,
             n_values: self.n_values.clone(),
             unit_system: UnitSystem::Metric,
+            is_overbank: self.is_overbank.clone(),
         }
     }
 
@@ -176,13 +180,36 @@ impl CrossSection {
                 perimeter: 0.0,
                 top_width: 0.0,
                 conveyance: 0.0,
+                channel_area: 0.0,
             };
         }
 
-        let mut area = 0.0;
-        let mut perimeter = 0.0;
-        let mut top_width = 0.0;
-        let mut sum_pn15 = 0.0;
+        struct ZoneProperties {
+            area: f64,
+            perimeter: f64,
+            top_width: f64,
+            sum_pn15: f64,
+        }
+
+        let mut lob = ZoneProperties { area: 0.0, perimeter: 0.0, top_width: 0.0, sum_pn15: 0.0 };
+        let mut ch  = ZoneProperties { area: 0.0, perimeter: 0.0, top_width: 0.0, sum_pn15: 0.0 };
+        let mut rob = ZoneProperties { area: 0.0, perimeter: 0.0, top_width: 0.0, sum_pn15: 0.0 };
+
+        let mut is_subdivided = false;
+        let mut left_bank_x = 0.0;
+        let mut right_bank_x = 0.0;
+
+        if let Some(ref overbank_flags) = self.is_overbank {
+            if overbank_flags.len() == n_pts {
+                let first_false = overbank_flags.iter().position(|&flag| !flag);
+                let last_false = overbank_flags.iter().rposition(|&flag| !flag);
+                if let (Some(l_idx), Some(r_idx)) = (first_false, last_false) {
+                    left_bank_x = self.x[l_idx];
+                    right_bank_x = self.x[r_idx];
+                    is_subdivided = true;
+                }
+            }
+        }
 
         for i in 0..n_pts - 1 {
             let x1 = self.x[i];
@@ -226,24 +253,55 @@ impl CrossSection {
             let x_mid = 0.5 * (xa + xb);
             let n_val = self.get_manning_n(x_mid);
 
-            area += seg_area;
-            perimeter += seg_wetted_len;
-            top_width += seg_width;
-            sum_pn15 += seg_wetted_len * n_val.powf(1.5);
+            let sum_pn15_contrib = seg_wetted_len * n_val.powf(1.5);
+
+            if is_subdivided {
+                if x_mid < left_bank_x {
+                    lob.area += seg_area;
+                    lob.perimeter += seg_wetted_len;
+                    lob.top_width += seg_width;
+                    lob.sum_pn15 += sum_pn15_contrib;
+                } else if x_mid > right_bank_x {
+                    rob.area += seg_area;
+                    rob.perimeter += seg_wetted_len;
+                    rob.top_width += seg_width;
+                    rob.sum_pn15 += sum_pn15_contrib;
+                } else {
+                    ch.area += seg_area;
+                    ch.perimeter += seg_wetted_len;
+                    ch.top_width += seg_width;
+                    ch.sum_pn15 += sum_pn15_contrib;
+                }
+            } else {
+                ch.area += seg_area;
+                ch.perimeter += seg_wetted_len;
+                ch.top_width += seg_width;
+                ch.sum_pn15 += sum_pn15_contrib;
+            }
         }
 
-        let composite_n = if perimeter > 1e-9 {
-            (sum_pn15 / perimeter).powf(2.0 / 3.0)
-        } else {
-            0.035
+        let area = lob.area + ch.area + rob.area;
+        let perimeter = lob.perimeter + ch.perimeter + rob.perimeter;
+        let top_width = lob.top_width + ch.top_width + rob.top_width;
+
+        let get_conveyance = |zone: &ZoneProperties| -> f64 {
+            if zone.perimeter > 1e-9 {
+                let comp_n = (zone.sum_pn15 / zone.perimeter).powf(2.0 / 3.0);
+                if comp_n > 1e-9 {
+                    let r = zone.area / zone.perimeter;
+                    (1.0 / comp_n) * zone.area * r.powf(2.0 / 3.0)
+                } else {
+                    0.0
+                }
+            } else {
+                0.0
+            }
         };
 
-        let conveyance = if perimeter > 1e-9 && composite_n > 1e-9 {
-            // Metric Conveyance K = (1.0 / n) * A * R^(2/3)
-            let r = area / perimeter;
-            (1.0 / composite_n) * area * r.powf(2.0 / 3.0)
+        let conveyance = if is_subdivided {
+            get_conveyance(&lob) + get_conveyance(&ch) + get_conveyance(&rob)
         } else {
-            0.0
+            get_conveyance(&ch)
         };
 
         GeometryRow {
@@ -252,6 +310,7 @@ impl CrossSection {
             perimeter,
             top_width,
             conveyance,
+            channel_area: ch.area,
         }
     }
 
@@ -282,6 +341,7 @@ impl GeometryTable {
                 perimeter: 0.0,
                 top_width: 0.0,
                 conveyance: 0.0,
+                channel_area: 0.0,
             };
         }
 
@@ -301,6 +361,7 @@ impl GeometryTable {
                 perimeter: last.perimeter + 2.0 * dy, // Simple boundary wall extension
                 top_width: last.top_width,
                 conveyance: last.conveyance, // conservative approximation
+                channel_area: last.channel_area + last.top_width * dy,
             };
         }
 
@@ -332,6 +393,7 @@ impl GeometryTable {
             perimeter: r1.perimeter + t * (r2.perimeter - r1.perimeter),
             top_width: r1.top_width + t * (r2.top_width - r1.top_width),
             conveyance: r1.conveyance + t * (r2.conveyance - r1.conveyance),
+            channel_area: r1.channel_area + t * (r2.channel_area - r1.channel_area),
         }
     }
 }
@@ -367,6 +429,7 @@ pub fn interpolate_geometry_table(
             perimeter: (1.0 - t) * row1.perimeter + t * row2.perimeter,
             top_width: (1.0 - t) * row1.top_width + t * row2.top_width,
             conveyance: (1.0 - t) * row1.conveyance + t * row2.conveyance,
+            channel_area: (1.0 - t) * row1.channel_area + t * row2.channel_area,
         });
     }
 
@@ -387,6 +450,7 @@ mod tests {
             n_stations: vec![0.0],
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
+            is_overbank: None,
         };
         let table1 = xs1.generate_lookup_table(10);
 
@@ -398,6 +462,7 @@ mod tests {
             n_stations: vec![0.0],
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
+            is_overbank: None,
         };
         let table2 = xs2.generate_lookup_table(10);
 
@@ -426,6 +491,7 @@ mod tests {
             n_stations: vec![0.0],
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
+            is_overbank: None,
         };
 
         // Generating a table
@@ -459,6 +525,7 @@ mod tests {
             n_stations: vec![0.0],
             n_values: vec![0.03],
             unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
         };
 
         let table = xs.generate_lookup_table(50);
