@@ -151,6 +151,7 @@ At the entrance/exit boundaries of structures, flow contraction is highly non-un
 
 ## Compilation and Build
 
+### 1. WebAssembly (WASM) Target
 To compile the Rust engine into WebAssembly, make sure you have `cargo` and `wasm-pack` installed. Run the build script in a WSL/Linux environment:
 
 ```bash
@@ -158,11 +159,44 @@ chmod +x ./build_wasm.sh
 ./build_wasm.sh
 ```
 
-This generates the WebAssembly module in the `./pkg` directory, ready to be integrated into any frontend JavaScript web framework or Web Worker.
+This generates the WebAssembly module in the `./pkg` and `./pkg-node` directories, ready to be integrated into frontend frameworks or Node.js.
+
+### 2. Python Target
+To compile and install the native Python extension locally:
+1. Ensure you have `python` (>= 3.7) and a virtual environment set up.
+2. Install `maturin` and compile the extension:
+   ```bash
+   pip install maturin pytest
+   maturin develop --features python
+   ```
+This compiles the Rust solver and installs the package as `streams1d` in the active virtual environment.
 
 ---
 
-## JavaScript Usage Example
+## Testing & Verification
+
+### 1. WebAssembly Regression Suite
+To run the WebAssembly regression tests (Node.js):
+```bash
+node pkg-node/test_conspan_regression.js
+```
+*(or via the workspace `npm test` script).*
+
+### 2. Python Test Suite
+To execute the comprehensive Python unit tests and HEC-RAS verification:
+```bash
+# Run pytest unit tests
+PYTHONPATH=python pytest -c /dev/null python/test_streams1d.py
+
+# Run HEC-RAS ConSpan profile verification
+PYTHONPATH=python python python/test_python_bindings.py
+```
+
+---
+
+## Usage Examples
+
+### 1. JavaScript Usage Example
 
 Below is an example of loading and executing the steady-state solver inside a browser or Web Worker:
 
@@ -220,4 +254,70 @@ async function run() {
 }
 
 run();
+```
+
+### 2. Python Usage Example
+
+Below is an example of executing the steady-state and unsteady solvers using the Python API:
+
+```python
+import streams1d as st
+
+# 1. Define cross-sections
+xs1000 = st.CrossSection(
+    station=1000.0,
+    x=[0.0, 0.0, 10.0, 10.0],
+    y=[6.0, 1.0, 1.0, 6.0],
+    n_stations=[0.0],
+    n_values=[0.025],
+    unit_system="Metric"
+)
+xs500 = st.CrossSection(
+    station=500.0,
+    x=[0.0, 0.0, 10.0, 10.0],
+    y=[5.5, 0.5, 0.5, 5.5],
+    n_stations=[0.0],
+    n_values=[0.025],
+    unit_system="Metric"
+)
+xs0 = st.CrossSection(
+    station=0.0,
+    x=[0.0, 0.0, 10.0, 10.0],
+    y=[5.0, 0.0, 0.0, 5.0],
+    n_stations=[0.0],
+    n_values=[0.025],
+    unit_system="Metric"
+)
+
+# 2. Configure steady inputs
+inputs = st.SteadyInputs(
+    cross_sections=[xs1000, xs500, xs0],
+    flow_rate=15.0,            # 15 cms
+    num_slices=100,
+    regime=0,                  # Subcritical
+    downstream_wsel=1.5,       # Tailwater boundary elevation
+    downstream_bc_type=0,      # Known WSEL
+    coeff_contraction=0.1,
+    coeff_expansion=0.3
+)
+
+# 3. Solve steady profile
+steady_results = st.solve_steady(inputs)
+print("Steady WSELs:", steady_results["wsel"])
+
+# 4. Configure and solve unsteady routing
+unsteady_inputs = st.UnsteadyInputs(
+    cross_sections=[xs1000, xs500, xs0],
+    initial_wsel=[2.0, 1.5, 1.0],
+    initial_q=[14.0, 14.0, 14.0],
+    dt=60.0,
+    num_steps=5,
+    upstream_q_hydrograph=[14.0] * 5,
+    downstream_wsel_hydrograph=[1.0] * 5,
+    theta=0.6,
+    num_slices=100
+)
+
+unsteady_results = st.solve_unsteady(unsteady_inputs)
+print("Unsteady final step WSELs:", unsteady_results["wsel"][-1])
 ```
