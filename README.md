@@ -2,17 +2,17 @@
 
 **Stateless Transferable River Engine for Analysis of Modeling Systems (in 1D)**
 
-STREAMS-1D is a high-performance, web-native river hydraulics engine built in Rust and compiled to WebAssembly (WASM). Engineered from the ground up to run directly in modern browser threads, STREAMS-1D eliminates legacy desktop software bottlenecks and delivers real-time hydraulic routing at 60 FPS.
+STREAMS-1D is an open-channel hydraulics engine written in Rust and compiled to WebAssembly (WASM). It is designed to run directly in browser threads, allowing for client-side calculation of water surface profiles without relying on a remote server or desktop installation.
 
 ## Project Purpose & Goals
 
-The core purpose of STREAMS-1D is to deliver a highly versatile, platform-agnostic river hydraulics engine that can easily interface with modern web portals, automated design tools, GIS mapping databases, and client-side applications. By compiling the computational core to WebAssembly, the engine acts as an embeddable, zero-install solver that runs identically across all systems—including Windows, macOS, Linux, iOS, and Android.
+The purpose of STREAMS-1D is to provide a platform-independent, embeddable 1D hydraulic solver that can connect to web applications, design tools, and GIS databases. Compiling the core logic to WebAssembly enables execution on any platform with a modern web browser (including Windows, macOS, Linux, and mobile operating systems).
 
-Our primary development goals include:
-1. **Unparalleled Interoperability:** Enabling engineers and software developers to integrate hydraulic solvers into custom automated workflows, cloud environments, and web portals without the overhead of desktop server installations.
-2. **Advanced Structure Hydraulics:** Expanding standard hydraulic equations to cover a diverse range of structural blockages, including composite-roughness culverts, multi-pier bridge decks, and overtopping weir elements, with plans to support gates, flumes, and spillways.
-3. **Unsteady Flow Stabilization:** Refining and stabilizing the unsteady flow modeling capabilities (solving the governing 1D Saint-Venant equations) to robustly simulate dynamic wave routing, transient flow conditions, and complex channel networks.
-4. **Interactive 60 FPS Computations:** Utilizing browser Web Workers and transferable memory arrays to run computations in background threads, enabling engineers to receive instant visual feedback as they edit parameters.
+The technical development goals of the project are:
+1. **Platform-Independent Integration:** Providing a decoupled solver core that can be integrated directly into web-based workflows and portals, removing dependencies on desktop execution environments.
+2. **Structural Hydraulics Expansion:** Developing numerical modeling capabilities for inline structures, including multi-roughness culverts, bridge pier obstructions, and roadway overtopping elements. Future work aims to add gate, flume, and spillway formulations.
+3. **Unsteady Solver Stabilization:** Stabilizing the dynamic routing solver (which solves the 1D Saint-Venant equations) to handle transient boundaries, steep hydrographs, and connected channel networks without numerical divergence.
+4. **Interactive Profile Updates:** Operating the solver in background Web Workers utilizing transferable typed arrays to update profile plots as geometry parameters are edited.
 
 ---
 
