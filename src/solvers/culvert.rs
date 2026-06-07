@@ -1,10 +1,17 @@
 use crate::utils::{UnitSystem, FT_TO_M, CFS_TO_CMS};
 use wasm_bindgen::prelude::*;
 
+#[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_namespace = console)]
     fn log(s: &str);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn log(s: &str) {
+    // Standard stdout printing for Python/CLI environments
+    println!("{}", s);
 }
 
 /// Standard acceleration due to gravity in English units (ft/s^2).

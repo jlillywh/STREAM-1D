@@ -1,0 +1,15 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "streams1d"
+version = "0.1.0"
+description = "Stateless open-channel and river hydraulics solver"
+requires-python = ">=3.7"
+dependencies = []
+
+[tool.maturin]
+features = ["python"]
+python-source = "python"
+module-name = "streams1d._streams1d"

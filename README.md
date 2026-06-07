@@ -151,6 +151,7 @@ At the entrance/exit boundaries of structures, flow contraction is highly non-un
 
 ## Compilation and Build
 
+### 1. WebAssembly (WASM) Target
 To compile the Rust engine into WebAssembly, make sure you have `cargo` and `wasm-pack` installed. Run the build script in a WSL/Linux environment:
 
 ```bash
@@ -158,11 +159,67 @@ chmod +x ./build_wasm.sh
 ./build_wasm.sh
 ```
 
-This generates the WebAssembly module in the `./pkg` directory, ready to be integrated into any frontend JavaScript web framework or Web Worker.
+This generates the WebAssembly module in the `./pkg` and `./pkg-node` directories, ready to be integrated into frontend frameworks or Node.js.
+
+### 2. Python Target
+To compile and install the native Python extension locally:
+1. Ensure you have `python` (>= 3.7) and a virtual environment set up.
+2. Install `maturin` and compile the extension:
+   ```bash
+   pip install maturin pytest
+   maturin develop --features python
+   ```
+This compiles the Rust solver and installs the package as `streams1d` in the active virtual environment.
 
 ---
 
-## JavaScript Usage Example
+## Testing & Verification
+
+### 1. HEC-RAS Profile Verification (ConSpan Dataset)
+STREAM-1D includes a verification dataset under `python/verification/` extracted from a HEC-RAS model of a channel reach featuring a $28\text{ ft} \times 6\text{ ft}$ ConSpan arch culvert with sediment blockages ($Q = 1000\text{ cfs}$, Downstream WSEL = $30.51\text{ ft}$).
+
+The solver's calculated water surface elevations match HEC-RAS within a strict $0.04\text{ ft}$ tolerance:
+
+| Cross-Section Station | Calculated WSEL (ft) | HEC-RAS WSEL (ft) | Difference (ft) | Verification Status |
+| :--- | :--- | :--- | :--- | :--- |
+| **2827** (Upstream) | 33.712 | 33.720 | -0.008 | **[PASS]** |
+| **1257** (Inlet) | 32.919 | 32.920 | -0.001 | **[PASS]** |
+| **0** (Downstream) | 30.510 | 30.510 | +0.000 | **[PASS]** |
+
+### 2. Bridge Pier Backwater Validation
+The bridge solver includes unit tests representing Yarnell's pier head loss formulation for subcritical flow around bridge piers. Under a flow of $15.0\text{ cms}$ with square piers causing $10\%$ channel obstruction, the solver correctly calculates the upstream backwater rise ($WSEL_{up} > WSEL_{down}$) resulting from energy dissipation across the structure boundary.
+
+### 3. Running the Test Suites
+
+* **WebAssembly Regression Suite:**
+  ```bash
+  node pkg-node/test_conspan_regression.js
+  ```
+* **Python pytest Suite:**
+  ```bash
+  PYTHONPATH=python pytest -c /dev/null python/test_streams1d.py
+  ```
+* **Python HEC-RAS Verification Script:**
+  ```bash
+  PYTHONPATH=python python python/test_python_bindings.py
+  ```
+
+---
+
+## Interactive Jupyter Notebook & Binder
+
+To run calculations, view water surface profile charts, and inspect tables interactively on the web without any local installation:
+
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/STREAM-1D/solver-stabilization?filepath=python%2Fstreams1d_verification.ipynb)
+
+* **Interactive Notebook:** [python/streams1d_verification.ipynb](python/streams1d_verification.ipynb)
+* Click the **Binder** badge above to launch a sandbox environment in your browser. All packages (Rust, Cargo, Maturin, and Python libraries) will compile and configure automatically inside the container.
+
+---
+
+## Usage Examples
+
+### 1. JavaScript Usage Example
 
 Below is an example of loading and executing the steady-state solver inside a browser or Web Worker:
 
@@ -220,4 +277,70 @@ async function run() {
 }
 
 run();
+```
+
+### 2. Python Usage Example
+
+Below is an example of executing the steady-state and unsteady solvers using the Python API:
+
+```python
+import streams1d as st
+
+# 1. Define cross-sections
+xs1000 = st.CrossSection(
+    station=1000.0,
+    x=[0.0, 0.0, 10.0, 10.0],
+    y=[6.0, 1.0, 1.0, 6.0],
+    n_stations=[0.0],
+    n_values=[0.025],
+    unit_system="Metric"
+)
+xs500 = st.CrossSection(
+    station=500.0,
+    x=[0.0, 0.0, 10.0, 10.0],
+    y=[5.5, 0.5, 0.5, 5.5],
+    n_stations=[0.0],
+    n_values=[0.025],
+    unit_system="Metric"
+)
+xs0 = st.CrossSection(
+    station=0.0,
+    x=[0.0, 0.0, 10.0, 10.0],
+    y=[5.0, 0.0, 0.0, 5.0],
+    n_stations=[0.0],
+    n_values=[0.025],
+    unit_system="Metric"
+)
+
+# 2. Configure steady inputs
+inputs = st.SteadyInputs(
+    cross_sections=[xs1000, xs500, xs0],
+    flow_rate=15.0,            # 15 cms
+    num_slices=100,
+    regime=0,                  # Subcritical
+    downstream_wsel=1.5,       # Tailwater boundary elevation
+    downstream_bc_type=0,      # Known WSEL
+    coeff_contraction=0.1,
+    coeff_expansion=0.3
+)
+
+# 3. Solve steady profile
+steady_results = st.solve_steady(inputs)
+print("Steady WSELs:", steady_results["wsel"])
+
+# 4. Configure and solve unsteady routing
+unsteady_inputs = st.UnsteadyInputs(
+    cross_sections=[xs1000, xs500, xs0],
+    initial_wsel=[2.0, 1.5, 1.0],
+    initial_q=[14.0, 14.0, 14.0],
+    dt=60.0,
+    num_steps=5,
+    upstream_q_hydrograph=[14.0] * 5,
+    downstream_wsel_hydrograph=[1.0] * 5,
+    theta=0.6,
+    num_slices=100
+)
+
+unsteady_results = st.solve_unsteady(unsteady_inputs)
+print("Unsteady final step WSELs:", unsteady_results["wsel"][-1])
 ```

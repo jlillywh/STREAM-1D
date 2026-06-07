@@ -39,3 +39,38 @@ pub fn solve_unsteady_wasm(inputs_val: JsValue) -> Result<JsValue, JsValue> {
 
     Ok(js_res)
 }
+
+#[cfg(feature = "python")]
+use pyo3::prelude::*;
+
+#[cfg(feature = "python")]
+#[pyfunction]
+#[pyo3(name = "solve_steady_json")]
+pub fn solve_steady_json_py(inputs_json: &str) -> PyResult<String> {
+    let inputs: solvers::SteadyInputs = serde_json::from_str(inputs_json)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("Failed to parse SteadyInputs JSON: {}", e)))?;
+    let result = solvers::solve_steady(&inputs);
+    let res_json = serde_json::to_string(&result)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("Failed to serialize SteadyResult: {}", e)))?;
+    Ok(res_json)
+}
+
+#[cfg(feature = "python")]
+#[pyfunction]
+#[pyo3(name = "solve_unsteady_json")]
+pub fn solve_unsteady_json_py(inputs_json: &str) -> PyResult<String> {
+    let inputs: solvers::UnsteadyInputs = serde_json::from_str(inputs_json)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("Failed to parse UnsteadyInputs JSON: {}", e)))?;
+    let result = solvers::solve_unsteady(&inputs);
+    let res_json = serde_json::to_string(&result)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("Failed to serialize UnsteadyResult: {}", e)))?;
+    Ok(res_json)
+}
+
+#[cfg(feature = "python")]
+#[pymodule]
+fn _streams1d(_py: Python, m: &PyModule) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(solve_steady_json_py, m)?)?;
+    m.add_function(wrap_pyfunction!(solve_unsteady_json_py, m)?)?;
+    Ok(())
+}
