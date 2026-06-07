@@ -111,3 +111,34 @@ def test_solve_unsteady_dict():
     res = st.solve_unsteady(payload)
     assert 'wsel' in res
     assert len(res['wsel']) == 5
+
+def test_solve_steady_integrated_bridge():
+    # Simple reach: stations 200, 100, 0
+    # Rectangular channel: width = 10m
+    # Bed elevations: 0.2m, 0.1m, 0.0m
+    # Flow rate: 15.0 cms
+    xs200 = st.CrossSection(200.0, [0.0, 0.0, 10.0, 10.0], [10.2, 0.2, 0.2, 10.2], [0.0], [0.03], "Metric")
+    xs100 = st.CrossSection(100.0, [0.0, 0.0, 10.0, 10.0], [10.1, 0.1, 0.1, 10.1], [0.0], [0.03], "Metric")
+    xs0 = st.CrossSection(0.0, [0.0, 0.0, 10.0, 10.0], [10.0, 0.0, 0.0, 10.0], [0.0], [0.03], "Metric")
+
+    inputs = st.SteadyInputs(
+        cross_sections=[xs200, xs100, xs0],
+        flow_rate=15.0,
+        num_slices=50,
+        regime=0,
+        downstream_wsel=3.0,
+        downstream_bc_type=0,
+        bridge_stations=[50.0],  # bridge at station 50 (between 0 and 100)
+        bridge_low_chords=[5.0],
+        bridge_high_chords=[7.0],
+        bridge_pier_widths=[0.5],
+        bridge_num_piers=[2],
+        bridge_pier_shapes=[0],
+        bridge_weir_coeffs=[1.44],
+        bridge_orifice_coeffs=[0.5]
+    )
+
+    result = st.solve_steady(inputs)
+    assert abs(result['wsel'][2] - 3.0) < 1e-4
+    assert result['wsel'][1] > 3.0
+
