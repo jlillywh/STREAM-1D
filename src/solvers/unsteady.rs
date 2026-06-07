@@ -24,6 +24,10 @@ pub struct UnsteadyInputs {
     pub num_slices: Option<usize>,
     /// Maximum distance between adjacent sections before automatic interpolation (optional, in user units).
     pub max_spacing: Option<f64>,
+    /// Contraction loss coefficient (default 0.1).
+    pub coeff_contraction: Option<f64>,
+    /// Expansion loss coefficient (default 0.3).
+    pub coeff_expansion: Option<f64>,
 }
 
 /// Output results from the unsteady-state solver.
@@ -59,6 +63,8 @@ pub fn solve_unsteady_step(
     q_up_next: f64,    // upstream flow BC at t+1 (metric)
     y_down_next: f64,  // downstream stage BC at t+1 (metric)
     theta: f64,
+    c_contraction: f64,
+    c_expansion: f64,
 ) -> Option<(Vec<f64>, Vec<f64>)> {
     let n = y_current.len();
     if n < 2 {
@@ -139,7 +145,7 @@ pub fn solve_unsteady_step(
         };
 
         // Averaged variables
-        let a_avg = 0.5 * (a_i + a_ip);
+        let a_avg = (a_i * a_ip).sqrt();
 
         // 1. CONTINUTIY EQUATION COEFFICIENTS
         // C1 * \Delta y_i + C2 * \Delta Q_i + C3 * \Delta y_{i+1} + C4 * \Delta Q_{i+1} = CE
@@ -162,14 +168,25 @@ pub fn solve_unsteady_step(
 
         // 2. MOMENTUM EQUATION COEFFICIENTS
         // M1 * \Delta y_i + M2 * \Delta Q_i + M3 * \Delta y_{i+1} + M4 * \Delta Q_{i+1} = ME
-        let m1 = theta / dx * (v_i * v_i * t_i) * factor_i - G_METRIC * a_avg * theta / dx + 0.5 * G_METRIC * a_avg * theta * d_sf_dy_i;
-        let m2 = (1.0 / (2.0 * dt)) * factor_i - theta / dx * (2.0 * v_i) * factor_i + 0.5 * G_METRIC * a_avg * theta * d_sf_d_q;
-        let m3 = -theta / dx * (v_ip * v_ip * t_ip) * factor_ip + G_METRIC * a_avg * theta / dx + 0.5 * G_METRIC * a_avg * theta * d_sf_dy_ip;
-        let m4 = (1.0 / (2.0 * dt)) * factor_ip + theta / dx * (2.0 * v_ip) * factor_ip + 0.5 * G_METRIC * a_avg * theta * d_sf_d_q;
+        
+        // Contraction/Expansion losses
+        let c_ec = if v_ip.abs() > v_i.abs() { c_contraction } else { c_expansion };
+        let sign_v = (v_ip * v_ip - v_i * v_i).signum();
+        let s_ce_force = a_avg * (c_ec / (2.0 * dx)) * (v_ip * v_ip - v_i * v_i).abs();
+
+        let dfce_dyi = a_avg * (c_ec / dx) * sign_v * (v_i * v_i * t_i / a_i);
+        let dfce_dqi = -a_avg * (c_ec / dx) * sign_v * (v_i / a_i);
+        let dfce_dyip = -a_avg * (c_ec / dx) * sign_v * (v_ip * v_ip * t_ip / a_ip);
+        let dfce_dqip = a_avg * (c_ec / dx) * sign_v * (v_ip / a_ip);
+
+        let m1 = theta / dx * (v_i * v_i * t_i) * factor_i - G_METRIC * a_avg * theta / dx + G_METRIC * a_avg * theta * d_sf_dy_i + theta * dfce_dyi;
+        let m2 = (1.0 / (2.0 * dt)) - theta / dx * (2.0 * v_i) * factor_i + 0.5 * G_METRIC * a_avg * theta * d_sf_d_q + theta * dfce_dqi;
+        let m3 = -theta / dx * (v_ip * v_ip * t_ip) * factor_ip + G_METRIC * a_avg * theta / dx + G_METRIC * a_avg * theta * d_sf_dy_ip + theta * dfce_dyip;
+        let m4 = (1.0 / (2.0 * dt)) + theta / dx * (2.0 * v_ip) * factor_ip + 0.5 * G_METRIC * a_avg * theta * d_sf_d_q + theta * dfce_dqip;
 
         let flux_i = (q_current[i] * q_current[i] / a_i) * factor_i;
         let flux_ip = (q_current[i + 1] * q_current[i + 1] / a_ip) * factor_ip;
-        let me = (flux_i - flux_ip) / dx + G_METRIC * a_avg * (y_current[i] - y_current[i + 1]) / dx - G_METRIC * a_avg * sf;
+        let me = (flux_i - flux_ip) / dx + G_METRIC * a_avg * (y_current[i] - y_current[i + 1]) / dx - G_METRIC * a_avg * sf - s_ce_force;
 
         // Pack into block tridiagonal matrices
         if i == 0 {
@@ -213,14 +230,12 @@ pub fn solve_unsteady_step(
     // Solve system
     let delta = solve_block_tridiagonal(&a, &b, &c, &d)?;
 
-    // Apply updates with clamped changes to prevent giant overshoots in steep/dry transitions
+    // Apply updates
     let mut y_next = vec![0.0; n];
     let mut q_next = vec![0.0; n];
     for i in 0..n {
-        // Limit WSEL correction to +/- 0.3 meters (~1.0 ft) per time step
-        let dy = delta[i].v1.clamp(-0.3, 0.3);
-        // Limit Q correction to +/- 5.0 cms (~176 cfs) per time step
-        let dq = delta[i].v2.clamp(-5.0, 5.0);
+        let dy = delta[i].v1.clamp(-1.0, 1.0);
+        let dq = delta[i].v2.clamp(-25.0, 25.0);
 
         y_next[i] = y_current[i] + dy;
         q_next[i] = q_current[i] + dq;
@@ -239,6 +254,8 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
     let dt = inputs.dt;
     let num_slices = inputs.num_slices.unwrap_or(100);
     let theta = inputs.theta.unwrap_or(0.85).clamp(0.8, 1.0);
+    let c_contraction = inputs.coeff_contraction.unwrap_or(0.1);
+    let c_expansion = inputs.coeff_expansion.unwrap_or(0.3);
 
     // Convert cross-sections to metric and sort descending by station
     let mut xs_list: Vec<CrossSection> = inputs.cross_sections.iter().map(|xs| xs.to_metric()).collect();
@@ -414,7 +431,7 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
         let row = densified_tables[k].interpolate(densified_y_current[k]);
         let area = row.area.max(1e-6);
         let depth = (densified_y_current[k] - densified_z_mins[k]).max(0.0);
-        let max_phys_vel = 15.0 * (depth / 1.0).min(1.0).max(0.001);
+        let max_phys_vel = 15.0 * (depth / 0.1).min(1.0).max(0.1);
         let max_q = area * max_phys_vel;
         densified_q_current[k] = densified_q_current[k].clamp(-max_q, max_q);
     }
@@ -444,6 +461,8 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
             q_up_next,
             y_down_next,
             theta,
+            c_contraction,
+            c_expansion,
         ) {
             densified_y_current = y_next;
             densified_q_current = q_next;
@@ -459,7 +478,7 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
                 let depth = (densified_y_current[k] - densified_z_mins[k]).max(0.0);
                 
                 if k > 0 {
-                    let max_phys_vel = 15.0 * (depth / 1.0).min(1.0).max(0.001);
+                    let max_phys_vel = 15.0 * (depth / 0.1).min(1.0).max(0.1);
                     let max_q = area * max_phys_vel;
                     densified_q_current[k] = densified_q_current[k].clamp(-max_q, max_q);
                 } else {
@@ -563,6 +582,8 @@ mod tests {
             theta: Some(0.6),
             num_slices: Some(50),
             max_spacing: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
 
         let result = solve_unsteady(&inputs);
@@ -614,6 +635,8 @@ mod tests {
             theta: Some(0.6),
             num_slices: Some(50),
             max_spacing: Some(100.0),
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
 
         let result = solve_unsteady(&inputs);
@@ -704,6 +727,8 @@ mod tests {
             theta: Some(1.0),
             num_slices: Some(100),
             max_spacing: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
 
         let result = solve_unsteady(&inputs);
