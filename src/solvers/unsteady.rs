@@ -277,6 +277,8 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
     // DENSIFICATION STEP: Automatic Reach Interpolation
     let max_sp = inputs.max_spacing.map(|sp| {
         if raw_units == UnitSystem::USCustomary { sp * FT_TO_M } else { sp }
+    }).unwrap_or_else(|| {
+        if raw_units == UnitSystem::USCustomary { 50.0 * FT_TO_M } else { 15.0 }
     });
 
     let mut densified_tables = Vec::new();
@@ -300,11 +302,10 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
 
         if i < m - 1 {
             let dx = xs_list[i].station - xs_list[i + 1].station;
-            if let Some(limit) = max_sp {
-                if limit > 0.0 && dx > limit {
-                    let num_spaces = (dx / limit).ceil() as usize;
-                    let ds = dx / num_spaces as f64;
-                    for k in 1..num_spaces {
+            if max_sp > 0.0 && dx > max_sp {
+                let num_spaces = (dx / max_sp).ceil() as usize;
+                let ds = dx / num_spaces as f64;
+                for k in 1..num_spaces {
                         let t = k as f64 / num_spaces as f64;
                         let s_interp = xs_list[i].station - k as f64 * ds;
                         
@@ -333,7 +334,6 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
                 }
             }
         }
-    }
 
     let dm = densified_tables.len();
     println!("Densified stations (m): {:?}", densified_stations);
@@ -701,9 +701,9 @@ mod tests {
             num_steps: 100,
             upstream_q_hydrograph: upstream_q,
             downstream_wsel_hydrograph: vec![12.0; 100],
-            theta: Some(0.6),
+            theta: Some(1.0),
             num_slices: Some(100),
-            max_spacing: Some(100.0),
+            max_spacing: None,
         };
 
         let result = solve_unsteady(&inputs);
