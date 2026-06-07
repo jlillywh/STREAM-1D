@@ -23,3 +23,11 @@ benchmark_results_*.png
 # Note: If your JS worker explicitly imports from /pkg inside this repo, 
 # you can track it, but usually, target files are ignored in the engine PR.
 /pkg/
+/pkg-node/
+
+# Python-related build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
