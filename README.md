@@ -2,21 +2,21 @@
 
 **An open-source 1D open-channel hydraulics engine for the web and Python.**
 
-STREAMS-1D is a 1D hydraulics engine written in Rust. It solves the 1D Saint-Venant equations for steady and unsteady flow routing. The core solver is decoupled from any specific user interface and compiles to two primary targets: WebAssembly (WASM) for client-side execution in the browser, and a native Python extension for automated scripting and batch processing. 
+STREAMS-1D is a Rust 1D open-channel hydraulics engine. It provides steady gradually varied flow (Standard Step, including culverts and bridges) and unsteady Saint-Venant routing on single reaches. The core solver is decoupled from any specific user interface and compiles to two primary targets: WebAssembly (WASM) for client-side execution in the browser, and a native Python extension for automated scripting and batch processing. The API is stateless: structured inputs in, result arrays out.
 
 ## Project Goals
 
-* **Embeddable Execution:** Run hydraulic simulations natively in web dashboards or Python data pipelines without requiring desktop software installations.
-* **Structural Hydraulics:** Model complex channel networks, including multi-roughness cross-sections, culverts, bridge piers, and roadway overtopping.
-* **Stable Unsteady Routing:** Handle transient boundary conditions, steep hydrographs, and mixed flow regimes without numerical divergence.
-* **Real-Time Calculation:** Exploit Rust's multi-threading to update water surface profiles instantly as geometry or boundary conditions change.
+* **Embeddable Execution:** Run hydraulic simulations in web dashboards or Python data pipelines without requiring desktop hydraulic software.
+* **Structural Hydraulics:** Model inline structures and composite roughness on single reaches—culverts, bridge piers, roadway overtopping, and multi-zone Manning's *n* (steady solver today).
+* **Unsteady Routing:** Dynamic routing with upstream flow and downstream stage hydrographs; stabilization for steep transients and mixed regimes is an active development focus.
+* **Interactive Web Integration (planned):** Designed for background Web Worker execution so profile plots can update as geometry or boundaries change without blocking the UI.
 
 ## Architecture
 
-* **Stateless:** The engine requires no project files, local file administration, or hidden global states. It operates as a direct mathematical pipeline: input arrays in, output arrays out.
-* **Transferable:** Uses zero-copy memory transfers in WASM to process geometry and flow modifications in background threads, enabling 60 FPS profile updates without blocking the main UI thread.
-* **Open-Channel Focus:** Natively handles non-linear cross-section lookup tables and composite Manning's *n* values.
-* **Modular Analysis:** Exposes intermediate hydraulic properties (area, conveyance, top-width) so engineers can analyze channel capacity without running a full unsteady simulation.
+* **Stateless:** No project files, local file administration, or hidden global state inside the engine. Each call is an independent solve.
+* **UI-Agnostic:** The library exposes solver functions only; threading, workers, and visualization are the responsibility of the host application.
+* **Open-Channel Focus:** Non-linear cross-section lookup tables with composite Manning's *n*, subdivided overbank/channel geometry, and mixed-regime steady profiles.
+* **Intermediate Outputs:** Steady results include section-by-section area, top width, velocity, Froude number, and energy grade slope—useful for capacity review without running an unsteady simulation.
 
 ## Repository Structure
 
@@ -101,13 +101,16 @@ If a sediment/blockage depth ($d_b$) is specified:
 ### 6. Structure Hydraulics: Bridge Solver
 The bridge solver evaluates backwater losses through pier obstructions, deck pressure flow, and roadway overtopping:
 
-#### A. Low Flow Pier Loss (Yarnell Pier Equation)
-For unsubmerged flow through the bridge deck, the energy loss ($H_L$) due to pier obstruction is modeled using Yarnell's equation:
-$$H_L = 2 K_p (K_p + 10 \beta - 0.6) \alpha \left(\frac{V_{ds}^2}{2g}\right)$$
+#### A. Low Flow Pier Loss (Yarnell Equation, HEC-RAS Class A)
+For unsubmerged flow through the bridge deck (Class A low flow), the water surface rise from the downstream section to the upstream section is computed with the HEC-RAS Yarnell equation:
+$$H_{3-2} = 2K(K + 10\omega - 0.6)(\alpha + 15\alpha^4)\frac{V^2}{2g}$$
 where:
-* $K_p$ is the pier shape coefficient (ranging from $0.90$ for semicircular/triangular to $1.25$ for square piers).
-* $\beta$ is the area obstruction ratio: $\beta = A_{piers} / A_{total}$.
-* $V_{ds}$ is the downstream velocity.
+* $K$ is the Yarnell pier shape coefficient ($0.90$ semicircular, $0.95$ twin-cylinder with diaphragm, $1.05$ triangular, $1.25$ square).
+* $\omega = (V^2/2g) / y$ is the velocity-head-to-depth ratio at the downstream section.
+* $\alpha = A_{piers} / (A_{flow} - A_{piers})$ is the pier obstruction ratio over unobstructed flow area.
+* $V$ is the mean velocity at the downstream section ($Q / A_{flow}$).
+
+*Limitations:* Yarnell is intended for uniform channel sections without overbank storage, where piers dominate losses. Abutments, deck shape, and Class B/C low flow are not modeled with this method.
 
 #### B. High Flow: Pressure (Orifice) Flow
 When the water surface reaches the low chord of the bridge deck, pressure flow governs:
@@ -176,7 +179,7 @@ The solver's calculated water surface elevations match HEC-RAS within a strict $
 | **0** (Downstream) | 30.510 | 30.510 | +0.000 | **[PASS]** |
 
 ### 2. Bridge Pier Backwater Validation
-The bridge solver includes unit tests representing Yarnell's pier head loss formulation for subcritical flow around bridge piers. Under a flow of $15.0\text{ cms}$ with square piers causing $10\%$ channel obstruction, the solver correctly calculates the upstream backwater rise ($WSEL_{up} > WSEL_{down}$) resulting from energy dissipation across the structure boundary.
+The bridge solver implements the HEC-RAS Yarnell equation for Class A low flow. On a 10 m rectangular channel ($Q = 15\text{ cms}$, downstream WSEL $= 3.0\text{ m}$, two $0.5\text{ m}$ square piers), the computed upstream backwater rise is $H_{3-2} \approx 0.0025\text{ m}$, verified by unit tests against the closed-form HEC-RAS formula.
 
 ### 3. Running the Test Suites
 
@@ -199,10 +202,10 @@ The bridge solver includes unit tests representing Yarnell's pier head loss form
 
 To run calculations, view water surface profile charts, and inspect tables interactively on the web without any local installation:
 
-[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/STREAM-1D/solver-stabilization?filepath=python%2Fstreams1d_verification.ipynb)
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/STREAM-1D/main?filepath=python%2Fstreams1d_verification.ipynb)
 
 * **Interactive Notebook:** [python/streams1d_verification.ipynb](python/streams1d_verification.ipynb)
-* Click the **Binder** badge above to launch a sandbox environment in your browser. All packages (Rust, Cargo, Maturin, and Python libraries) will compile and configure automatically inside the container.
+* Click the **Binder** badge above to launch a sandbox environment in your browser. The first launch compiles Rust and may take **5–10 minutes**; later launches reuse the cached image.
 
 ---
 
