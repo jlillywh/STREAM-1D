@@ -2,9 +2,23 @@
 
 **Stateless Transferable River Engine for Analysis of Modeling Systems (in 1D)**
 
-STREAMS-1D is a high-performance, web-native river hydraulics engine built in Rust and compiled to WebAssembly (WASM). Rather than porting legacy desktop software paradigms to the web, STREAMS-1D is engineered from the ground up to exploit the modern browser's concurrent architecture. 
+STREAMS-1D is a high-performance, web-native river hydraulics engine built in Rust and compiled to WebAssembly (WASM). Engineered from the ground up to run directly in modern browser threads, STREAMS-1D eliminates legacy desktop software bottlenecks and delivers real-time hydraulic routing at 60 FPS.
 
-The core design philosophy is explicitly baked into our name:
+## Project Purpose & Goals
+
+The core purpose of STREAMS-1D is to deliver a highly versatile, platform-agnostic river hydraulics engine that can easily interface with modern web portals, automated design tools, GIS mapping databases, and client-side applications. By compiling the computational core to WebAssembly, the engine acts as an embeddable, zero-install solver that runs identically across all systems—including Windows, macOS, Linux, iOS, and Android.
+
+Our primary development goals include:
+1. **Unparalleled Interoperability:** Enabling engineers and software developers to integrate hydraulic solvers into custom automated workflows, cloud environments, and web portals without the overhead of desktop server installations.
+2. **Advanced Structure Hydraulics:** Expanding standard hydraulic equations to cover a diverse range of structural blockages, including composite-roughness culverts, multi-pier bridge decks, and overtopping weir elements, with plans to support gates, flumes, and spillways.
+3. **Unsteady Flow Stabilization:** Refining and stabilizing the unsteady flow modeling capabilities (solving the governing 1D Saint-Venant equations) to robustly simulate dynamic wave routing, transient flow conditions, and complex channel networks.
+4. **Interactive 60 FPS Computations:** Utilizing browser Web Workers and transferable memory arrays to run computations in background threads, enabling engineers to receive instant visual feedback as they edit parameters.
+
+---
+
+## Core Design Philosophy
+
+The design philosophy is explicitly baked into our name:
 
 * **S - Stateless (Zero Local Overhead):** The engine operates as a direct mathematical pipeline. It requires no installation, desktop setups, or local file administration. You input geometric cross-sections, and it instantly computes hydraulic profiles.
 * **T - Transferable (Real-Time 60 FPS Feedback):** Built with multi-threaded browser processing. Geometry modifications and flow adjustments are processed instantly in background threads, showing backwater curves dynamically as you type or drag points without freezing your screen.
