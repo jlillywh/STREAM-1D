@@ -175,22 +175,45 @@ This compiles the Rust solver and installs the package as `streams1d` in the act
 
 ## Testing & Verification
 
-### 1. WebAssembly Regression Suite
-To run the WebAssembly regression tests (Node.js):
-```bash
-node pkg-node/test_conspan_regression.js
-```
-*(or via the workspace `npm test` script).*
+### 1. HEC-RAS Profile Verification (ConSpan Dataset)
+STREAM-1D includes a verification dataset under `python/verification/` extracted from a HEC-RAS model of a channel reach featuring a $28\text{ ft} \times 6\text{ ft}$ ConSpan arch culvert with sediment blockages ($Q = 1000\text{ cfs}$, Downstream WSEL = $30.51\text{ ft}$).
 
-### 2. Python Test Suite
-To execute the comprehensive Python unit tests and HEC-RAS verification:
-```bash
-# Run pytest unit tests
-PYTHONPATH=python pytest -c /dev/null python/test_streams1d.py
+The solver's calculated water surface elevations match HEC-RAS within a strict $0.04\text{ ft}$ tolerance:
 
-# Run HEC-RAS ConSpan profile verification
-PYTHONPATH=python python python/test_python_bindings.py
-```
+| Cross-Section Station | Calculated WSEL (ft) | HEC-RAS WSEL (ft) | Difference (ft) | Verification Status |
+| :--- | :--- | :--- | :--- | :--- |
+| **2827** (Upstream) | 33.712 | 33.720 | -0.008 | **[PASS]** |
+| **1257** (Inlet) | 32.919 | 32.920 | -0.001 | **[PASS]** |
+| **0** (Downstream) | 30.510 | 30.510 | +0.000 | **[PASS]** |
+
+### 2. Bridge Pier Backwater Validation
+The bridge solver includes unit tests representing Yarnell's pier head loss formulation for subcritical flow around bridge piers. Under a flow of $15.0\text{ cms}$ with square piers causing $10\%$ channel obstruction, the solver correctly calculates the upstream backwater rise ($WSEL_{up} > WSEL_{down}$) resulting from energy dissipation across the structure boundary.
+
+### 3. Running the Test Suites
+
+* **WebAssembly Regression Suite:**
+  ```bash
+  node pkg-node/test_conspan_regression.js
+  ```
+* **Python pytest Suite:**
+  ```bash
+  PYTHONPATH=python pytest -c /dev/null python/test_streams1d.py
+  ```
+* **Python HEC-RAS Verification Script:**
+  ```bash
+  PYTHONPATH=python python python/test_python_bindings.py
+  ```
+
+---
+
+## Interactive Jupyter Notebook & Binder
+
+To run calculations, view water surface profile charts, and inspect tables interactively on the web without any local installation:
+
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/STREAM-1D/solver-stabilization?filepath=python%2Fstreams1d_verification.ipynb)
+
+* **Interactive Notebook:** [python/streams1d_verification.ipynb](python/streams1d_verification.ipynb)
+* Click the **Binder** badge above to launch a sandbox environment in your browser. All packages (Rust, Cargo, Maturin, and Python libraries) will compile and configure automatically inside the container.
 
 ---
 

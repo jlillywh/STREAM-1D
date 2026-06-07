@@ -9,7 +9,7 @@ def main():
     print("=========================================================")
 
     # 1. Path to test project
-    project_json_path = "/home/jason/Lillywhite_Consulting/lillywhite_web/streams1d/hecras_outputs/conspan_project_12.json"
+    project_json_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "verification", "conspan_project_12.json")
     if not os.path.exists(project_json_path):
         print(f"ERROR: Verification dataset not found at {project_json_path}")
         sys.exit(1)
