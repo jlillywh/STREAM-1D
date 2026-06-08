@@ -12,7 +12,7 @@ This document describes how STREAM-1D fits into a larger application. Mathematic
 
 ## 1. System Architecture Overview
 
-The computational core is **stateless**: no project files, hidden globals, or file I/O inside the engine. Host applications own persistence, GIS, and visualization.
+The computational core is **stateless**: no project files, hidden globals, or file I/O inside the engine. Host applications own persistence, GIS, cross-section editing, HEC-RAS geometry import, and visualization.
 
 ```
 +-------------------------------------------------------------------------+
@@ -106,7 +106,7 @@ STREAM-1D does not ship a GUI. Expected host responsibilities:
 
 * **Plan / profile views:** Canvas, SVG, or chart libraries (e.g. uPlot, D3)
 * **GIS:** Mapbox GL, Leaflet, or similar for reach centerlines and cut lines
-* **Import:** Geometry parsing (HEC-RAS, GeoJSON, custom) and reach-merge workflows before solver calls
+* **Import & geometry:** HEC-RAS geometry files (e.g. `.g01`), GeoJSON, or in-app cross-section editing — converted to solver inputs before each `solveSteady` / `solveUnsteady` call
 * **Workers:** Background execution and progress callbacks
 
 ---

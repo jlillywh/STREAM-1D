@@ -24,20 +24,25 @@ STREAM-1D is a Rust 1D open-channel hydraulics engine. It provides steady gradua
 
 ## Limitations (read before comparing to HEC-RAS)
 
-STREAM-1D is an **embeddable 1D hydraulics engine** for web apps and Python workflows — not a full desktop modeling suite. It exposes a stateless solve API; it does **not** include project management, terrain editing, RAS Map, 2D floodplain modeling, or HEC-RAS file import.
+STREAM-1D is an **embeddable 1D hydraulics engine** — the Rust/WASM/Python solve core in this repository, not a complete desktop product like HEC-RAS. It exposes a **stateless** API (`cross_sections` and boundary inputs in, profile arrays out). It does **not** ship a user interface, project database, RAS Map, 2D floodplain meshing, or native HEC-RAS Plan/Unsteady solvers.
+
+**Host applications** (such as a web GUI built on this engine) may provide cross-section editing, terrain-aligned geometry, HEC-RAS geometry import, and project persistence — those features live **outside** the solver crate and must convert imported or edited geometry into `SteadyInputs` / `UnsteadyInputs` before calling WASM or Python.
 
 ### What STREAM-1D supports today
+
+The **solver** (this repository) and typical **host applications** built on it together support the following:
 
 | Area | Supported |
 |------|-----------|
 | **Steady flow** | Standard Step backwater/drawdown; subcritical, supercritical, and mixed regime (`regime` 0/1/2) |
 | **Boundary conditions (steady)** | Known WSEL, critical depth, normal depth, rating curve (upstream and downstream) |
-| **Cross-sections** | Arbitrary $(x,y)$ polylines; composite Manning's *n*; optional channel/overbank subdivision (`is_overbank`) |
+| **Cross-sections** | Arbitrary $(x,y)$ polylines; composite Manning's *n*; optional channel/overbank subdivision (`is_overbank`); editable in host-app UIs |
+| **Main stem + tributary (steady)** | One tributary joining one main channel at a shared WSEL node — main stem above/below the junction plus tributary inflow (`tributary_cross_sections`, `tributary_flow_rate`, `junction_main_station`); subcritical only (see [`docs/web_gui_tributary_junction.md`](docs/web_gui_tributary_junction.md)) |
 | **Culverts (steady, main stem)** | Circular, box, arch, and ConSpan; FHWA-style inlet/outlet control; optional bottom roughness layer and sediment blockage depth |
 | **Bridges (steady, main stem)** | Yarnell Class A pier loss; pressure (orifice) flow; roadway weir overtopping |
-| **Junctions (steady only)** | One tributary joining one main stem at a shared WSEL node (subcritical) |
+| **HEC-RAS geometry import (host app)** | Import HEC-RAS geometry (e.g. `.g01`) to populate reaches, cross-sections, and structures automatically; host app maps reaches to `SteadyInputs` / `UnsteadyInputs` (including merging upper + lower main stem at a junction when needed) |
 | **Unsteady flow** | Preissmann Saint-Venant on a **single reach**; upstream $Q(t)$ and downstream WSEL($t$) hydrographs |
-| **Outputs** | WSEL, critical WSEL, velocity, area, top width, Froude number, energy grade slope (+ tributary arrays when junction is modeled) |
+| **Outputs** | WSEL, critical WSEL, velocity, area, top width, Froude number, energy grade slope (+ `tributary_wsel`, `tributary_velocity`, `tributary_froude` when a junction is modeled) |
 
 ### Not supported (common HEC-RAS features)
 
@@ -51,15 +56,15 @@ STREAM-1D is an **embeddable 1D hydraulics engine** for web apps and Python work
 | **Bridge hydraulics** | Full low-flow classes, pressure/weir combinations, bridge methods, abutments, deck geometry | Yarnell **Class A pier loss** only; simplified pressure + weir overtopping; no abutment or Class B/C low flow |
 | **Culvert hydraulics** | Full HEC-RAS culvert catalog, multiple barrels with skew, improved inlet types | FHWA nomograph subset; multi-barrel count supported; no skew or improved-inlet catalog beyond loss coefficients |
 | **Ineffective flow** | Roadway embankment blocking, blocked obstructions, storage from ineffective areas | Partial: `channel_area` at structure-adjacent sections when overbanks are subdivided — not full RAS ineffective-flow workflow |
-| **Terrain & mapping** | RAS Terrain, bathymetry tools, georeferenced plans | Host app responsibility (engine is geometry-in / results-out) |
+| **Terrain & mapping** | RAS Terrain, TIN/bathymetry authoring, RAS Map | **Not in the engine** — host apps may edit cross-sections, import HEC-RAS geometry (e.g. `.g01`), and georeference reaches; the solver only receives $(x,y)$ sections and stations |
 | **Sediment & morphology** | Mobile bed, sediment transport, scour | Not modeled (optional fixed culvert blockage depth only) |
 | **Water quality & ice** | Temperature, water quality, ice jams | Not modeled |
-| **Project workflow** | `.prj`, Plan/Geometry/Unsteady files, GIS import/export | No built-in project format; host app parses geometry and calls WASM/Python |
+| **Project workflow** | Full HEC-RAS `.prj` with Plan, Geometry, and Unsteady files | **Not in the engine** — no built-in project format; host apps may import geometry and manage projects, then call WASM/Python per solve |
 | **Regulatory reporting** | FEMA, flood insurance, HEC-RAS report templates | Not included |
 
 ### Practical guidance
 
-* **Good fit:** Embedding steady or unsteady 1D profile solves in a custom web dashboard, design tool, or Python batch pipeline where you control geometry and boundaries programmatically.
+* **Good fit:** Embedding steady or unsteady 1D profile solves in a custom web dashboard or Python pipeline — including apps that **import HEC-RAS geometry** or **edit cross-sections** in a UI, then pass the resulting arrays to the solver.
 * **Poor fit:** Replacing HEC-RAS for FEMA studies, complex multi-reach unsteady networks, 2D overbank flood routing, or models that rely on RAS-specific structure and ineffective-flow workflows without host-app preprocessing.
 * **Junction models:** Import upper + lower main stem as one `cross_sections` array (see [`docs/web_gui_tributary_junction.md`](docs/web_gui_tributary_junction.md)).
 * **Active development:** Unsteady stabilization for steep transients and mixed regimes; broader network and structure support may follow — check release notes and open issues.
