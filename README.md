@@ -8,8 +8,8 @@ STREAM-1D is a Rust 1D open-channel hydraulics engine. It provides steady gradua
 
 * **Embeddable Execution:** Run hydraulic simulations in web dashboards or Python data pipelines without requiring desktop hydraulic software.
 * **Structural Hydraulics:** Model inline structures and composite roughness on single reaches or a main stem with one joining tributary (steady)—culverts, bridge piers, roadway overtopping, and multi-zone Manning's *n*.
-* **Unsteady Routing:** Dynamic routing with upstream flow and downstream stage hydrographs on a single reach, including optional **inline culverts**; stabilization for steep transients and mixed regimes is an active development focus.
-* **WebAssembly API:** Browser and Worker integration via `solveSteady` / `solveUnsteady`, `computeCulvertRatingCurve`, metadata discovery (`getWasmApiMetadata`), and input validation (`validateSteadyInputs`). Culvert inputs include explicit inlet types, invert overrides, roadway overtopping, skew angles, active barrel count, per-barrel geometry, extended shape catalog (pipe-arch, elliptical, horseshoe), extended steady diagnostics, headwater rating curves, **supercritical culvert routing** in mixed-regime steady profiles, and the same culvert field set on **`UnsteadyInputs`** for inline single-reach coupling with per-step culvert diagnostics (**API version 8**).
+* **Unsteady Routing:** Dynamic routing with upstream flow and downstream stage hydrographs on a single reach, including optional **inline culverts** with per-step Tier 2a diagnostics; stabilization for steep transients and mixed regimes is an active development focus.
+* **WebAssembly API:** Browser and Worker integration via `solveSteady` / `solveUnsteady`, `computeCulvertRatingCurve`, metadata discovery (`getWasmApiMetadata`), and input validation (`validateSteadyInputs`). Culvert inputs include explicit inlet types, invert overrides, roadway overtopping, skew angles, active barrel count, per-barrel geometry, extended shape catalog (pipe-arch, elliptical, horseshoe), Tier 2a diagnostics on steady and unsteady solves, headwater rating curves, **supercritical culvert routing** in mixed-regime steady profiles, and the same culvert field set on **`UnsteadyInputs`** for inline single-reach coupling (**API version 8**).
 
 **Web app integrators:** TypeScript contracts are in [`docs/wasm_api.types.ts`](docs/wasm_api.types.ts); a Worker reference is in [`examples/wasm/`](examples/wasm/). Steady tributary junctions use a two-branch API (`cross_sections` + `tributary_cross_sections`, `tributary_flow_rate`, `junction_main_station`). HEC-RAS projects with three reaches at a confluence must merge or concatenate the upper and lower main stems into one `cross_sections` array before calling WASM. GUI integration specs for the hosted product live in the [stream1d.com](https://stream1d.com) web application repository, not in this engine repo.
 
@@ -18,7 +18,7 @@ STREAM-1D is a Rust 1D open-channel hydraulics engine. It provides steady gradua
 * **Stateless:** No project files, local file administration, or hidden global state inside the engine. Each call is an independent solve.
 * **UI-Agnostic:** The library exposes solver functions only; threading, workers, and visualization are the responsibility of the host application.
 * **Open-Channel Focus:** Non-linear cross-section lookup tables with composite Manning's *n*, subdivided overbank/channel geometry, and mixed-regime steady profiles.
-* **Intermediate Outputs:** Steady results include section-by-section area, top width, velocity, Froude number, and energy grade slope—useful for capacity review without running an unsteady simulation.
+* **Intermediate Outputs:** Steady results include section-by-section area, top width, velocity, Froude number, and energy grade slope. When culverts are modeled, steady and unsteady runs also return Tier 2a culvert diagnostics (control type, inlet/outlet HW, barrel/weir $Q$, barrel depth/velocity/Froude).
 
 ## Limitations (read before comparing to HEC-RAS)
 
@@ -55,11 +55,11 @@ These are implemented in the **STREAM-1D web application**, not in the Rust/WASM
 |----------|-------------------|-----------------|
 | **Dimensionality** | 1D, 2D, and coupled 1D/2D | **1D only** |
 | **River networks** | Dendritic systems, multiple junctions, looped reaches | **One** main stem + **one** tributary (**steady only**); no general network graph |
-| **Unsteady scope** | Networks, structures, storage areas, lateral inflows | **Single reach** with optional **inline culverts** (explicit post-step headwater coupling); **no** bridges or multi-reach networks in unsteady |
+| **Unsteady scope** | Networks, structures, storage areas, lateral inflows | **Single reach** with optional **inline culverts** (iterated explicit post-step headwater coupling + per-step Tier 2a diagnostics); **no** bridges or multi-reach networks in unsteady |
 | **Storage & diversions** | Ponds, reservoirs, split flow, lateral structures, pumps, gates | Not modeled |
 | **Inline weirs & dams** | Standalone weirs, inline structures, dam breach | Not modeled (bridge roadway overtopping only) |
 | **Bridge hydraulics** | Full low-flow classes, pressure/weir combinations, bridge methods, abutments, deck geometry | Yarnell **Class A pier loss** only; simplified pressure + weir overtopping; no abutment or Class B/C low flow |
-| **Culvert hydraulics** | Full HEC-RAS culvert catalog (all standard shapes), culverts in multi-reach unsteady networks | FHWA nomograph (circular, box, arch, ConSpan, pipe-arch, elliptical, horseshoe) with explicit inlet types; multi-barrel capacity-based $Q$ split with optional per-barrel span/rise; skew angles and blocked-barrel count; invert offsets, roadway overtopping, extended diagnostics and rating-curve API; **supercritical culvert routing** in mixed-regime steady profiles; **inline culverts** in single-reach unsteady (explicit coupling) |
+| **Culvert hydraulics** | Full HEC-RAS culvert catalog (all standard shapes), culverts in multi-reach unsteady networks | FHWA nomograph (circular, box, arch, ConSpan, pipe-arch, elliptical, horseshoe) with explicit inlet types; multi-barrel capacity-based $Q$ split with optional per-barrel span/rise; skew angles and blocked-barrel count; invert offsets, roadway overtopping, Tier 2a diagnostics and rating-curve API; **supercritical culvert routing** in mixed-regime steady profiles; **inline culverts** in single-reach unsteady (iterated explicit coupling, not implicit in Preissmann Jacobian) |
 | **Ineffective flow** | Roadway embankment blocking, blocked obstructions, storage from ineffective areas | Partial: `channel_area` at structure-adjacent sections when overbanks are subdivided — not full RAS ineffective-flow workflow |
 | **Terrain & mapping** | RAS Terrain, TIN/bathymetry authoring, RAS Map | **Not in the engine** — the companion **web app** may edit cross-sections and import HEC-RAS geometry; the solver only receives $(x,y)$ sections and stations |
 | **Sediment & morphology** | Mobile bed, sediment transport, scour | Not modeled (optional fixed culvert blockage depth only) |
@@ -107,11 +107,14 @@ streams1d/
 │       ├── culvert.rs          # Culvert inlet/outlet control (FHWA-style)
 │       └── unsteady.rs         # Saint-Venant dynamic routing solver
 ├── python/                     # Python bindings, tests, and verification notebook
+│   ├── verification/           # HEC-RAS reference data (ConSpan.csv, profiles JSON)
+│   └── test_hecras_culvert_verification.py
 ├── docs/                       # WASM TypeScript contracts for host applications
 │   └── wasm_api.types.ts       # TypeScript definitions for WASM inputs/outputs
 ├── examples/wasm/              # Worker reference + Node smoke test
 ├── tests/
-│   ├── fixtures/               # JSON payloads for WASM contract tests
+│   ├── fixtures/               # WASM + culvert benchmark JSON payloads
+│   ├── culvert_hecras_verification.rs  # HEC-RAS ConSpan + point culvert tests
 │   └── wasm_json_contract.rs   # WASM JSON schema integration tests
 └── pkg/                        # Compiled WASM package generated by wasm-pack
 ```
@@ -161,8 +164,8 @@ Based on Federal Highway Administration (FHWA) standards, the inlet control head
 * **Inlet types:** `culvert_inlet_types` per culvert — Circular: 1 square headwall, 2 groove end, 3 beveled 45°, 4 projecting; Box: 10 square edge, 11 flared wingwalls, 12 beveled top; Arch/ConSpan: 20 projecting, 21 smooth entry; 0 = legacy $K_e$ threshold.
 * **Invert overrides:** Optional `culvert_z_ups` / `culvert_z_downs` (defaults to adjacent section bed).
 * **Roadway overtopping:** Optional `culvert_crest_elevs` with `culvert_weir_coeffs` (default 2.6 US / 1.44 metric) and `culvert_weir_lengths` (default sum of projected active-barrel spans; omit `culvert_crest_elevs` entirely when overtopping is off). When the roadway crest is exceeded, total discharge splits iteratively between barrel flow and weir flow until balanced.
-* **Control reporting:** Steady results include `culvert_control_types` aligned with `culvert_stations`.
-* **Extended diagnostics:** Steady results also return `culvert_wsel_inlet`, `culvert_wsel_outlet`, `culvert_q_barrels`, `culvert_q_weirs`, `culvert_barrel_depths`, `culvert_barrel_velocities`, and `culvert_barrel_froude` per culvert. Barrel slope $S$ in the inlet nomograph includes adverse grade (upstream invert above downstream).
+* **Control reporting:** `solve_steady` and `solve_unsteady` return `culvert_control_types` aligned with `culvert_stations` (per culvert on steady; `[time_step][culvert]` on unsteady).
+* **Extended diagnostics:** Both solvers return `culvert_wsel_inlet`, `culvert_wsel_outlet`, `culvert_q_barrels`, `culvert_q_weirs`, `culvert_barrel_depths`, `culvert_barrel_velocities`, and `culvert_barrel_froude`. Barrel slope $S$ in the inlet nomograph includes adverse grade (upstream invert above downstream).
 * **Rating curve:** `computeCulvertRatingCurve` samples headwater vs discharge at fixed tailwater for a single culvert (same geometry/loss fields as the steady solver).
 * **Barrel skew:** Optional `culvert_skew_angles` (degrees from normal to flow) adjust projected inlet span ($B' = B\cos\theta$) and friction length ($L' = L/\cos\theta$), clamped to 59°.
 * **Active barrels:** Optional `culvert_active_barrels` (open barrels ≤ `culvert_barrels`) splits total discharge among open barrels only and reduces default overtopping weir length.
@@ -277,7 +280,7 @@ This generates the WebAssembly module in the `./pkg` (browser) and `./pkg-node` 
 |----------|-------------|
 | `init()` | Load the WASM module (generated by wasm-pack) |
 | `getEngineVersion()` | Engine semver string |
-| `getWasmApiMetadata()` | `api_version`, culvert inlet/shape enums, culvert field lists (inputs, diagnostics, geometry) |
+| `getWasmApiMetadata()` | `api_version`, culvert inlet/shape enums, culvert field lists (inputs, steady/unsteady diagnostics, geometry) |
 | `validateSteadyInputs(inputs)` | Parse-check a payload without solving |
 | `solveSteady(inputs)` | Steady GVF + structures → `SteadyResult` |
 | `solveUnsteady(inputs)` | Unsteady routing → `UnsteadyResult` |
@@ -309,7 +312,7 @@ The bridge solver implements the HEC-RAS Yarnell equation for Class A low flow. 
 
 ### 3. Culvert verification
 
-Culvert hydraulics are covered by **70+** unit and integration tests in `src/solvers/culvert.rs`, `src/solvers/steady.rs`, and `src/solvers/unsteady.rs`, including:
+Culvert hydraulics are covered by **76** automated tests (unit, integration, and HEC-RAS benchmarks) across `src/solvers/`, `tests/culvert_hecras_verification.rs`, and `tests/wasm_json_contract.rs`, including:
 
 | Configuration | What is tested |
 |---------------|----------------|
@@ -525,7 +528,7 @@ const unsteadyInputs = {
     downstream_wsel_hydrograph: [1.5, 1.5, 1.5],
     theta: 0.6,
     num_slices: 50,
-    // Same culvert_* keys as steady (api_version 7)
+    // Same culvert_* keys as steady (api_version 8)
     culvert_stations: [250.0],
     culvert_shape_types: [0],
     culvert_spans: [2.0],
@@ -539,7 +542,10 @@ const unsteadyInputs = {
 };
 
 const result = solveUnsteady(unsteadyInputs);
-console.log(result.wsel[result.wsel.length - 1]); // final-step WSEL at each section
+const last = result.wsel.length - 1;
+console.log(result.wsel[last]); // final-step WSEL at each section
+console.log(result.culvert_control_types?.[last]); // per-culvert control at final step
+console.log(result.culvert_q_barrels?.[last]);
 ```
 
 ### 2. Python Usage Example
@@ -662,10 +668,13 @@ unsteady_culvert = st.UnsteadyInputs(
     culvert_barrels=[1],
     culvert_inlet_types=[1],
 )
-print(st.solve_unsteady(unsteady_culvert)["wsel"][-1])
+unsteady_res = st.solve_unsteady(unsteady_culvert)
+print(unsteady_res["wsel"][-1])
+print("Culvert control:", unsteady_res.get("culvert_control_types", [])[-1])
+print("Barrel Q:", unsteady_res.get("culvert_q_barrels", [])[-1])
 ```
 
-Python `SteadyInputs` and `UnsteadyInputs` expose the same culvert field names as the WASM/JSON schema (including skew, active barrels, per-barrel geometry, and extended shapes). Shape codes are available as module constants: `st.CULVERT_SHAPE_CIRCULAR` (0) through `st.CULVERT_SHAPE_HORSESHOE` (6).
+Python `SteadyInputs` and `UnsteadyInputs` expose the same culvert field names as the WASM/JSON schema (including skew, active barrels, per-barrel geometry, and extended shapes). `solve_unsteady` returns the same Tier 2a culvert diagnostic keys as `solve_steady`, shaped as `[time_step][culvert_index]` arrays. Shape codes are available as module constants: `st.CULVERT_SHAPE_CIRCULAR` (0) through `st.CULVERT_SHAPE_HORSESHOE` (6).
 
 ---
 
@@ -675,8 +684,10 @@ Python `SteadyInputs` and `UnsteadyInputs` expose the same culvert field names a
 |----------|----------|
 | [`README.md`](README.md) | Equations, build, usage, verification |
 | [`tech_spec.md`](tech_spec.md) | Host-app architecture |
-| [`docs/wasm_api.types.ts`](docs/wasm_api.types.ts) | TypeScript types for WASM integrators |
+| [`docs/wasm_api.types.ts`](docs/wasm_api.types.ts) | TypeScript types for WASM integrators (API v8) |
 | [`examples/wasm/`](examples/wasm/) | Worker reference and Node smoke test |
+| [`python/verification/hecras_conspan_profiles.json`](python/verification/hecras_conspan_profiles.json) | HEC-RAS WSEL reference (ConSpan 5/25/50 yr) |
+| [`tests/fixtures/culvert_point_benchmarks.json`](tests/fixtures/culvert_point_benchmarks.json) | Point culvert regression cases |
 
 ---
 
