@@ -65,6 +65,12 @@ class SteadyInputs:
         culvert_roughness_n_bottoms: Optional[List[float]] = None,
         culvert_depth_bottom_ns: Optional[List[float]] = None,
         culvert_depth_blockeds: Optional[List[float]] = None,
+        culvert_inlet_types: Optional[List[int]] = None,
+        culvert_z_ups: Optional[List[float]] = None,
+        culvert_z_downs: Optional[List[float]] = None,
+        culvert_crest_elevs: Optional[List[float]] = None,
+        culvert_weir_coeffs: Optional[List[float]] = None,
+        culvert_weir_lengths: Optional[List[float]] = None,
         # Bridge parameters
         bridge_stations: Optional[List[float]] = None,
         bridge_low_chords: Optional[List[float]] = None,
@@ -109,6 +115,12 @@ class SteadyInputs:
         self.culvert_roughness_n_bottoms = culvert_roughness_n_bottoms or []
         self.culvert_depth_bottom_ns = culvert_depth_bottom_ns or []
         self.culvert_depth_blockeds = culvert_depth_blockeds or []
+        self.culvert_inlet_types = culvert_inlet_types or []
+        self.culvert_z_ups = culvert_z_ups or []
+        self.culvert_z_downs = culvert_z_downs or []
+        self.culvert_crest_elevs = culvert_crest_elevs or []
+        self.culvert_weir_coeffs = culvert_weir_coeffs or []
+        self.culvert_weir_lengths = culvert_weir_lengths or []
         self.bridge_stations = bridge_stations or []
         self.bridge_low_chords = bridge_low_chords or []
         self.bridge_high_chords = bridge_high_chords or []
@@ -152,6 +164,12 @@ class SteadyInputs:
             'culvert_roughness_n_bottoms': self.culvert_roughness_n_bottoms,
             'culvert_depth_bottom_ns': self.culvert_depth_bottom_ns,
             'culvert_depth_blockeds': self.culvert_depth_blockeds,
+            'culvert_inlet_types': self.culvert_inlet_types,
+            'culvert_z_ups': self.culvert_z_ups,
+            'culvert_z_downs': self.culvert_z_downs,
+            'culvert_crest_elevs': self.culvert_crest_elevs,
+            'culvert_weir_coeffs': self.culvert_weir_coeffs,
+            'culvert_weir_lengths': self.culvert_weir_lengths,
             'bridge_stations': self.bridge_stations,
             'bridge_low_chords': self.bridge_low_chords,
             'bridge_high_chords': self.bridge_high_chords,
