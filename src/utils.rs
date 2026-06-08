@@ -206,3 +206,51 @@ pub fn solve_scalar_tridiagonal(
 
     Some(x)
 }
+
+/// Tolerance (meters) for matching structure stations to reach interval boundaries.
+pub const STRUCTURE_STATION_TOL: f64 = 1e-4;
+
+/// Returns true when `structure_station` lies in reach interval `interval_index`.
+///
+/// Interval `i` spans upstream node `stations[i]` to downstream node `stations[i + 1]`
+/// (stations increase upstream). The downstream bound is exclusive and the upstream
+/// bound is inclusive so a structure exactly on a cross-section station matches only
+/// the interval where that station is the upstream face.
+pub fn structure_in_reach_interval(
+    structure_station: f64,
+    stations: &[f64],
+    interval_index: usize,
+) -> bool {
+    if interval_index + 1 >= stations.len() {
+        return false;
+    }
+    let ds = stations[interval_index + 1];
+    let us = stations[interval_index];
+    let tol = STRUCTURE_STATION_TOL;
+    structure_station > ds + tol && structure_station <= us + tol
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn structure_on_upstream_face_matches_one_interval() {
+        let stations = [1000.0, 750.0, 500.0, 250.0, 0.0];
+        let st = 500.0;
+        let matches: Vec<_> = (0..stations.len() - 1)
+            .filter(|&i| structure_in_reach_interval(st, &stations, i))
+            .collect();
+        assert_eq!(matches, vec![2], "station 500 should match only interval 500->250");
+    }
+
+    #[test]
+    fn structure_on_downstream_face_matches_upstream_interval() {
+        let stations = [1000.0, 750.0, 500.0, 250.0, 0.0];
+        let st = 250.0;
+        let matches: Vec<_> = (0..stations.len() - 1)
+            .filter(|&i| structure_in_reach_interval(st, &stations, i))
+            .collect();
+        assert_eq!(matches, vec![3], "station 250 should match only interval 250->0");
+    }
+}

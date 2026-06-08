@@ -1,4 +1,4 @@
-use crate::utils::{G_METRIC, UnitSystem, FT_TO_M};
+use crate::utils::{G_METRIC, UnitSystem, FT_TO_M, structure_in_reach_interval};
 use crate::geometry::{CrossSection, GeometryTable};
 
 /// Input parameters for the steady-state solver.
@@ -654,9 +654,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                 c_st
             };
             for j in 0..dm - 1 {
-                if c_st_metric >= densified_stations[j + 1] - 1e-4
-                    && c_st_metric < densified_stations[j] + 1e-4
-                {
+                if structure_in_reach_interval(c_st_metric, &densified_stations, j) {
                     structure_adjacent_indices.insert(j);
                     structure_adjacent_indices.insert(j + 1);
                     break;
@@ -672,9 +670,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                 b_st
             };
             for j in 0..dm - 1 {
-                if b_st_metric >= densified_stations[j + 1] - 1e-4
-                    && b_st_metric < densified_stations[j] + 1e-4
-                {
+                if structure_in_reach_interval(b_st_metric, &densified_stations, j) {
                     structure_adjacent_indices.insert(j);
                     structure_adjacent_indices.insert(j + 1);
                     break;
@@ -703,9 +699,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                     } else {
                         b_st
                     };
-                    if b_st_metric >= densified_stations[i + 1] - 1e-4
-                        && b_st_metric < densified_stations[i] + 1e-4
-                    {
+                    if structure_in_reach_interval(b_st_metric, &densified_stations, i) {
                         bridge_idx = Some(b_idx);
                         break;
                     }
@@ -721,9 +715,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                     } else {
                         c_st
                     };
-                    if c_st_metric >= densified_stations[i + 1] - 1e-4
-                        && c_st_metric < densified_stations[i] + 1e-4
-                    {
+                    if structure_in_reach_interval(c_st_metric, &densified_stations, i) {
                         culvert_idx = Some(c_idx);
                         break;
                     }
@@ -991,9 +983,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                     } else {
                         b_st
                     };
-                    if b_st_metric >= densified_stations[i + 1] - 1e-4
-                        && b_st_metric < densified_stations[i] + 1e-4
-                    {
+                    if structure_in_reach_interval(b_st_metric, &densified_stations, i) {
                         bridge_idx = Some(b_idx);
                         break;
                     }
@@ -1009,9 +999,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                     } else {
                         c_st
                     };
-                    if c_st_metric >= densified_stations[i + 1] - 1e-4
-                        && c_st_metric < densified_stations[i] + 1e-4
-                    {
+                    if structure_in_reach_interval(c_st_metric, &densified_stations, i) {
                         culvert_idx = Some(c_idx);
                         break;
                     }
@@ -1501,6 +1489,73 @@ mod tests {
         let wsel_inlet = result.culvert_wsel_inlet.expect("culvert_wsel_inlet");
         assert!((wsel_inlet[0] - hw_wsel).abs() < 0.05);
         assert!(result.culvert_barrel_velocities.expect("vel")[0] > 0.0);
+    }
+
+    #[test]
+    fn test_steady_culvert_on_cross_section_station_not_double_matched() {
+        // Regression: culvert station exactly on a cross-section must match one interval only.
+        let xs200 = CrossSection {
+            station: 200.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![12.0, 2.0, 2.0, 12.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
+        };
+        let xs100 = CrossSection {
+            station: 100.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![11.0, 1.0, 1.0, 11.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
+        };
+        let xs0 = CrossSection {
+            station: 0.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![10.0, 0.0, 0.0, 10.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
+        };
+
+        let mut on_xs = SteadyInputs {
+            cross_sections: vec![xs200, xs100, xs0],
+            flow_rate: 100.0,
+            num_slices: Some(50),
+            regime: 0,
+            downstream_wsel: Some(3.0),
+            culvert_stations: Some(vec![100.0]),
+            culvert_shape_types: Some(vec![0]),
+            culvert_spans: Some(vec![5.0]),
+            culvert_rises: Some(vec![5.0]),
+            culvert_roughness_ns: Some(vec![0.012]),
+            culvert_lengths: Some(vec![100.0]),
+            culvert_entrance_loss_coeffs: Some(vec![0.5]),
+            culvert_exit_loss_coeffs: Some(vec![1.0]),
+            ..Default::default()
+        };
+
+        let on_xs_result = solve_steady(&on_xs);
+        on_xs.culvert_stations = Some(vec![50.0]);
+        let mid_reach_result = solve_steady(&on_xs);
+
+        let hw_on_xs = on_xs_result.wsel[1];
+        let hw_mid = mid_reach_result.wsel[1];
+        assert!(
+            hw_on_xs < 8.0,
+            "on-XS culvert headwater should stay physical, got {}",
+            hw_on_xs
+        );
+        assert!(
+            (hw_on_xs - hw_mid).abs() < 0.5,
+            "on-XS ({}) and mid-reach ({}) culvert headwater should agree within 0.5 ft",
+            hw_on_xs,
+            hw_mid
+        );
     }
 
     fn culvert_tier1_channel() -> Vec<CrossSection> {
