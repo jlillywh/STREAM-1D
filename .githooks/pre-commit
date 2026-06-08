@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Run coverage/tests before each commit (skipped when no Rust files are staged).
+ROOT="$(git rev-parse --show-toplevel)"
+exec "$ROOT/scripts/run_coverage.sh" --pre-commit

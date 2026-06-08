@@ -1150,6 +1150,38 @@ pub fn solve_culvert_wsel(
 mod tests {
     use super::*;
 
+    /// Standard US circular pipe case used across regression tests.
+    fn us_circular_baseline() -> CulvertSolveParams {
+        CulvertSolveParams {
+            q: 100.0,
+            shape_type: 0,
+            inlet_type: 1,
+            span: 5.0,
+            rise: 5.0,
+            roughness_n: 0.012,
+            length: 100.0,
+            entrance_loss_coeff: 0.5,
+            exit_loss_coeff: 1.0,
+            z_down: 9.0,
+            z_up: 10.0,
+            tw_wsel: 12.0,
+            units: UnitSystem::USCustomary,
+            manning_n_bottom: 0.012,
+            depth_bottom_n: 0.0,
+            depth_blocked: 0.0,
+            ds_velocity: 0.0,
+            us_velocity: 0.0,
+            crest_elev: None,
+            weir_coeff: 0.0,
+            weir_length: 0.0,
+            num_barrels: 1,
+            active_barrels: 1,
+            skew_deg: 0.0,
+            barrel_spans: None,
+            barrel_rises: None,
+        }
+    }
+
     #[test]
     fn test_shape_areas() {
         // Box area
@@ -1807,6 +1839,317 @@ mod tests {
             hw_uniform,
             hw_explicit
         );
+    }
+
+    #[test]
+    fn test_effective_geometry_blockage_reduces_area() {
+        let shape = CulvertShape::Box;
+        let full = get_culvert_area(shape, 6.0, 4.0, 3.0);
+        let blocked = get_culvert_effective_area(shape, 6.0, 4.0, 3.0, 1.0);
+        assert!(blocked < full);
+        assert!((blocked - get_culvert_area(shape, 6.0, 4.0, 3.0)
+            + get_culvert_area(shape, 6.0, 4.0, 1.0))
+            .abs() < 1e-6);
+        assert_eq!(get_culvert_effective_area(shape, 6.0, 4.0, 0.5, 1.0), 0.0);
+    }
+
+    #[test]
+    fn test_composite_n_between_top_and_bottom() {
+        let n = get_culvert_composite_n(
+            CulvertShape::Box,
+            6.0,
+            4.0,
+            3.0,
+            0.0,
+            0.012,
+            0.030,
+            1.0,
+        );
+        assert!(n > 0.012 && n < 0.030);
+        assert_eq!(
+            get_culvert_composite_n(CulvertShape::Box, 6.0, 4.0, 3.0, 0.0, 0.012, 0.012, 1.0),
+            0.012
+        );
+    }
+
+    #[test]
+    fn test_barrel_critical_depth_within_rise() {
+        let yc = solve_barrel_critical_depth(CulvertShape::Circular, 5.0, 5.0, 50.0, 0.0);
+        assert!(yc > 0.0 && yc <= 5.0);
+        let yc_blocked =
+            solve_barrel_critical_depth(CulvertShape::Circular, 5.0, 5.0, 50.0, 1.0);
+        assert!(yc_blocked >= 1.0);
+    }
+
+    #[test]
+    fn test_sediment_blockage_increases_headwater() {
+        let clear = solve_culvert(&us_circular_baseline());
+        let mut blocked = us_circular_baseline();
+        blocked.depth_blocked = 1.0;
+        assert!(solve_culvert(&blocked).wsel > clear.wsel);
+    }
+
+    #[test]
+    fn test_composite_bottom_n_increases_headwater() {
+        let mut outlet = us_circular_baseline();
+        outlet.tw_wsel = 15.0;
+        let uniform = solve_culvert(&outlet).wsel;
+        outlet.manning_n_bottom = 0.030;
+        outlet.depth_bottom_n = 2.0;
+        assert!(solve_culvert(&outlet).wsel > uniform);
+    }
+
+    #[test]
+    fn test_channel_velocities_affect_outlet_headwater() {
+        let mut base = us_circular_baseline();
+        base.tw_wsel = 14.0;
+        let still = solve_culvert(&base);
+        assert_eq!(still.control_type, "outlet");
+
+        // Higher approach velocity head subtracts from outlet-control WSEL.
+        base.us_velocity = 6.0;
+        assert!(solve_culvert(&base).wsel_outlet < still.wsel_outlet);
+
+        // Downstream velocity recovery reduces the exit-loss term under outlet control.
+        let mut partial = us_circular_baseline();
+        partial.tw_wsel = 14.0;
+        let no_ds = solve_culvert(&partial).wsel_outlet;
+        partial.ds_velocity = 4.0;
+        assert!(solve_culvert(&partial).wsel_outlet <= no_ds);
+    }
+
+    #[test]
+    fn test_entrance_and_exit_loss_increase_headwater() {
+        let base = us_circular_baseline();
+        let mut high_ke = base.clone();
+        high_ke.entrance_loss_coeff = 1.5;
+        assert!(solve_culvert(&high_ke).wsel > solve_culvert(&base).wsel);
+
+        let mut outlet = base.clone();
+        outlet.tw_wsel = 15.0;
+        let low_kx = solve_culvert(&outlet).wsel;
+        outlet.exit_loss_coeff = 2.5;
+        assert!(solve_culvert(&outlet).wsel > low_kx);
+    }
+
+    #[test]
+    fn test_longer_barrel_and_higher_n_increase_outlet_headwater() {
+        let mut outlet = us_circular_baseline();
+        outlet.tw_wsel = 15.0;
+        let short = solve_culvert(&outlet).wsel;
+        outlet.length = 250.0;
+        assert!(solve_culvert(&outlet).wsel > short);
+
+        outlet.length = 100.0;
+        outlet.roughness_n = 0.020;
+        outlet.manning_n_bottom = 0.020;
+        assert!(solve_culvert(&outlet).wsel > short);
+    }
+
+    #[test]
+    fn test_skew_angle_clamped_at_59_degrees() {
+        let (s59, l59) = apply_barrel_skew(59.0, 10.0, 100.0);
+        let (s70, l70) = apply_barrel_skew(70.0, 10.0, 100.0);
+        assert!((s59 - s70).abs() < 1e-6);
+        assert!((l59 - l70).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_all_shapes_produce_physical_headwater() {
+        let cases: [(i32, f64, f64); 4] = [
+            (0, 5.0, 5.0),   // Circular
+            (1, 8.0, 6.0),   // Box
+            (2, 8.0, 6.0),   // Arch
+            (3, 28.0, 6.0),  // ConSpan
+        ];
+        for (shape, span, rise) in cases {
+            let mut p = us_circular_baseline();
+            p.shape_type = shape;
+            p.span = span;
+            p.rise = rise;
+            if shape == 2 {
+                p.inlet_type = 21;
+            } else if shape == 3 {
+                p.inlet_type = 20;
+            }
+            let r = solve_culvert(&p);
+            assert!(
+                r.wsel > p.tw_wsel,
+                "shape {} wsel={}",
+                shape,
+                r.wsel
+            );
+            assert!((r.q_barrel - p.q).abs() < 1e-6);
+            assert!(r.barrel_depth > 0.0);
+            assert!(r.barrel_velocity > 0.0);
+            assert!(matches!(
+                r.control_type.as_str(),
+                "inlet" | "outlet" | "overtopping"
+            ));
+        }
+    }
+
+    #[test]
+    fn test_all_inlet_types_solve() {
+        let circular = [0, 1, 2, 3, 4];
+        let box_types = [0, 10, 11, 12];
+        let arch_types = [0, 20, 21];
+        let mut last_hw = 0.0;
+        for inlet in circular {
+            let mut p = us_circular_baseline();
+            p.inlet_type = inlet;
+            let r = solve_culvert(&p);
+            assert!(r.wsel > 10.0);
+            if inlet > 0 {
+                assert!(r.wsel.is_finite());
+            }
+            last_hw = r.wsel;
+        }
+        assert!(last_hw > 0.0);
+
+        for inlet in box_types {
+            let mut p = us_circular_baseline();
+            p.shape_type = 1;
+            p.span = 8.0;
+            p.rise = 6.0;
+            p.inlet_type = inlet;
+            assert!(solve_culvert(&p).wsel > p.tw_wsel);
+        }
+        for inlet in arch_types {
+            let mut p = us_circular_baseline();
+            p.shape_type = 2;
+            p.span = 8.0;
+            p.rise = 6.0;
+            p.inlet_type = inlet;
+            assert!(solve_culvert(&p).wsel > p.tw_wsel);
+        }
+    }
+
+    #[test]
+    fn test_box_culvert_inlet_and_outlet_regimes() {
+        let mut inlet_case = us_circular_baseline();
+        inlet_case.shape_type = 1;
+        inlet_case.span = 8.0;
+        inlet_case.rise = 6.0;
+        inlet_case.inlet_type = 11;
+        assert_eq!(solve_culvert(&inlet_case).control_type, "inlet");
+
+        inlet_case.tw_wsel = 15.0;
+        let outlet = solve_culvert(&inlet_case);
+        assert_eq!(outlet.control_type, "outlet");
+        assert!((outlet.wsel - outlet.wsel_outlet).abs() < 1e-4);
+    }
+
+    #[test]
+    fn test_metric_units_circular_inlet_control() {
+        let mut p = us_circular_baseline();
+        p.units = UnitSystem::Metric;
+        p.q = 2.83;
+        p.span = 1.524;
+        p.rise = 1.524;
+        p.length = 30.48;
+        p.z_down = 2.743;
+        p.z_up = 3.048;
+        p.tw_wsel = 3.658;
+        let r = solve_culvert(&p);
+        assert_eq!(r.control_type, "inlet");
+        let hw_depth = r.wsel - p.z_up;
+        assert!(hw_depth > 1.0 && hw_depth < 2.0);
+    }
+
+    #[test]
+    fn test_partial_overtopping_splits_barrel_and_weir_flow() {
+        let mut p = us_circular_baseline();
+        p.crest_elev = Some(14.15);
+        p.weir_coeff = 2.6;
+        p.weir_length = 5.0;
+        let r = solve_culvert(&p);
+        assert!(r.q_barrel > 0.0);
+        assert!(r.q_weir > 0.0);
+        assert!((r.q_barrel + r.q_weir - p.q).abs() < 1.0);
+        assert!(r.wsel > 14.15);
+    }
+
+    #[test]
+    fn test_default_weir_length_matches_explicit_barrel_spans() {
+        let mut auto = us_circular_baseline();
+        auto.num_barrels = 2;
+        auto.active_barrels = 2;
+        auto.crest_elev = Some(14.15);
+        auto.weir_coeff = 2.6;
+        auto.weir_length = 0.0;
+        let r_auto = solve_culvert(&auto);
+
+        let mut explicit = auto.clone();
+        explicit.weir_length = 10.0;
+        let r_explicit = solve_culvert(&explicit);
+        assert!(
+            (r_auto.wsel - r_explicit.wsel).abs() < 0.05,
+            "auto={} explicit={}",
+            r_auto.wsel,
+            r_explicit.wsel
+        );
+    }
+
+    #[test]
+    fn test_skew_with_unequal_barrel_geometry() {
+        let mut p = us_circular_baseline();
+        p.num_barrels = 2;
+        p.active_barrels = 2;
+        p.barrel_spans = Some(vec![6.0, 4.0]);
+        p.barrel_rises = Some(vec![6.0, 4.0]);
+        let no_skew = solve_culvert(&p).wsel;
+        p.skew_deg = 25.0;
+        assert!(solve_culvert(&p).wsel > no_skew);
+    }
+
+    #[test]
+    fn test_multi_barrel_conserves_total_discharge() {
+        let mut p = us_circular_baseline();
+        p.num_barrels = 3;
+        p.active_barrels = 3;
+        p.barrel_spans = Some(vec![5.0, 6.0, 4.0]);
+        p.barrel_rises = Some(vec![5.0, 6.0, 4.0]);
+        let r = solve_culvert(&p);
+        assert!((r.q_barrel - p.q).abs() < 1.0);
+    }
+
+    #[test]
+    fn test_rating_curve_all_shapes_monotonic() {
+        let shapes: [(i32, f64, f64, i32); 4] = [
+            (0, 5.0, 5.0, 1),
+            (1, 8.0, 6.0, 10),
+            (2, 8.0, 6.0, 21),
+            (3, 28.0, 6.0, 20),
+        ];
+        for (shape, span, rise, inlet) in shapes {
+            let mut base = us_circular_baseline();
+            base.shape_type = shape;
+            base.span = span;
+            base.rise = rise;
+            base.inlet_type = inlet;
+            base.q = 0.0;
+            let curve = compute_culvert_rating_curve(&CulvertRatingCurveInputs {
+                q_values: vec![25.0, 50.0, 100.0],
+                culvert: base,
+            });
+            assert_eq!(curve.wsel.len(), 3);
+            assert!(curve.wsel[1] > curve.wsel[0]);
+            assert!(curve.wsel[2] > curve.wsel[1]);
+            assert!(curve.barrel_froude.iter().all(|f| *f > 0.0));
+        }
+    }
+
+    #[test]
+    fn test_extended_diagnostics_outlet_control() {
+        let mut p = us_circular_baseline();
+        p.tw_wsel = 15.0;
+        let r = solve_culvert(&p);
+        assert_eq!(r.control_type, "outlet");
+        assert!((r.wsel - r.wsel_outlet).abs() < 1e-4);
+        assert!(r.wsel_inlet < r.wsel_outlet);
+        assert!(r.barrel_depth > 0.0);
+        assert!(r.barrel_velocity > 0.0);
     }
 
     #[test]

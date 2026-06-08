@@ -83,6 +83,13 @@ streams1d/
 ├── README.md                   # Project documentation and equations
 ├── tech_spec.md                # Host-app architecture and integration scope
 ├── build_wasm.sh               # WSL script to build WASM package
+├── scripts/
+│   ├── run_coverage.sh         # Local tests + llvm-cov (matches CI)
+│   └── install_git_hooks.sh    # Enable pre-commit coverage hook
+├── .githooks/
+│   └── pre-commit              # Runs run_coverage.sh before commit
+├── .github/workflows/ci.yml    # Tests + Codecov upload
+├── codecov.yml                 # Codecov status/comment config
 ├── src/
 │   ├── lib.rs                  # WASM entrypoints (solveSteady, getWasmApiMetadata, …)
 │   ├── wasm_api.rs             # API metadata & version constants for host apps
@@ -155,13 +162,48 @@ Based on Federal Highway Administration (FHWA) standards, the inlet control head
 * *Note: The shape parameters $K, M, c, Y$ are selected from FHWA nomographs by `culvert_inlet_types` (or legacy $K_e$ threshold when inlet type is 0).*
 * **Inlet types:** `culvert_inlet_types` per culvert — Circular: 1 square headwall, 2 groove end, 3 beveled 45°, 4 projecting; Box: 10 square edge, 11 flared wingwalls, 12 beveled top; Arch/ConSpan: 20 projecting, 21 smooth entry; 0 = legacy $K_e$ threshold.
 * **Invert overrides:** Optional `culvert_z_ups` / `culvert_z_downs` (defaults to adjacent section bed).
-* **Roadway overtopping:** Optional `culvert_crest_elevs` with `culvert_weir_coeffs` (default 2.6 US / 1.44 metric) and `culvert_weir_lengths` (default span × barrels).
+* **Roadway overtopping:** Optional `culvert_crest_elevs` with `culvert_weir_coeffs` (default 2.6 US / 1.44 metric) and `culvert_weir_lengths` (default sum of projected active-barrel spans; omit `culvert_crest_elevs` entirely when overtopping is off). When the roadway crest is exceeded, total discharge splits iteratively between barrel flow and weir flow until balanced.
 * **Control reporting:** Steady results include `culvert_control_types` aligned with `culvert_stations`.
 * **Extended diagnostics:** Steady results also return `culvert_wsel_inlet`, `culvert_wsel_outlet`, `culvert_q_barrels`, `culvert_q_weirs`, `culvert_barrel_depths`, `culvert_barrel_velocities`, and `culvert_barrel_froude` per culvert. Barrel slope $S$ in the inlet nomograph includes adverse grade (upstream invert above downstream).
 * **Rating curve:** `computeCulvertRatingCurve` samples headwater vs discharge at fixed tailwater for a single culvert (same geometry/loss fields as the steady solver).
 * **Barrel skew:** Optional `culvert_skew_angles` (degrees from normal to flow) adjust projected inlet span ($B' = B\cos\theta$) and friction length ($L' = L/\cos\theta$), clamped to 59°.
 * **Active barrels:** Optional `culvert_active_barrels` (open barrels ≤ `culvert_barrels`) splits total discharge among open barrels only and reduces default overtopping weir length.
 * **Per-barrel geometry:** Optional `culvert_barrel_spans` and `culvert_barrel_rises` (nested arrays per culvert) assign span/rise to each open barrel; flow splits by barrel capacity at a shared headwater. Omit entries to use culvert-level `culvert_spans` / `culvert_rises`.
+* **Multi-barrel hydraulics:** Parallel barrels share one upstream pool elevation. With uniform geometry, discharge divides equally among `culvert_active_barrels`. With per-barrel span/rise, the solver bisects on headwater and assigns each barrel the flow its geometry carries at that elevation (capacity-based split). Reported barrel depth, velocity, and Froude are flow-weighted across active barrels.
+
+#### Culvert WASM / JSON field reference (`api_version` 5)
+
+Parallel arrays — index `i` matches `culvert_stations[i]`. Discover enums and field lists via `getWasmApiMetadata()`.
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `culvert_stations` | Yes (if modeling culverts) | Station of each culvert along the reach |
+| `culvert_shape_types` | Recommended | `0` Circular, `1` Box, `2` Arch, `3` ConSpan |
+| `culvert_spans` | Recommended | Diameter (circular) or width (box/arch/ConSpan), user units |
+| `culvert_rises` | Recommended | Barrel rise / height, user units |
+| `culvert_lengths` | Recommended | Barrel length, user units |
+| `culvert_roughness_ns` | Recommended | Manning's *n* (top/sides) |
+| `culvert_entrance_loss_coeffs` | Optional | $K_e$ (default 0.5) |
+| `culvert_exit_loss_coeffs` | Optional | $K_x$ (default 1.0) |
+| `culvert_barrels` | Optional | Total barrel count (default 1) |
+| `culvert_inlet_types` | Optional | FHWA nomograph code (see inlet list above); `0` = legacy $K_e$ threshold |
+| `culvert_z_ups`, `culvert_z_downs` | Optional | Invert elevations; default to adjacent section bed |
+| `culvert_roughness_n_bottoms` | Optional | Bottom/sediment *n* (defaults to `culvert_roughness_ns`) |
+| `culvert_depth_bottom_ns` | Optional | Depth to which bottom *n* applies |
+| `culvert_depth_blockeds` | Optional | Sediment blockage depth from invert |
+| `culvert_crest_elevs` | Optional | Roadway crest for overtopping weir — **omit** when overtopping is disabled |
+| `culvert_weir_coeffs` | Optional | Weir $C_w$ (default 2.6 US / 1.44 metric) |
+| `culvert_weir_lengths` | Optional | Weir length (default projected span × active barrels) |
+| `culvert_skew_angles` | Optional | Skew from normal to flow, degrees (0–59° enforced) |
+| `culvert_active_barrels` | Optional | Open barrels ≤ `culvert_barrels`; omit = all open |
+| `culvert_barrel_spans` | Optional | `culvert_barrel_spans[i][j]` span of barrel `j` at culvert `i` |
+| `culvert_barrel_rises` | Optional | `culvert_barrel_rises[i][j]` rise of barrel `j` at culvert `i` |
+
+**Steady outputs** (when culverts are present): `culvert_control_types`, `culvert_wsel_inlet`, `culvert_wsel_outlet`, `culvert_q_barrels`, `culvert_q_weirs`, `culvert_barrel_depths`, `culvert_barrel_velocities`, `culvert_barrel_froude`.
+
+**Rating curve:** `computeCulvertRatingCurve({ q_values, ...culvert fields })` — same geometry/loss/skew/barrel fields as steady; `q` in culvert params is ignored.
+
+**API version history:** v3 — Tier 2a diagnostics + rating curve; v4 — `culvert_skew_angles`, `culvert_active_barrels`; v5 — `culvert_barrel_spans`, `culvert_barrel_rises`.
 
 #### B. Outlet Control (Energy losses)
 The outlet control upstream elevation is computed via energy headwater balance:
@@ -271,12 +313,33 @@ The solver's calculated water surface elevations match HEC-RAS within a strict $
 ### 2. Bridge Pier Backwater Validation
 The bridge solver implements the HEC-RAS Yarnell equation for Class A low flow. On a 10 m rectangular channel ($Q = 15\text{ cms}$, downstream WSEL $= 3.0\text{ m}$, two $0.5\text{ m}$ square piers), the computed pier head loss is $H_{3-2} \approx 0.00247\text{ m}$, verified by unit tests against the closed-form HEC-RAS formula.
 
-### 3. Culvert Tier 1 & Tier 2a Verification
+### 3. Culvert verification
 
-Culvert **Tier 1** (explicit inlet types, invert overrides, roadway overtopping, `culvert_control_types`) and **Tier 2a** (extended steady diagnostics, adverse barrel slope, `computeCulvertRatingCurve`) are covered by Rust unit/integration tests, WASM JSON contract tests, and Python pytest cases. Example WASM steady fixture: [`tests/fixtures/wasm_steady_culvert_tier1.json`](tests/fixtures/wasm_steady_culvert_tier1.json).
+Culvert hydraulics are covered by **40+** focused unit tests in `src/solvers/culvert.rs` and steady reach integration tests in `src/solvers/steady.rs`, including:
+
+| Configuration | What is tested |
+|---------------|----------------|
+| Shapes | Circular, box, arch, ConSpan geometry and full solves |
+| Inlet types | All FHWA nomograph codes per shape |
+| Control regimes | Inlet, outlet, full/partial roadway overtopping |
+| Barrel slope | Adverse, flat, and downhill grade |
+| Blockage & roughness | Sediment `depth_blocked`, composite bottom *n* |
+| Multi-barrel | Active barrel count, uniform and per-barrel geometry, capacity-based $Q$ split |
+| Skew | Projected span / friction length, 59° clamp |
+| Diagnostics & rating curve | Extended outputs; monotonic HW vs $Q$ for all shapes |
+| Reach integration | `solve_steady` with skew, blocked barrels, per-barrel spans, sediment |
+
+WASM JSON contract tests and Python pytest cases provide additional coverage. Example steady fixture: [`tests/fixtures/wasm_steady_culvert_tier1.json`](tests/fixtures/wasm_steady_culvert_tier1.json).
+
+CI uploads coverage to [Codecov](https://codecov.io) on every push/PR (`.github/workflows/ci.yml`).
 
 ### 4. Running the Test Suites
 
+* **Coverage + tests (recommended before commit):**
+  ```bash
+  ./scripts/install_git_hooks.sh   # once per clone — enables pre-commit hook
+  ./scripts/run_coverage.sh        # manual: tests + lcov.info (same as CI)
+  ```
 * **Rust unit and integration tests:**
   ```bash
   cargo test
@@ -402,11 +465,43 @@ const inputs = {
     culvert_crest_elevs: [35.0],           // optional roadway overtopping
     culvert_weir_coeffs: [2.6],
     culvert_weir_lengths: [28.0],
-    culvert_barrels: [1],
+    culvert_barrels: [2],
+    culvert_active_barrels: [2],           // optional — omit to use all barrels
+    culvert_skew_angles: [15.0],           // optional — degrees from normal
+    culvert_barrel_spans: [[8.0, 6.0]],    // optional — per-barrel diameters/widths
+    culvert_barrel_rises: [[6.0, 6.0]],    // optional — per-barrel rises
 };
 
 const results = solveSteady(inputs);
 console.log(results.culvert_control_types);  // e.g. ["inlet"]
+console.log(results.culvert_wsel_inlet, results.culvert_q_barrels);
+```
+
+#### Culvert rating curve (WASM)
+
+```javascript
+import { computeCulvertRatingCurve } from './pkg/streams1d.js';
+
+const curve = computeCulvertRatingCurve({
+    q_values: [50, 100, 150],
+    shape_type: 0,
+    span: 5.0,
+    rise: 5.0,
+    tw_wsel: 12.0,
+    z_up: 10.0,
+    z_down: 9.0,
+    units: 'USCustomary',
+    roughness_n: 0.012,
+    length: 100.0,
+    entrance_loss_coeff: 0.5,
+    exit_loss_coeff: 1.0,
+    inlet_type: 1,
+    num_barrels: 2,
+    skew_deg: 0,
+    barrel_spans: [5.0, 5.0],
+    barrel_rises: [5.0, 5.0],
+});
+console.log(curve.wsel, curve.control_types);
 ```
 
 ### 2. Python Usage Example
@@ -495,10 +590,17 @@ inputs = st.SteadyInputs(
     culvert_crest_elevs=[14.0],
     culvert_weir_lengths=[20.0],
     culvert_barrels=[2],
+    culvert_active_barrels=[2],
+    culvert_skew_angles=[15.0],
+    culvert_barrel_spans=[[8.0, 6.0]],
+    culvert_barrel_rises=[[6.0, 6.0]],
 )
 results = st.solve_steady(inputs)
 print("Culvert control:", results.get("culvert_control_types"))
+print("Diagnostics:", results.get("culvert_wsel_inlet"), results.get("culvert_q_barrels"))
 ```
+
+> **Note:** Python `SteadyInputs` may lag the WASM schema for newest fields (`culvert_skew_angles`, `culvert_active_barrels`, per-barrel geometry). Pass the same keys via JSON/`to_dict()` or extend `python/streams1d/__init__.py` — the Rust solver accepts them in JSON either way.
 
 ---
 

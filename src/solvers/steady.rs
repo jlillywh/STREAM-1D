@@ -1475,6 +1475,47 @@ mod tests {
     }
 
     #[test]
+    fn test_steady_culvert_geometry_and_blockage_integration() {
+        let channel = culvert_tier1_channel();
+        let base = base_culvert_tier1_inputs(channel.clone());
+        let base_hw = solve_steady(&base).wsel[1];
+
+        // Skew increases headwater in outlet-control tailwater regime
+        let mut skew_inputs = base_culvert_tier1_inputs(channel.clone());
+        skew_inputs.downstream_wsel = Some(15.0);
+        skew_inputs.culvert_skew_angles = Some(vec![30.0]);
+        let skew_hw = solve_steady(&skew_inputs).wsel[1];
+        skew_inputs.culvert_skew_angles = Some(vec![0.0]);
+        assert!(skew_hw > solve_steady(&skew_inputs).wsel[1]);
+
+        // Blocked barrel count increases headwater
+        let mut blocked_inputs = base_culvert_tier1_inputs(channel.clone());
+        blocked_inputs.culvert_barrels = Some(vec![2]);
+        blocked_inputs.culvert_active_barrels = Some(vec![2]);
+        let two_barrel_hw = solve_steady(&blocked_inputs).wsel[1];
+        blocked_inputs.culvert_active_barrels = Some(vec![1]);
+        assert!(solve_steady(&blocked_inputs).wsel[1] > two_barrel_hw);
+
+        // Per-barrel geometry (one large + one small barrel)
+        let mut mixed_inputs = base_culvert_tier1_inputs(channel.clone());
+        mixed_inputs.culvert_barrels = Some(vec![2]);
+        mixed_inputs.culvert_active_barrels = Some(vec![2]);
+        mixed_inputs.culvert_barrel_spans = Some(vec![vec![8.0, 4.0]]);
+        mixed_inputs.culvert_barrel_rises = Some(vec![vec![8.0, 4.0]]);
+        let mut equal_inputs = mixed_inputs.clone();
+        equal_inputs.culvert_barrel_spans = None;
+        equal_inputs.culvert_barrel_rises = None;
+        equal_inputs.culvert_spans = Some(vec![4.0]);
+        equal_inputs.culvert_rises = Some(vec![4.0]);
+        assert!(solve_steady(&mixed_inputs).wsel[1] < solve_steady(&equal_inputs).wsel[1]);
+
+        // Sediment blockage through steady path
+        let mut sediment_inputs = base_culvert_tier1_inputs(channel);
+        sediment_inputs.culvert_depth_blockeds = Some(vec![1.0]);
+        assert!(solve_steady(&sediment_inputs).wsel[1] > base_hw);
+    }
+
+    #[test]
     fn test_steady_culvert_sensitivity() {
         let xs200 = CrossSection {
             station: 200.0,
