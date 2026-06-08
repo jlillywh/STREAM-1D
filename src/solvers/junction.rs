@@ -169,6 +169,12 @@ pub fn solve_steady_junction(inputs: &SteadyInputs) -> SteadyResult {
         out_eg_slope[orig_idx] = src.eg_slope[src_idx];
     }
 
+    let culvert_control_types = merge_culvert_controls(
+        inputs.culvert_stations.as_deref(),
+        ds_result.culvert_control_types.as_deref(),
+        us_result.culvert_control_types.as_deref(),
+    );
+
     SteadyResult {
         wsel: out_wsel,
         critical_wsel: out_yc,
@@ -180,6 +186,36 @@ pub fn solve_steady_junction(inputs: &SteadyInputs) -> SteadyResult {
         tributary_wsel: Some(trib_result.wsel),
         tributary_velocity: Some(trib_result.velocity),
         tributary_froude: Some(trib_result.froude),
+        culvert_control_types,
+    }
+}
+
+fn merge_culvert_controls(
+    stations: Option<&[f64]>,
+    ds: Option<&[String]>,
+    us: Option<&[String]>,
+) -> Option<Vec<String>> {
+    let n = stations?.len();
+    if n == 0 {
+        return None;
+    }
+    let mut out = vec![String::new(); n];
+    for i in 0..n {
+        if let Some(ds_types) = ds {
+            if i < ds_types.len() && !ds_types[i].is_empty() {
+                out[i] = ds_types[i].clone();
+            }
+        }
+        if let Some(us_types) = us {
+            if i < us_types.len() && !us_types[i].is_empty() {
+                out[i] = us_types[i].clone();
+            }
+        }
+    }
+    if out.iter().all(|s| s.is_empty()) {
+        None
+    } else {
+        Some(out)
     }
 }
 
@@ -198,6 +234,76 @@ mod tests {
             unit_system: UnitSystem::Metric,
             is_overbank: None,
         }
+    }
+
+    #[test]
+    fn test_merge_culvert_controls() {
+        let merged = merge_culvert_controls(
+            Some(&[100.0, 50.0]),
+            Some(&[String::new(), "outlet".to_string()]),
+            Some(&["inlet".to_string(), String::new()]),
+        )
+        .unwrap();
+        assert_eq!(merged, vec!["inlet", "outlet"]);
+        assert!(merge_culvert_controls(
+            Some(&[100.0]),
+            Some(&[String::new()]),
+            Some(&[String::new()])
+        )
+        .is_none());
+    }
+
+    fn us_rect(station: f64, bed: f64, n: f64) -> CrossSection {
+        CrossSection {
+            station,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![bed + 5.0, bed, bed, bed + 5.0],
+            n_stations: vec![0.0],
+            n_values: vec![n],
+            unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
+        }
+    }
+
+    #[test]
+    fn test_junction_culvert_control_types() {
+        let main = vec![
+            us_rect(1000.0, 2.0, 0.02),
+            us_rect(500.0, 1.0, 0.02),
+            us_rect(100.0, 1.0, 0.02),
+            us_rect(0.0, 0.0, 0.02),
+        ];
+        let trib = vec![us_rect(800.0, 1.5, 0.03), us_rect(400.0, 1.0, 0.03)];
+
+        let inputs = SteadyInputs {
+            cross_sections: main,
+            flow_rate: 10.0,
+            num_slices: Some(50),
+            regime: 0,
+            downstream_wsel: Some(1.5),
+            downstream_bc_type: Some(0),
+            tributary_cross_sections: Some(trib),
+            tributary_flow_rate: Some(5.0),
+            junction_main_station: Some(500.0),
+            culvert_stations: Some(vec![50.0]),
+            culvert_shape_types: Some(vec![0]),
+            culvert_spans: Some(vec![5.0]),
+            culvert_rises: Some(vec![5.0]),
+            culvert_roughness_ns: Some(vec![0.012]),
+            culvert_lengths: Some(vec![100.0]),
+            culvert_entrance_loss_coeffs: Some(vec![0.5]),
+            culvert_exit_loss_coeffs: Some(vec![1.0]),
+            culvert_inlet_types: Some(vec![1]),
+            ..Default::default()
+        };
+
+        let result = solve_steady_junction(&inputs);
+        let controls = result
+            .culvert_control_types
+            .as_ref()
+            .expect("culvert_control_types on junction run");
+        assert_eq!(controls.len(), 1);
+        assert_eq!(controls[0], "inlet");
     }
 
     #[test]

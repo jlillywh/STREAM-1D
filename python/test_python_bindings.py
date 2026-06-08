@@ -114,6 +114,18 @@ def main():
             print(f"ERROR: Station {station} not found in model geometry!")
             all_passed = False
 
+    # 5. Culvert control type reporting (Tier 1)
+    if culvert_stations:
+        control_types = results.get("culvert_control_types")
+        if not control_types or len(control_types) != len(culvert_stations):
+            print("FAIL: culvert_control_types missing or wrong length")
+            all_passed = False
+        elif control_types[0] not in ("inlet", "outlet", "overtopping"):
+            print(f"FAIL: unexpected culvert control type: {control_types[0]}")
+            all_passed = False
+        else:
+            print(f"Culvert control type at station {culvert_stations[0]}: {control_types[0]} [PASS]")
+
     print("---------------------------------------------------------")
     if all_passed:
         print("✅ SUCCESS: Python bindings verified successfully!")

@@ -142,6 +142,86 @@ def test_solve_steady_integrated_bridge():
     assert abs(result['wsel'][2] - 3.0) < 1e-4
     assert abs(result['wsel'][1] - 3.00247) < 0.001
 
+def test_steady_inputs_culvert_tier1_serialization():
+    xs = st.CrossSection(100.0, [0.0, 10.0], [1.0, 1.0], [0.0], [0.035], "USCustomary")
+    inputs = st.SteadyInputs(
+        cross_sections=[xs],
+        flow_rate=50.0,
+        culvert_stations=[50.0],
+        culvert_shape_types=[0],
+        culvert_spans=[5.0],
+        culvert_rises=[5.0],
+        culvert_inlet_types=[1],
+        culvert_z_ups=[10.5],
+        culvert_z_downs=[9.0],
+        culvert_crest_elevs=[14.0],
+        culvert_weir_coeffs=[2.6],
+        culvert_weir_lengths=[20.0],
+    )
+    d = inputs.to_dict()
+    assert d['culvert_inlet_types'] == [1]
+    assert d['culvert_z_ups'] == [10.5]
+    assert d['culvert_z_downs'] == [9.0]
+    assert d['culvert_crest_elevs'] == [14.0]
+    assert d['culvert_weir_coeffs'] == [2.6]
+    assert d['culvert_weir_lengths'] == [20.0]
+
+def _culvert_channel_us():
+    xs200 = st.CrossSection(200.0, [0.0, 0.0, 10.0, 10.0], [12.0, 2.0, 2.0, 12.0], [0.0], [0.02], "USCustomary")
+    xs100 = st.CrossSection(100.0, [0.0, 0.0, 10.0, 10.0], [11.0, 1.0, 1.0, 11.0], [0.0], [0.02], "USCustomary")
+    xs0 = st.CrossSection(0.0, [0.0, 0.0, 10.0, 10.0], [10.0, 0.0, 0.0, 10.0], [0.0], [0.02], "USCustomary")
+    return [xs200, xs100, xs0]
+
+def test_solve_steady_culvert_control_types():
+    inputs = st.SteadyInputs(
+        cross_sections=_culvert_channel_us(),
+        flow_rate=100.0,
+        num_slices=50,
+        regime=0,
+        downstream_wsel=3.0,
+        downstream_bc_type=0,
+        culvert_stations=[50.0],
+        culvert_shape_types=[0],
+        culvert_spans=[5.0],
+        culvert_rises=[5.0],
+        culvert_roughness_ns=[0.012],
+        culvert_lengths=[100.0],
+        culvert_entrance_loss_coeffs=[0.5],
+        culvert_exit_loss_coeffs=[1.0],
+        culvert_inlet_types=[1],
+    )
+    result = st.solve_steady(inputs)
+    assert 'culvert_control_types' in result
+    assert result['culvert_control_types'] == ['inlet']
+
+def test_solve_steady_culvert_overtopping():
+    inputs = st.SteadyInputs(
+        cross_sections=_culvert_channel_us(),
+        flow_rate=500.0,
+        num_slices=50,
+        regime=0,
+        downstream_wsel=10.0,
+        downstream_bc_type=0,
+        culvert_stations=[50.0],
+        culvert_shape_types=[0],
+        culvert_spans=[5.0],
+        culvert_rises=[5.0],
+        culvert_roughness_ns=[0.012],
+        culvert_lengths=[100.0],
+        culvert_entrance_loss_coeffs=[0.5],
+        culvert_exit_loss_coeffs=[1.0],
+        culvert_inlet_types=[1],
+        culvert_z_ups=[10.0],
+        culvert_z_downs=[9.0],
+        culvert_crest_elevs=[14.0],
+        culvert_weir_coeffs=[2.6],
+        culvert_weir_lengths=[20.0],
+        culvert_barrels=[2],
+    )
+    result = st.solve_steady(inputs)
+    assert result['culvert_control_types'] == ['overtopping']
+    assert result['wsel'][1] > 14.0
+
 def test_solve_steady_tributary_junction():
     main = [
         st.CrossSection(1000.0, [0.0, 0.0, 10.0, 10.0], [5.2, 0.2, 0.2, 5.2], [0.0], [0.025], "Metric"),

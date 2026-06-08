@@ -1,0 +1,2 @@
+*.sh text eol=lf
+build_wasm.sh text eol=lf

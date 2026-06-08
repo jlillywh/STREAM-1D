@@ -58,6 +58,24 @@ pub struct SteadyInputs {
     /// Culvert depths blocked/filled with sediment (optional, in feet/meters)
     #[serde(default)]
     pub culvert_depth_blockeds: Option<Vec<f64>>,
+    /// FHWA inlet type per culvert (0 = legacy Ke threshold; see culvert solver docs).
+    #[serde(default)]
+    pub culvert_inlet_types: Option<Vec<i32>>,
+    /// Optional upstream culvert invert elevation per culvert (defaults to adjacent section bed).
+    #[serde(default)]
+    pub culvert_z_ups: Option<Vec<f64>>,
+    /// Optional downstream culvert invert elevation per culvert (defaults to adjacent section bed).
+    #[serde(default)]
+    pub culvert_z_downs: Option<Vec<f64>>,
+    /// Roadway/embankment crest elevation for overtopping weir per culvert (optional).
+    #[serde(default)]
+    pub culvert_crest_elevs: Option<Vec<f64>>,
+    /// Weir discharge coefficient per culvert (default 2.6 US / 1.44 metric).
+    #[serde(default)]
+    pub culvert_weir_coeffs: Option<Vec<f64>>,
+    /// Effective weir length per culvert (default span × num_barrels).
+    #[serde(default)]
+    pub culvert_weir_lengths: Option<Vec<f64>>,
 
     /// Stations where bridges are located (in user units, e.g. feet or meters)
     #[serde(default)]
@@ -147,6 +165,9 @@ pub struct SteadyResult {
     /// Tributary reach Froude number at each tributary cross-section.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tributary_froude: Option<Vec<f64>>,
+    /// Controlling mechanism per culvert: `"inlet"`, `"outlet"`, or `"overtopping"`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub culvert_control_types: Option<Vec<String>>,
 }
 
 impl GeometryTable {
@@ -580,6 +601,11 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
         _ => inputs.upstream_wsel.map(|w| if raw_units == UnitSystem::USCustomary { w * FT_TO_M } else { w }),
     }.unwrap_or(critical_wsels[0]);
 
+    let mut culvert_control_types: Option<Vec<String>> = inputs
+        .culvert_stations
+        .as_ref()
+        .map(|stations| vec![String::new(); stations.len()]);
+
     let mut structure_adjacent_indices = std::collections::HashSet::new();
     if let Some(ref c_stations) = inputs.culvert_stations {
         for &c_st in c_stations {
@@ -720,26 +746,42 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                 let culv_len = inputs.culvert_lengths.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(100.0);
                 let entrance_loss_coeff = inputs.culvert_entrance_loss_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.5);
                 let exit_loss_coeff = inputs.culvert_exit_loss_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(1.0);
-                let barrels = inputs.culvert_barrels.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(1).max(1) as f64;
                 let manning_n_bottom = inputs.culvert_roughness_n_bottoms.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(roughness_n);
                 let depth_bottom_n = inputs.culvert_depth_bottom_ns.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
                 let depth_blocked = inputs.culvert_depth_blockeds.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
+                let inlet_type = inputs.culvert_inlet_types.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0);
+                let crest_elev = inputs.culvert_crest_elevs.as_ref().and_then(|v| v.get(c_idx)).copied();
+                let weir_coeff = inputs.culvert_weir_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
+                let weir_length = inputs.culvert_weir_lengths.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
+                let num_barrels = inputs.culvert_barrels.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(1).max(1);
 
                 let tw_wsel_user = if raw_units == UnitSystem::USCustomary {
                     sub_wsel[i + 1] / FT_TO_M
                 } else {
                     sub_wsel[i + 1]
                 };
-                let z_down_user = if raw_units == UnitSystem::USCustomary {
+                let bed_z_down = if raw_units == UnitSystem::USCustomary {
                     densified_z_mins[i + 1] / FT_TO_M
                 } else {
                     densified_z_mins[i + 1]
                 };
-                let z_up_user = if raw_units == UnitSystem::USCustomary {
+                let bed_z_up = if raw_units == UnitSystem::USCustomary {
                     densified_z_mins[i] / FT_TO_M
                 } else {
                     densified_z_mins[i]
                 };
+                let z_down_user = inputs
+                    .culvert_z_downs
+                    .as_ref()
+                    .and_then(|v| v.get(c_idx))
+                    .copied()
+                    .unwrap_or(bed_z_down);
+                let z_up_user = inputs
+                    .culvert_z_ups
+                    .as_ref()
+                    .and_then(|v| v.get(c_idx))
+                    .copied()
+                    .unwrap_or(bed_z_up);
 
                 // Compute downstream velocity for exit loss calculation (using channel_area for contracted flow)
                 let ds_row = densified_tables[i + 1].interpolate(sub_wsel[i + 1]);
@@ -754,8 +796,11 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                     0.0
                 };
 
-                // Iteratively solve for upstream WSEL and upstream velocity
-                let mut wsel_up_user = tw_wsel_user; // initial guess
+                let mut wsel_up_user = tw_wsel_user;
+                let mut culvert_result = crate::solvers::culvert::CulvertSolveResult {
+                    wsel: tw_wsel_user,
+                    control_type: String::new(),
+                };
                 let table_up = &densified_tables[i];
 
                 for _ in 0..3 {
@@ -776,25 +821,37 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                         0.0
                     };
 
-                    wsel_up_user = crate::solvers::culvert::solve_culvert_wsel(
-                        inputs.flow_rate / barrels,
-                        shape_type,
-                        span,
-                        rise,
-                        roughness_n,
-                        culv_len,
-                        entrance_loss_coeff,
-                        exit_loss_coeff,
-                        z_down_user,
-                        z_up_user,
-                        tw_wsel_user,
-                        raw_units,
-                        manning_n_bottom,
-                        depth_bottom_n,
-                        depth_blocked,
-                        ds_velocity_user,
-                        us_velocity_user,
+                    culvert_result = crate::solvers::culvert::solve_culvert(
+                        &crate::solvers::culvert::CulvertSolveParams {
+                            q: inputs.flow_rate,
+                            shape_type,
+                            inlet_type,
+                            span,
+                            rise,
+                            roughness_n,
+                            length: culv_len,
+                            entrance_loss_coeff,
+                            exit_loss_coeff,
+                            z_down: z_down_user,
+                            z_up: z_up_user,
+                            tw_wsel: tw_wsel_user,
+                            units: raw_units,
+                            manning_n_bottom,
+                            depth_bottom_n,
+                            depth_blocked,
+                            ds_velocity: ds_velocity_user,
+                            us_velocity: us_velocity_user,
+                            crest_elev,
+                            weir_coeff,
+                            weir_length,
+                            num_barrels,
+                        },
                     );
+                    wsel_up_user = culvert_result.wsel;
+                }
+
+                if let Some(ref mut controls) = culvert_control_types {
+                    controls[c_idx] = culvert_result.control_type.clone();
                 }
 
                 sub_wsel[i] = if raw_units == UnitSystem::USCustomary {
@@ -976,6 +1033,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
         tributary_wsel: None,
         tributary_velocity: None,
         tributary_froude: None,
+        culvert_control_types,
     }
 }
 
@@ -1203,6 +1261,111 @@ mod tests {
 
         // Upstream section station 200 (index 0) WSEL is GVF solved starting from station 100's solved WSEL.
         assert!(result.wsel[0] > 2.0);
+
+        let controls = result.culvert_control_types.expect("culvert_control_types");
+        assert_eq!(controls.len(), 1);
+        assert_eq!(controls[0], "inlet");
+    }
+
+    fn culvert_tier1_channel() -> Vec<CrossSection> {
+        vec![
+            CrossSection {
+                station: 200.0,
+                x: vec![0.0, 0.0, 10.0, 10.0],
+                y: vec![12.0, 2.0, 2.0, 12.0],
+                n_stations: vec![0.0],
+                n_values: vec![0.02],
+                unit_system: UnitSystem::USCustomary,
+                is_overbank: None,
+            },
+            CrossSection {
+                station: 100.0,
+                x: vec![0.0, 0.0, 10.0, 10.0],
+                y: vec![11.0, 1.0, 1.0, 11.0],
+                n_stations: vec![0.0],
+                n_values: vec![0.02],
+                unit_system: UnitSystem::USCustomary,
+                is_overbank: None,
+            },
+            CrossSection {
+                station: 0.0,
+                x: vec![0.0, 0.0, 10.0, 10.0],
+                y: vec![10.0, 0.0, 0.0, 10.0],
+                n_stations: vec![0.0],
+                n_values: vec![0.02],
+                unit_system: UnitSystem::USCustomary,
+                is_overbank: None,
+            },
+        ]
+    }
+
+    fn base_culvert_tier1_inputs(cross_sections: Vec<CrossSection>) -> SteadyInputs {
+        SteadyInputs {
+            cross_sections,
+            flow_rate: 100.0,
+            num_slices: Some(50),
+            regime: 0,
+            downstream_wsel: Some(3.0),
+            culvert_stations: Some(vec![50.0]),
+            culvert_shape_types: Some(vec![0]),
+            culvert_spans: Some(vec![5.0]),
+            culvert_rises: Some(vec![5.0]),
+            culvert_roughness_ns: Some(vec![0.012]),
+            culvert_lengths: Some(vec![100.0]),
+            culvert_entrance_loss_coeffs: Some(vec![0.5]),
+            culvert_exit_loss_coeffs: Some(vec![1.0]),
+            culvert_inlet_types: Some(vec![1]),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn test_steady_culvert_tier1_integration() {
+        let channel = culvert_tier1_channel();
+
+        // Inlet control + explicit inlet type + control reporting
+        let inlet_result = solve_steady(&base_culvert_tier1_inputs(channel.clone()));
+        let controls = inlet_result
+            .culvert_control_types
+            .as_ref()
+            .expect("culvert_control_types");
+        assert_eq!(controls.len(), 1);
+        assert_eq!(controls[0], "inlet");
+        assert!((inlet_result.wsel[1] - 5.25).abs() < 0.05);
+
+        // Outlet control via high tailwater
+        let mut outlet_inputs = base_culvert_tier1_inputs(channel.clone());
+        outlet_inputs.downstream_wsel = Some(15.0);
+        let outlet_result = solve_steady(&outlet_inputs);
+        assert_eq!(
+            outlet_result.culvert_control_types.as_ref().unwrap()[0],
+            "outlet"
+        );
+
+        // Raised invert increases headwater vs bed-invert default
+        let bed_result = solve_steady(&base_culvert_tier1_inputs(channel.clone()));
+        let mut invert_inputs = base_culvert_tier1_inputs(channel.clone());
+        invert_inputs.culvert_z_ups = Some(vec![12.0]);
+        invert_inputs.culvert_z_downs = Some(vec![11.0]);
+        let invert_result = solve_steady(&invert_inputs);
+        assert!(invert_result.wsel[1] > bed_result.wsel[1]);
+
+        // Roadway overtopping — align invert/tailwater with unit-test geometry (low outlet depth)
+        let mut ot_inputs = base_culvert_tier1_inputs(channel);
+        ot_inputs.flow_rate = 500.0;
+        ot_inputs.downstream_wsel = Some(10.0);
+        ot_inputs.culvert_z_ups = Some(vec![10.0]);
+        ot_inputs.culvert_z_downs = Some(vec![9.0]);
+        ot_inputs.culvert_crest_elevs = Some(vec![14.0]);
+        ot_inputs.culvert_weir_lengths = Some(vec![20.0]);
+        ot_inputs.culvert_weir_coeffs = Some(vec![2.6]);
+        ot_inputs.culvert_barrels = Some(vec![2]);
+        let ot_result = solve_steady(&ot_inputs);
+        assert_eq!(
+            ot_result.culvert_control_types.as_ref().unwrap()[0],
+            "overtopping"
+        );
+        assert!(ot_result.wsel[1] > 14.0);
     }
 
     #[test]

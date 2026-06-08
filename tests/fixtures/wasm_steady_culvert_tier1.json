@@ -1,0 +1,47 @@
+{
+  "cross_sections": [
+    {
+      "station": 200.0,
+      "x": [0.0, 0.0, 10.0, 10.0],
+      "y": [12.0, 2.0, 2.0, 12.0],
+      "n_stations": [0.0],
+      "n_values": [0.02],
+      "unit_system": "USCustomary"
+    },
+    {
+      "station": 100.0,
+      "x": [0.0, 0.0, 10.0, 10.0],
+      "y": [11.0, 1.0, 1.0, 11.0],
+      "n_stations": [0.0],
+      "n_values": [0.02],
+      "unit_system": "USCustomary"
+    },
+    {
+      "station": 0.0,
+      "x": [0.0, 0.0, 10.0, 10.0],
+      "y": [10.0, 0.0, 0.0, 10.0],
+      "n_stations": [0.0],
+      "n_values": [0.02],
+      "unit_system": "USCustomary"
+    }
+  ],
+  "flow_rate": 100.0,
+  "num_slices": 50,
+  "regime": 0,
+  "downstream_wsel": 3.0,
+  "culvert_stations": [50.0],
+  "culvert_shape_types": [0],
+  "culvert_spans": [5.0],
+  "culvert_rises": [5.0],
+  "culvert_roughness_ns": [0.012],
+  "culvert_lengths": [100.0],
+  "culvert_entrance_loss_coeffs": [0.5],
+  "culvert_exit_loss_coeffs": [1.0],
+  "culvert_inlet_types": [1],
+  "culvert_z_ups": [10.0],
+  "culvert_z_downs": [9.0],
+  "culvert_crest_elevs": [14.0],
+  "culvert_weir_coeffs": [2.6],
+  "culvert_weir_lengths": [20.0],
+  "culvert_barrels": [2]
+}

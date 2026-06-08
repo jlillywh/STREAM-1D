@@ -1,8 +1,34 @@
 pub mod utils;
 pub mod geometry;
 pub mod solvers;
+pub mod wasm_api;
 
 use wasm_bindgen::prelude::*;
+
+/// Returns the engine semantic version string (e.g. `"0.1.0"`).
+#[wasm_bindgen(js_name = getEngineVersion)]
+pub fn get_engine_version_wasm() -> String {
+    wasm_api::ENGINE_VERSION.to_string()
+}
+
+/// Returns WASM API metadata (inlet codes, shape types, Tier 1 field names, `api_version`).
+///
+/// Host apps should call this after `init()` to detect contract version and populate UI enums.
+#[wasm_bindgen(js_name = getWasmApiMetadata)]
+pub fn get_wasm_api_metadata_wasm() -> Result<JsValue, JsValue> {
+    serde_wasm_bindgen::to_value(&wasm_api::build_api_metadata())
+        .map_err(|e| JsValue::from_str(&format!("Failed to serialize API metadata: {}", e)))
+}
+
+/// Validates a `SteadyInputs` object without running the solver.
+///
+/// Use in the web app before dispatching to a Worker to surface JSON/schema errors early.
+#[wasm_bindgen(js_name = validateSteadyInputs)]
+pub fn validate_steady_inputs_wasm(inputs_val: JsValue) -> Result<(), JsValue> {
+    let _: solvers::SteadyInputs = serde_wasm_bindgen::from_value(inputs_val)
+        .map_err(|e| JsValue::from_str(&format!("Invalid SteadyInputs: {}", e)))?;
+    Ok(())
+}
 
 /// WebAssembly entrypoint to run a steady-state hydraulic profile simulation.
 /// Receives a serialized `SteadyInputs` JS object and returns a `SteadyResult` JS object.
