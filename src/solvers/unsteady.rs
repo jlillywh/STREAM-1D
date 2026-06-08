@@ -1,4 +1,4 @@
-use crate::utils::{G_METRIC, UnitSystem, FT_TO_M, Mat2, Vec2, solve_block_tridiagonal};
+use crate::utils::{G_METRIC, UnitSystem, FT_TO_M, Mat2, Vec2, solve_block_tridiagonal, structure_in_reach_interval};
 use crate::geometry::{CrossSection, GeometryTable};
 
 /// Culvert model fields for unsteady routing (flattened into JSON; same keys as steady).
@@ -137,9 +137,7 @@ fn find_culvert_intervals(
             c_st
         };
         for i in 0..densified_stations.len().saturating_sub(1) {
-            if c_st_metric >= densified_stations[i + 1] - 1e-4
-                && c_st_metric < densified_stations[i] + 1e-4
-            {
+            if structure_in_reach_interval(c_st_metric, &densified_stations, i) {
                 out.push((i, c_idx));
                 break;
             }
