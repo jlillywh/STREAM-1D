@@ -1,5 +1,7 @@
 # Web GUI: Culvert Tier 1 Integration
 
+> **Superseded:** Use the combined handoff spec **[`web_gui_culvert_integration.md`](web_gui_culvert_integration.md)** (Tier 1 + Tier 2a, API v3). This file is kept for history.
+
 Implementation prompt for expanding the **Culverts** geometry editor to use STREAM-1D engine **API version 2** (Tier 1 culvert features).
 
 ---

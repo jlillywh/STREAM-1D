@@ -3,7 +3,7 @@
 use serde::Serialize;
 
 /// API contract version — increment when SteadyInputs / SteadyResult fields change.
-pub const API_VERSION: u32 = 2;
+pub const API_VERSION: u32 = 3;
 
 /// Engine package version (keep in sync with `Cargo.toml`).
 pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -25,12 +25,19 @@ pub struct WasmApiMetadata {
     pub culvert_inlet_types: Vec<EnumEntry>,
     pub culvert_control_types: Vec<String>,
     pub culvert_tier1_fields: CulvertTier1Fields,
+    pub culvert_tier2a_fields: CulvertTier2aFields,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct CulvertTier1Fields {
     pub inputs: Vec<String>,
     pub outputs: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CulvertTier2aFields {
+    pub steady_outputs: Vec<String>,
+    pub rating_curve_entry_point: String,
 }
 
 pub fn build_api_metadata() -> WasmApiMetadata {
@@ -44,6 +51,7 @@ pub fn build_api_metadata() -> WasmApiMetadata {
             "getEngineVersion".to_string(),
             "getWasmApiMetadata".to_string(),
             "validateSteadyInputs".to_string(),
+            "computeCulvertRatingCurve".to_string(),
         ],
         field_naming: "snake_case (match Rust/Python JSON)".to_string(),
         culvert_shape_types: vec![
@@ -136,6 +144,18 @@ pub fn build_api_metadata() -> WasmApiMetadata {
             ],
             outputs: vec!["culvert_control_types".to_string()],
         },
+        culvert_tier2a_fields: CulvertTier2aFields {
+            steady_outputs: vec![
+                "culvert_wsel_inlet".to_string(),
+                "culvert_wsel_outlet".to_string(),
+                "culvert_q_barrels".to_string(),
+                "culvert_q_weirs".to_string(),
+                "culvert_barrel_depths".to_string(),
+                "culvert_barrel_velocities".to_string(),
+                "culvert_barrel_froude".to_string(),
+            ],
+            rating_curve_entry_point: "computeCulvertRatingCurve".to_string(),
+        },
     }
 }
 
@@ -148,7 +168,7 @@ mod tests {
     fn test_api_metadata_serializes() {
         let json = serde_json::to_string(&build_api_metadata()).unwrap();
         assert!(json.contains("culvert_inlet_types"));
-        assert!(json.contains("\"api_version\":2"));
+        assert!(json.contains("\"api_version\":3"));
     }
 
     #[test]
@@ -170,6 +190,13 @@ mod tests {
             tributary_velocity: None,
             tributary_froude: None,
             culvert_control_types: Some(vec!["inlet".to_string()]),
+            culvert_wsel_inlet: Some(vec![14.5]),
+            culvert_wsel_outlet: Some(vec![13.0]),
+            culvert_q_barrels: Some(vec![100.0]),
+            culvert_q_weirs: Some(vec![0.0]),
+            culvert_barrel_depths: Some(vec![3.0]),
+            culvert_barrel_velocities: Some(vec![5.0]),
+            culvert_barrel_froude: Some(vec![0.8]),
         })
         .unwrap();
         assert!(result_json.contains("culvert_control_types"));

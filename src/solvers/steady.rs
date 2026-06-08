@@ -168,6 +168,27 @@ pub struct SteadyResult {
     /// Controlling mechanism per culvert: `"inlet"`, `"outlet"`, or `"overtopping"`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub culvert_control_types: Option<Vec<String>>,
+    /// Tier 2a — inlet-control headwater per culvert (user units).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub culvert_wsel_inlet: Option<Vec<f64>>,
+    /// Tier 2a — outlet-control headwater per culvert (user units).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub culvert_wsel_outlet: Option<Vec<f64>>,
+    /// Tier 2a — barrel discharge per culvert (user units).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub culvert_q_barrels: Option<Vec<f64>>,
+    /// Tier 2a — weir discharge when overtopping per culvert (user units).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub culvert_q_weirs: Option<Vec<f64>>,
+    /// Tier 2a — flow depth in barrel at downstream end (user units).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub culvert_barrel_depths: Option<Vec<f64>>,
+    /// Tier 2a — mean barrel velocity (user units).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub culvert_barrel_velocities: Option<Vec<f64>>,
+    /// Tier 2a — barrel Froude number.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub culvert_barrel_froude: Option<Vec<f64>>,
 }
 
 impl GeometryTable {
@@ -601,10 +622,16 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
         _ => inputs.upstream_wsel.map(|w| if raw_units == UnitSystem::USCustomary { w * FT_TO_M } else { w }),
     }.unwrap_or(critical_wsels[0]);
 
-    let mut culvert_control_types: Option<Vec<String>> = inputs
-        .culvert_stations
-        .as_ref()
-        .map(|stations| vec![String::new(); stations.len()]);
+    let culvert_count = inputs.culvert_stations.as_ref().map(|s| s.len());
+    let mut culvert_control_types: Option<Vec<String>> =
+        culvert_count.map(|n| vec![String::new(); n]);
+    let mut culvert_wsel_inlet: Option<Vec<f64>> = culvert_count.map(|n| vec![0.0; n]);
+    let mut culvert_wsel_outlet: Option<Vec<f64>> = culvert_count.map(|n| vec![0.0; n]);
+    let mut culvert_q_barrels: Option<Vec<f64>> = culvert_count.map(|n| vec![0.0; n]);
+    let mut culvert_q_weirs: Option<Vec<f64>> = culvert_count.map(|n| vec![0.0; n]);
+    let mut culvert_barrel_depths: Option<Vec<f64>> = culvert_count.map(|n| vec![0.0; n]);
+    let mut culvert_barrel_velocities: Option<Vec<f64>> = culvert_count.map(|n| vec![0.0; n]);
+    let mut culvert_barrel_froude: Option<Vec<f64>> = culvert_count.map(|n| vec![0.0; n]);
 
     let mut structure_adjacent_indices = std::collections::HashSet::new();
     if let Some(ref c_stations) = inputs.culvert_stations {
@@ -800,6 +827,13 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                 let mut culvert_result = crate::solvers::culvert::CulvertSolveResult {
                     wsel: tw_wsel_user,
                     control_type: String::new(),
+                    wsel_inlet: 0.0,
+                    wsel_outlet: 0.0,
+                    q_barrel: 0.0,
+                    q_weir: 0.0,
+                    barrel_depth: 0.0,
+                    barrel_velocity: 0.0,
+                    barrel_froude: 0.0,
                 };
                 let table_up = &densified_tables[i];
 
@@ -852,6 +886,27 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
 
                 if let Some(ref mut controls) = culvert_control_types {
                     controls[c_idx] = culvert_result.control_type.clone();
+                }
+                if let Some(ref mut v) = culvert_wsel_inlet {
+                    v[c_idx] = culvert_result.wsel_inlet;
+                }
+                if let Some(ref mut v) = culvert_wsel_outlet {
+                    v[c_idx] = culvert_result.wsel_outlet;
+                }
+                if let Some(ref mut v) = culvert_q_barrels {
+                    v[c_idx] = culvert_result.q_barrel;
+                }
+                if let Some(ref mut v) = culvert_q_weirs {
+                    v[c_idx] = culvert_result.q_weir;
+                }
+                if let Some(ref mut v) = culvert_barrel_depths {
+                    v[c_idx] = culvert_result.barrel_depth;
+                }
+                if let Some(ref mut v) = culvert_barrel_velocities {
+                    v[c_idx] = culvert_result.barrel_velocity;
+                }
+                if let Some(ref mut v) = culvert_barrel_froude {
+                    v[c_idx] = culvert_result.barrel_froude;
                 }
 
                 sub_wsel[i] = if raw_units == UnitSystem::USCustomary {
@@ -1034,6 +1089,13 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
         tributary_velocity: None,
         tributary_froude: None,
         culvert_control_types,
+        culvert_wsel_inlet,
+        culvert_wsel_outlet,
+        culvert_q_barrels,
+        culvert_q_weirs,
+        culvert_barrel_depths,
+        culvert_barrel_velocities,
+        culvert_barrel_froude,
     }
 }
 
@@ -1265,6 +1327,12 @@ mod tests {
         let controls = result.culvert_control_types.expect("culvert_control_types");
         assert_eq!(controls.len(), 1);
         assert_eq!(controls[0], "inlet");
+
+        let q_barrels = result.culvert_q_barrels.expect("culvert_q_barrels");
+        assert!((q_barrels[0] - 100.0).abs() < 1e-6);
+        let wsel_inlet = result.culvert_wsel_inlet.expect("culvert_wsel_inlet");
+        assert!((wsel_inlet[0] - hw_wsel).abs() < 0.05);
+        assert!(result.culvert_barrel_velocities.expect("vel")[0] > 0.0);
     }
 
     fn culvert_tier1_channel() -> Vec<CrossSection> {

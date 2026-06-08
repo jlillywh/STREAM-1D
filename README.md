@@ -11,9 +11,9 @@ STREAM-1D is a Rust 1D open-channel hydraulics engine. It provides steady gradua
 * **Embeddable Execution:** Run hydraulic simulations in web dashboards or Python data pipelines without requiring desktop hydraulic software.
 * **Structural Hydraulics:** Model inline structures and composite roughness on single reaches or a main stem with one joining tributary (steady)—culverts, bridge piers, roadway overtopping, and multi-zone Manning's *n*.
 * **Unsteady Routing:** Dynamic routing with upstream flow and downstream stage hydrographs; stabilization for steep transients and mixed regimes is an active development focus.
-* **WebAssembly API:** Browser and Worker integration via `solveSteady` / `solveUnsteady`, metadata discovery (`getWasmApiMetadata`), and input validation (`validateSteadyInputs`). Culvert Tier 1 fields (explicit inlet types, invert overrides, roadway overtopping, control reporting) ship at **API version 2**.
+* **WebAssembly API:** Browser and Worker integration via `solveSteady` / `solveUnsteady`, `computeCulvertRatingCurve`, metadata discovery (`getWasmApiMetadata`), and input validation (`validateSteadyInputs`). Culvert **Tier 1** (explicit inlet types, invert overrides, roadway overtopping, control reporting) and **Tier 2a** (extended culvert diagnostics, headwater rating curves) ship at **API version 3**.
 
-**Web app integrators:** See [`docs/wasm_integration.md`](docs/wasm_integration.md) for Worker setup and culvert field mapping. Steady tributary junctions use a two-branch API (one main stem array + one tributary array). HEC-RAS projects with three reaches at a confluence must merge or concatenate the upper and lower main stems before calling WASM. See [`docs/web_gui_tributary_junction.md`](docs/web_gui_tributary_junction.md). Culvert GUI expansion spec: [`docs/web_gui_culvert_tier1.md`](docs/web_gui_culvert_tier1.md).
+**Web app integrators:** See [`docs/wasm_integration.md`](docs/wasm_integration.md) for Worker setup and culvert field mapping. Steady tributary junctions use a two-branch API (one main stem array + one tributary array). HEC-RAS projects with three reaches at a confluence must merge or concatenate the upper and lower main stems before calling WASM. See [`docs/web_gui_tributary_junction.md`](docs/web_gui_tributary_junction.md). Culvert GUI handoff spec (Tier 1 + Tier 2a): [`docs/web_gui_culvert_integration.md`](docs/web_gui_culvert_integration.md).
 
 ## Architecture
 
@@ -36,10 +36,10 @@ STREAM-1D is an **embeddable 1D hydraulics engine** — the Rust/WASM/Python sol
 | **Boundary conditions (steady)** | Known WSEL, critical depth, normal depth, rating curve (upstream and downstream) |
 | **Cross-sections** | Arbitrary $(x,y)$ polylines; composite Manning's *n*; optional channel/overbank subdivision (`is_overbank`) |
 | **Main stem + tributary (steady)** | One tributary joining one main channel at a shared WSEL node — main stem above/below the junction plus tributary inflow (`tributary_cross_sections`, `tributary_flow_rate`, `junction_main_station`); subcritical only (see [`docs/web_gui_tributary_junction.md`](docs/web_gui_tributary_junction.md)) |
-| **Culverts (steady, main stem)** | Circular, box, arch, and ConSpan; FHWA-style inlet/outlet control; explicit inlet types; optional invert elevations, roadway overtopping weir, bottom roughness layer, and sediment blockage depth; returns per-culvert control type (`inlet` / `outlet` / `overtopping`) |
+| **Culverts (steady, main stem)** | Circular, box, arch, and ConSpan; FHWA-style inlet/outlet control with signed barrel slope (adverse grade supported). **Tier 1:** explicit inlet types, optional invert elevations, roadway overtopping weir, composite bottom roughness, sediment blockage depth, per-culvert control type (`inlet` / `outlet` / `overtopping`). **Tier 2a:** extended diagnostics per culvert — inlet vs outlet headwater, barrel vs weir discharge split, barrel depth, velocity, and Froude number; standalone `computeCulvertRatingCurve` for headwater vs $Q$ at fixed tailwater |
 | **Bridges (steady, main stem)** | Yarnell Class A pier loss; pressure (orifice) flow; roadway weir overtopping |
 | **Unsteady flow** | Preissmann Saint-Venant on a **single reach**; upstream $Q(t)$ and downstream WSEL($t$) hydrographs |
-| **Outputs** | WSEL, critical WSEL, velocity, area, top width, Froude number, energy grade slope (+ `tributary_wsel`, `tributary_velocity`, `tributary_froude` when a junction is modeled; + `culvert_control_types` per culvert when structures are modeled) |
+| **Outputs** | WSEL, critical WSEL, velocity, area, top width, Froude number, energy grade slope (+ `tributary_wsel`, `tributary_velocity`, `tributary_froude` when a junction is modeled; + `culvert_control_types` and Tier 2a culvert arrays — `culvert_wsel_inlet`, `culvert_wsel_outlet`, `culvert_q_barrels`, `culvert_q_weirs`, `culvert_barrel_depths`, `culvert_barrel_velocities`, `culvert_barrel_froude` — when culverts are modeled) |
 
 ### Companion web application features (not in this repository)
 
@@ -60,7 +60,7 @@ These are implemented in the **web GUI** that uses this engine, not in the Rust/
 | **Storage & diversions** | Ponds, reservoirs, split flow, lateral structures, pumps, gates | Not modeled |
 | **Inline weirs & dams** | Standalone weirs, inline structures, dam breach | Not modeled (bridge roadway overtopping only) |
 | **Bridge hydraulics** | Full low-flow classes, pressure/weir combinations, bridge methods, abutments, deck geometry | Yarnell **Class A pier loss** only; simplified pressure + weir overtopping; no abutment or Class B/C low flow |
-| **Culvert hydraulics** | Full HEC-RAS culvert catalog, multiple barrels with skew | FHWA nomograph with explicit inlet types; multi-barrel equal split; optional invert offsets and roadway overtopping; no skew |
+| **Culvert hydraulics** | Full HEC-RAS culvert catalog (pipe-arch, horseshoe, etc.), barrel skew, unequal multi-barrel flow, supercritical barrel routing in mixed profiles, culverts in unsteady networks | FHWA nomograph (circular, box, arch, ConSpan) with explicit inlet types; multi-barrel **equal** $Q$ split; invert offsets, roadway overtopping, Tier 2a diagnostics and rating-curve API — **no** skew, extended shape catalog, unequal barrels, supercritical culvert solve in the upstream sweep, or unsteady inline culverts |
 | **Ineffective flow** | Roadway embankment blocking, blocked obstructions, storage from ineffective areas | Partial: `channel_area` at structure-adjacent sections when overbanks are subdivided — not full RAS ineffective-flow workflow |
 | **Terrain & mapping** | RAS Terrain, TIN/bathymetry authoring, RAS Map | **Not in the engine** — the companion **web app** may edit cross-sections and import HEC-RAS geometry; the solver only receives $(x,y)$ sections and stations |
 | **Sediment & morphology** | Mobile bed, sediment transport, scour | Not modeled (optional fixed culvert blockage depth only) |
@@ -103,7 +103,8 @@ streams1d/
 ├── docs/                       # Integration guides for host applications
 │   ├── wasm_integration.md     # WASM Worker setup, Tier 1 culvert mapping
 │   ├── wasm_api.types.ts       # TypeScript definitions for the web app
-│   ├── web_gui_culvert_tier1.md # Culvert GUI expansion spec (companion web app)
+│   ├── web_gui_culvert_integration.md # Culvert GUI spec — Tier 1 + Tier 2a (companion web app)
+│   ├── web_gui_culvert_tier1.md     # Superseded; see web_gui_culvert_integration.md
 │   └── web_gui_tributary_junction.md
 ├── examples/wasm/              # Worker reference + Node smoke test
 ├── tests/
@@ -158,6 +159,8 @@ Based on Federal Highway Administration (FHWA) standards, the inlet control head
 * **Invert overrides:** Optional `culvert_z_ups` / `culvert_z_downs` (defaults to adjacent section bed).
 * **Roadway overtopping:** Optional `culvert_crest_elevs` with `culvert_weir_coeffs` (default 2.6 US / 1.44 metric) and `culvert_weir_lengths` (default span × barrels).
 * **Control reporting:** Steady results include `culvert_control_types` aligned with `culvert_stations`.
+* **Tier 2a diagnostics (API v3):** Steady results also return `culvert_wsel_inlet`, `culvert_wsel_outlet`, `culvert_q_barrels`, `culvert_q_weirs`, `culvert_barrel_depths`, `culvert_barrel_velocities`, and `culvert_barrel_froude` per culvert. Barrel slope $S$ in the inlet nomograph includes adverse grade (upstream invert above downstream).
+* **Tier 2a rating curve:** `computeCulvertRatingCurve` samples headwater vs discharge at fixed tailwater for a single culvert (same geometry/loss fields as the steady solver).
 
 #### B. Outlet Control (Energy losses)
 The outlet control upstream elevation is computed via energy headwater balance:
@@ -231,12 +234,13 @@ This generates the WebAssembly module in the `./pkg` (browser) and `./pkg-node` 
 |----------|-------------|
 | `init()` | Load the WASM module (generated by wasm-pack) |
 | `getEngineVersion()` | Engine semver string |
-| `getWasmApiMetadata()` | `api_version`, culvert inlet/shape enums, Tier 1 field names |
+| `getWasmApiMetadata()` | `api_version`, culvert inlet/shape enums, Tier 1 / Tier 2a field lists |
 | `validateSteadyInputs(inputs)` | Parse-check a payload without solving |
 | `solveSteady(inputs)` | Steady GVF + structures → `SteadyResult` |
 | `solveUnsteady(inputs)` | Unsteady routing → `UnsteadyResult` |
+| `computeCulvertRatingCurve(inputs)` | Headwater vs $Q$ at fixed tailwater → `CulvertRatingCurveResult` |
 
-All payloads use **snake_case** field names (same schema as Python JSON). Check `getWasmApiMetadata().api_version` after each engine upgrade; **version 2** introduces Tier 1 culvert fields.
+All payloads use **snake_case** field names (same schema as Python JSON). Check `getWasmApiMetadata().api_version` after each engine upgrade; **version 3** adds Tier 2a culvert diagnostics and rating curves (version 2 introduced Tier 1 culvert inputs).
 
 ### 2. Python Target
 To compile and install the native Python extension locally:
@@ -266,9 +270,9 @@ The solver's calculated water surface elevations match HEC-RAS within a strict $
 ### 2. Bridge Pier Backwater Validation
 The bridge solver implements the HEC-RAS Yarnell equation for Class A low flow. On a 10 m rectangular channel ($Q = 15\text{ cms}$, downstream WSEL $= 3.0\text{ m}$, two $0.5\text{ m}$ square piers), the computed pier head loss is $H_{3-2} \approx 0.00247\text{ m}$, verified by unit tests against the closed-form HEC-RAS formula.
 
-### 3. Culvert Tier 1 Verification
+### 3. Culvert Tier 1 & Tier 2a Verification
 
-Culvert Tier 1 features (explicit inlet types, invert overrides, roadway overtopping, `culvert_control_types` output) are covered by Rust unit/integration tests, WASM JSON contract tests, and Python pytest cases. Example WASM fixture: [`tests/fixtures/wasm_steady_culvert_tier1.json`](tests/fixtures/wasm_steady_culvert_tier1.json).
+Culvert **Tier 1** (explicit inlet types, invert overrides, roadway overtopping, `culvert_control_types`) and **Tier 2a** (extended steady diagnostics, adverse barrel slope, `computeCulvertRatingCurve`) are covered by Rust unit/integration tests, WASM JSON contract tests, and Python pytest cases. Example WASM steady fixture: [`tests/fixtures/wasm_steady_culvert_tier1.json`](tests/fixtures/wasm_steady_culvert_tier1.json).
 
 ### 4. Running the Test Suites
 
@@ -505,5 +509,5 @@ print("Culvert control:", results.get("culvert_control_types"))
 | [`tech_spec.md`](tech_spec.md) | Host-app architecture |
 | [`docs/wasm_integration.md`](docs/wasm_integration.md) | Web / Worker integrators |
 | [`docs/wasm_api.types.ts`](docs/wasm_api.types.ts) | TypeScript types |
-| [`docs/web_gui_culvert_tier1.md`](docs/web_gui_culvert_tier1.md) | Culvert GUI expansion (companion web app) |
+| [`docs/web_gui_culvert_integration.md`](docs/web_gui_culvert_integration.md) | Culvert GUI handoff — Tier 1 + Tier 2a (companion web app) |
 | [`docs/web_gui_tributary_junction.md`](docs/web_gui_tributary_junction.md) | Junction import mapping |
