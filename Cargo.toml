@@ -2,7 +2,7 @@
 name = "streams1d"
 version = "0.1.0"
 edition = "2021"
-description = "Stateless Transferable River Engine for Analysis of Modeling Systems (in 1D)"
+description = "STREAM-1D: stateless 1D open-channel hydraulics engine (WASM and Python)"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

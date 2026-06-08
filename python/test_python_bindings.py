@@ -5,7 +5,7 @@ import streams1d as st
 
 def main():
     print("=========================================================")
-    print("STREAMS-1D: Python Bindings HEC-RAS Verification Test")
+    print("STREAM-1D: Python Bindings HEC-RAS Verification Test")
     print("=========================================================")
 
     # 1. Path to test project
