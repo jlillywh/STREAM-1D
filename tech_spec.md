@@ -61,12 +61,15 @@ Transforms arbitrary $(x, y)$ cross-section polylines into vertical lookup table
 
 ## 3. Scope Boundaries (Important for Integrators)
 
+See the full **[Limitations (read before comparing to HEC-RAS)](README.md#limitations-read-before-comparing-to-hec-ras)** section in `README.md` for what STREAM-1D does and does not model relative to HEC-RAS.
+
 | Feature | Steady | Unsteady |
 |---------|--------|----------|
 | Single reach | Yes | Yes |
-| Culverts / bridges on main stem | Yes | Limited (via steady coupling in places) |
-| One tributary junction | Yes | **No** |
+| Culverts / bridges on main stem | Yes | **No** (structures not in unsteady sweep) |
+| One tributary junction | Yes (subcritical) | **No** |
 | Multiple tributaries / networks | **No** | **No** |
+| 2D floodplain, sediment, water quality | **No** | **No** |
 
 Host apps importing HEC-RAS geometry with three reaches at a confluence must merge upper and lower main stems before calling WASM. See [`docs/web_gui_tributary_junction.md`](docs/web_gui_tributary_junction.md).
 
