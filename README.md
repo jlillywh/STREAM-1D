@@ -11,7 +11,7 @@ STREAM-1D is a Rust 1D open-channel hydraulics engine. It provides steady gradua
 * **Unsteady Routing:** Dynamic routing with upstream flow and downstream stage hydrographs on a single reach, including optional **inline culverts**; stabilization for steep transients and mixed regimes is an active development focus.
 * **WebAssembly API:** Browser and Worker integration via `solveSteady` / `solveUnsteady`, `computeCulvertRatingCurve`, metadata discovery (`getWasmApiMetadata`), and input validation (`validateSteadyInputs`). Culvert inputs include explicit inlet types, invert overrides, roadway overtopping, skew angles, active barrel count, per-barrel geometry, extended shape catalog (pipe-arch, elliptical, horseshoe), extended steady diagnostics, headwater rating curves, **supercritical culvert routing** in mixed-regime steady profiles, and the same culvert field set on **`UnsteadyInputs`** for inline single-reach coupling (**API version 7**).
 
-**Web app integrators:** See [`docs/wasm_integration.md`](docs/wasm_integration.md) for Worker setup and culvert field mapping. Steady tributary junctions use a two-branch API (one main stem array + one tributary array). HEC-RAS projects with three reaches at a confluence must merge or concatenate the upper and lower main stems before calling WASM. See [`docs/web_gui_tributary_junction.md`](docs/web_gui_tributary_junction.md). Culvert GUI handoff spec (Tier 1 + Tier 2a): [`docs/web_gui_culvert_integration.md`](docs/web_gui_culvert_integration.md).
+**Web app integrators:** TypeScript contracts are in [`docs/wasm_api.types.ts`](docs/wasm_api.types.ts); a Worker reference is in [`examples/wasm/`](examples/wasm/). Steady tributary junctions use a two-branch API (`cross_sections` + `tributary_cross_sections`, `tributary_flow_rate`, `junction_main_station`). HEC-RAS projects with three reaches at a confluence must merge or concatenate the upper and lower main stems into one `cross_sections` array before calling WASM. GUI integration specs for the hosted product live in the [stream1d.com](https://stream1d.com) web application repository, not in this engine repo.
 
 ## Architecture
 
@@ -33,7 +33,7 @@ STREAM-1D is an **embeddable 1D hydraulics engine** — the Rust/WASM/Python sol
 | **Steady flow** | Standard Step backwater/drawdown; subcritical, supercritical, and mixed regime (`regime` 0/1/2) |
 | **Boundary conditions (steady)** | Known WSEL, critical depth, normal depth, rating curve (upstream and downstream) |
 | **Cross-sections** | Arbitrary $(x,y)$ polylines; composite Manning's *n*; optional channel/overbank subdivision (`is_overbank`) |
-| **Main stem + tributary (steady)** | One tributary joining one main channel at a shared WSEL node — main stem above/below the junction plus tributary inflow (`tributary_cross_sections`, `tributary_flow_rate`, `junction_main_station`); subcritical only (see [`docs/web_gui_tributary_junction.md`](docs/web_gui_tributary_junction.md)) |
+| **Main stem + tributary (steady)** | One tributary joining one main channel at a shared WSEL node — main stem above/below the junction plus tributary inflow (`tributary_cross_sections`, `tributary_flow_rate`, `junction_main_station`); subcritical only |
 | **Culverts (steady, main stem)** | Circular, box, arch, ConSpan, **pipe-arch**, **elliptical**, and **horseshoe**; FHWA-style inlet/outlet control with signed barrel slope (adverse grade supported). Explicit inlet types, invert elevations, roadway overtopping, composite bottom roughness, sediment blockage, control reporting (`inlet` / `outlet` / `overtopping`), extended diagnostics (inlet/outlet HW, barrel vs weir $Q$, barrel depth/velocity/Froude), `computeCulvertRatingCurve`, barrel **skew** (`culvert_skew_angles`), **active barrel count** (`culvert_active_barrels`), **per-barrel geometry** (`culvert_barrel_spans` / `culvert_barrel_rises`) with capacity-based flow split, and **supercritical culvert routing** (`regime` 1/2) via headwater inversion |
 | **Culverts (unsteady, single reach)** | Same culvert input fields as steady on `UnsteadyInputs`; **post-step headwater coupling** at each culvert interval (explicit, not implicit in the Preissmann Jacobian) |
 | **Bridges (steady, main stem)** | Yarnell Class A pier loss; pressure (orifice) flow; roadway weir overtopping |
@@ -71,7 +71,7 @@ These are implemented in the **web GUI** that uses this engine, not in the Rust/
 
 * **Good fit:** Embedding steady or unsteady 1D solves in a **web dashboard** (with optional HEC-RAS import and cross-section editing in that app) or a **Python pipeline** where you supply geometry arrays directly.
 * **Poor fit:** Replacing HEC-RAS for FEMA studies, complex multi-reach unsteady networks, 2D overbank flood routing, or models that rely on RAS-specific structure and ineffective-flow workflows without host-app preprocessing.
-* **Junction models:** Import upper + lower main stem as one `cross_sections` array (see [`docs/web_gui_tributary_junction.md`](docs/web_gui_tributary_junction.md)).
+* **Junction models:** Import upper + lower main stem as one `cross_sections` array; pass the tributary reach as `tributary_cross_sections` with `junction_main_station` at the shared node.
 * **Active development:** Unsteady stabilization for steep transients and mixed regimes; broader network and structure support may follow — check release notes and open issues.
 
 For host-application architecture (Web Workers, data transfer, GIS integration), see [`tech_spec.md`](tech_spec.md).
@@ -106,12 +106,8 @@ streams1d/
 │       ├── culvert.rs          # Culvert inlet/outlet control (FHWA-style)
 │       └── unsteady.rs         # Saint-Venant dynamic routing solver
 ├── python/                     # Python bindings, tests, and verification notebook
-├── docs/                       # Integration guides for host applications
-│   ├── wasm_integration.md     # WASM Worker setup, Tier 1 culvert mapping
-│   ├── wasm_api.types.ts       # TypeScript definitions for the web app
-│   ├── web_gui_culvert_integration.md # Culvert GUI spec — Tier 1 + Tier 2a (companion web app)
-│   ├── web_gui_culvert_tier1.md     # Superseded; see web_gui_culvert_integration.md
-│   └── web_gui_tributary_junction.md
+├── docs/                       # WASM TypeScript contracts for host applications
+│   └── wasm_api.types.ts       # TypeScript definitions for WASM inputs/outputs
 ├── examples/wasm/              # Worker reference + Node smoke test
 ├── tests/
 │   ├── fixtures/               # JSON payloads for WASM contract tests
@@ -446,7 +442,7 @@ async function run() {
 run();
 ```
 
-**Web app integrators:** TypeScript types, Worker pattern, and Culvert Tier 1 field mapping are in [`docs/wasm_integration.md`](docs/wasm_integration.md) and [`docs/wasm_api.types.ts`](docs/wasm_api.types.ts).
+**Web app integrators:** TypeScript types and field names are in [`docs/wasm_api.types.ts`](docs/wasm_api.types.ts); a Worker reference is in [`examples/wasm/`](examples/wasm/).
 
 #### Culvert Tier 1 WASM example
 
@@ -674,7 +670,5 @@ Python `SteadyInputs` and `UnsteadyInputs` expose the same culvert field names a
 |----------|----------|
 | [`README.md`](README.md) | Equations, build, usage, verification |
 | [`tech_spec.md`](tech_spec.md) | Host-app architecture |
-| [`docs/wasm_integration.md`](docs/wasm_integration.md) | Web / Worker integrators |
-| [`docs/wasm_api.types.ts`](docs/wasm_api.types.ts) | TypeScript types |
-| [`docs/web_gui_culvert_integration.md`](docs/web_gui_culvert_integration.md) | Culvert GUI handoff — Tier 1 + Tier 2a (companion web app) |
-| [`docs/web_gui_tributary_junction.md`](docs/web_gui_tributary_junction.md) | Junction import mapping |
+| [`docs/wasm_api.types.ts`](docs/wasm_api.types.ts) | TypeScript types for WASM integrators |
+| [`examples/wasm/`](examples/wasm/) | Worker reference and Node smoke test |
