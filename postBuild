@@ -1,7 +1,16 @@
 #!/bin/bash
+set -euo pipefail
+
 # Install Rust and Cargo for the Binder environment
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-source $HOME/.cargo/env
+source "$HOME/.cargo/env"
 
-# Build and install the streams1d python bindings
-maturin develop --features python
+# Build wheel and install into the Binder Jupyter Python env.
+export CARGO_BUILD_JOBS=2
+maturin build --release --features python -o dist
+python -m pip install dist/*.whl --no-cache-dir --force-reinstall
+
+# The verification notebook runs from python/, which shadows site-packages.
+# Copy the compiled extension next to the package source for that import path.
+EXT=$(python -c "import streams1d._streams1d as m; print(m.__file__)")
+cp "$EXT" python/streams1d/

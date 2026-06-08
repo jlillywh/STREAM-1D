@@ -83,6 +83,10 @@ class SteadyInputs:
         upstream_bc_slope: Optional[float] = None,
         upstream_bc_rating_q: Optional[List[float]] = None,
         upstream_bc_rating_wsel: Optional[List[float]] = None,
+        # Tributary junction (steady subcritical)
+        tributary_cross_sections: Optional[List[CrossSection]] = None,
+        tributary_flow_rate: Optional[float] = None,
+        junction_main_station: Optional[float] = None,
     ):
         self.cross_sections = cross_sections
         self.flow_rate = flow_rate
@@ -121,6 +125,9 @@ class SteadyInputs:
         self.upstream_bc_slope = upstream_bc_slope
         self.upstream_bc_rating_q = upstream_bc_rating_q
         self.upstream_bc_rating_wsel = upstream_bc_rating_wsel
+        self.tributary_cross_sections = tributary_cross_sections
+        self.tributary_flow_rate = tributary_flow_rate
+        self.junction_main_station = junction_main_station
 
     def to_dict(self) -> dict:
         res = {
@@ -170,6 +177,12 @@ class SteadyInputs:
             res['upstream_bc_rating_q'] = self.upstream_bc_rating_q
         if self.upstream_bc_rating_wsel is not None:
             res['upstream_bc_rating_wsel'] = self.upstream_bc_rating_wsel
+        if self.tributary_cross_sections is not None:
+            res['tributary_cross_sections'] = [xs.to_dict() for xs in self.tributary_cross_sections]
+        if self.tributary_flow_rate is not None:
+            res['tributary_flow_rate'] = self.tributary_flow_rate
+        if self.junction_main_station is not None:
+            res['junction_main_station'] = self.junction_main_station
         return res
 
 class UnsteadyInputs:

@@ -109,6 +109,16 @@ pub struct SteadyInputs {
     /// Upstream rating curve water surface elevations
     #[serde(default)]
     pub upstream_bc_rating_wsel: Option<Vec<f64>>,
+
+    /// Optional tributary reach joining the main channel (steady subcritical today).
+    #[serde(default)]
+    pub tributary_cross_sections: Option<Vec<CrossSection>>,
+    /// Tributary inflow (same units as `flow_rate`) added at the junction.
+    #[serde(default)]
+    pub tributary_flow_rate: Option<f64>,
+    /// Main-channel station where the tributary mouth connects (must match a main cross-section).
+    #[serde(default)]
+    pub junction_main_station: Option<f64>,
 }
 
 /// Output results from the steady-state solver.
@@ -128,6 +138,15 @@ pub struct SteadyResult {
     pub top_width: Vec<f64>,
     /// Energy grade line friction slope (dimensionless) at each cross-section.
     pub eg_slope: Vec<f64>,
+    /// Tributary reach WSEL at each tributary cross-section (if a junction was modeled).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tributary_wsel: Option<Vec<f64>>,
+    /// Tributary reach velocity at each tributary cross-section.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tributary_velocity: Option<Vec<f64>>,
+    /// Tributary reach Froude number at each tributary cross-section.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tributary_froude: Option<Vec<f64>>,
 }
 
 impl GeometryTable {
@@ -436,6 +455,14 @@ pub fn solve_step(
 
 /// Runs the steady-state water surface profile solver.
 pub fn solve_steady(inputs: &SteadyInputs) -> SteadyResult {
+    if crate::solvers::junction::has_tributary_junction(inputs) {
+        return crate::solvers::junction::solve_steady_junction(inputs);
+    }
+    solve_steady_single_reach(inputs)
+}
+
+/// Single-reach steady solver (no tributary junction).
+pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
     let raw_units = inputs.cross_sections.first().map(|xs| xs.unit_system).unwrap_or(UnitSystem::Metric);
     let q = if raw_units == UnitSystem::USCustomary {
         inputs.flow_rate * crate::utils::CFS_TO_CMS
@@ -553,7 +580,7 @@ pub fn solve_steady(inputs: &SteadyInputs) -> SteadyResult {
         _ => inputs.upstream_wsel.map(|w| if raw_units == UnitSystem::USCustomary { w * FT_TO_M } else { w }),
     }.unwrap_or(critical_wsels[0]);
 
-    let mut culvert_adjacent_indices = std::collections::HashSet::new();
+    let mut structure_adjacent_indices = std::collections::HashSet::new();
     if let Some(ref c_stations) = inputs.culvert_stations {
         for &c_st in c_stations {
             let c_st_metric = if raw_units == UnitSystem::USCustomary {
@@ -565,8 +592,26 @@ pub fn solve_steady(inputs: &SteadyInputs) -> SteadyResult {
                 if c_st_metric >= densified_stations[j + 1] - 1e-4
                     && c_st_metric < densified_stations[j] + 1e-4
                 {
-                    culvert_adjacent_indices.insert(j);
-                    culvert_adjacent_indices.insert(j + 1);
+                    structure_adjacent_indices.insert(j);
+                    structure_adjacent_indices.insert(j + 1);
+                    break;
+                }
+            }
+        }
+    }
+    if let Some(ref b_stations) = inputs.bridge_stations {
+        for &b_st in b_stations {
+            let b_st_metric = if raw_units == UnitSystem::USCustomary {
+                b_st * FT_TO_M
+            } else {
+                b_st
+            };
+            for j in 0..dm - 1 {
+                if b_st_metric >= densified_stations[j + 1] - 1e-4
+                    && b_st_metric < densified_stations[j] + 1e-4
+                {
+                    structure_adjacent_indices.insert(j);
+                    structure_adjacent_indices.insert(j + 1);
                     break;
                 }
             }
@@ -769,8 +814,8 @@ pub fn solve_steady(inputs: &SteadyInputs) -> SteadyResult {
                     c_contraction,
                     c_expansion,
                     true,
-                    culvert_adjacent_indices.contains(&(i + 1)),
-                    culvert_adjacent_indices.contains(&i),
+                    structure_adjacent_indices.contains(&(i + 1)),
+                    structure_adjacent_indices.contains(&i),
                 ).unwrap_or(critical_wsels[i]);
             }
         }
@@ -837,8 +882,8 @@ pub fn solve_steady(inputs: &SteadyInputs) -> SteadyResult {
                     c_contraction,
                     c_expansion,
                     false,
-                    culvert_adjacent_indices.contains(&i),
-                    culvert_adjacent_indices.contains(&(i + 1)),
+                    structure_adjacent_indices.contains(&i),
+                    structure_adjacent_indices.contains(&(i + 1)),
                 ).unwrap_or(critical_wsels[i + 1]);
             }
         }
@@ -928,6 +973,9 @@ pub fn solve_steady(inputs: &SteadyInputs) -> SteadyResult {
         froude: out_fr,
         top_width: out_top_width,
         eg_slope: out_eg_slope,
+        tributary_wsel: None,
+        tributary_velocity: None,
+        tributary_froude: None,
     }
 }
 
@@ -947,6 +995,7 @@ mod tests {
             n_stations: vec![0.0],
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
+            is_overbank: None,
         };
 
         let table = xs.generate_lookup_table(10);
@@ -968,6 +1017,7 @@ mod tests {
             n_stations: vec![0.0],
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
+            is_overbank: None,
         };
         let xs100 = CrossSection {
             station: 100.0,
@@ -976,6 +1026,7 @@ mod tests {
             n_stations: vec![0.0],
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
+            is_overbank: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -984,6 +1035,7 @@ mod tests {
             n_stations: vec![0.0],
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
+            is_overbank: None,
         };
 
         let inputs = SteadyInputs {
@@ -1039,6 +1091,7 @@ mod tests {
             n_stations: vec![0.0],
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
+            is_overbank: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -1047,6 +1100,7 @@ mod tests {
             n_stations: vec![0.0],
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
+            is_overbank: None,
         };
 
         // Run with a max spacing of 100.0m (which should create 9 intermediate cross sections, total 11 sections internally)
@@ -1094,6 +1148,7 @@ mod tests {
             n_stations: vec![0.0],
             n_values: vec![0.02],
             unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
         };
         let xs100 = CrossSection {
             station: 100.0,
@@ -1102,6 +1157,7 @@ mod tests {
             n_stations: vec![0.0],
             n_values: vec![0.02],
             unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -1110,6 +1166,7 @@ mod tests {
             n_stations: vec![0.0],
             n_values: vec![0.02],
             unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
         };
 
         let inputs = SteadyInputs {
@@ -1157,6 +1214,7 @@ mod tests {
             n_stations: vec![0.0],
             n_values: vec![0.02],
             unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
         };
         let xs100 = CrossSection {
             station: 100.0,
@@ -1165,6 +1223,7 @@ mod tests {
             n_stations: vec![0.0],
             n_values: vec![0.02],
             unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -1173,6 +1232,7 @@ mod tests {
             n_stations: vec![0.0],
             n_values: vec![0.02],
             unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
         };
 
         let mut inputs = SteadyInputs {
@@ -1224,6 +1284,7 @@ mod tests {
             n_stations: vec![0.0],
             n_values: vec![0.03],
             unit_system: UnitSystem::Metric,
+            is_overbank: None,
         };
         let xs100 = CrossSection {
             station: 100.0,
@@ -1232,6 +1293,7 @@ mod tests {
             n_stations: vec![0.0],
             n_values: vec![0.03],
             unit_system: UnitSystem::Metric,
+            is_overbank: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -1240,6 +1302,7 @@ mod tests {
             n_stations: vec![0.0],
             n_values: vec![0.03],
             unit_system: UnitSystem::Metric,
+            is_overbank: None,
         };
 
         let inputs = SteadyInputs {
@@ -1268,10 +1331,12 @@ mod tests {
         // Verification
         // WSEL at station 0 (index 2) should be 3.0 (downstream boundary)
         assert_eq!(result.wsel[2], 3.0);
-        // WSEL at station 100 (index 1) should be solved by the bridge code
-        // Since tw=3.0, it is low flow (below low-chord 5.0). So it includes Yarnell head loss.
-        // Let's verify it solved WSEL and it is > downstream bed + tailwater depth
-        assert!(result.wsel[1] > 3.0, "WSEL upstream of bridge should have backwater, got {}", result.wsel[1]);
+        // WSEL at station 100 (index 1) — bridge Yarnell low-flow backwater
+        assert!(
+            (result.wsel[1] - 3.00247).abs() < 0.001,
+            "Bridge upstream WSEL should match HEC-RAS Yarnell, got {}",
+            result.wsel[1]
+        );
     }
 
     #[test]
@@ -1283,6 +1348,7 @@ mod tests {
             n_stations: vec![0.0],
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
+            is_overbank: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -1291,6 +1357,7 @@ mod tests {
             n_stations: vec![0.0],
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
+            is_overbank: None,
         };
 
         let inputs = SteadyInputs {
@@ -1318,6 +1385,7 @@ mod tests {
             n_stations: vec![0.0],
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
+            is_overbank: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -1326,6 +1394,7 @@ mod tests {
             n_stations: vec![0.0],
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
+            is_overbank: None,
         };
 
         let inputs = SteadyInputs {

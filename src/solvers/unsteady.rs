@@ -591,6 +591,7 @@ mod tests {
             n_stations: vec![0.0],
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
+            is_overbank: None,
         };
         let xs500 = CrossSection {
             station: 500.0,
@@ -599,6 +600,7 @@ mod tests {
             n_stations: vec![0.0],
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
+            is_overbank: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -607,6 +609,7 @@ mod tests {
             n_stations: vec![0.0],
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
+            is_overbank: None,
         };
 
         // Run a simulation keeping inputs constant at 14.0 cms (uniform flow equilibrium depth = 1.0m) and WSEL = 1.0m downstream
@@ -652,6 +655,7 @@ mod tests {
             n_stations: vec![0.0],
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
+            is_overbank: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -660,6 +664,7 @@ mod tests {
             n_stations: vec![0.0],
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
+            is_overbank: None,
         };
 
         // Run with a max spacing of 100.0m (which should create 9 intermediate cross sections, total 11 sections internally)
@@ -705,6 +710,7 @@ mod tests {
             n_stations: vec![0.0],
             n_values: vec![0.025],
             unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
         };
         let xs750 = CrossSection {
             station: 750.0,
@@ -713,6 +719,7 @@ mod tests {
             n_stations: vec![0.0],
             n_values: vec![0.025; 5],
             unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
         };
         let xs500 = CrossSection {
             station: 500.0,
@@ -721,6 +728,7 @@ mod tests {
             n_stations: vec![0.0],
             n_values: vec![0.025],
             unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
         };
         let xs250 = CrossSection {
             station: 250.0,
@@ -729,6 +737,7 @@ mod tests {
             n_stations: vec![0.0],
             n_values: vec![0.025],
             unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
         };
         let xs150 = CrossSection {
             station: 150.0,
@@ -737,6 +746,7 @@ mod tests {
             n_stations: vec![0.0],
             n_values: vec![0.025],
             unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -745,6 +755,7 @@ mod tests {
             n_stations: vec![0.0],
             n_values: vec![0.025],
             unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
         };
 
         let mut upstream_q = vec![35.0; 100];
