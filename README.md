@@ -9,7 +9,7 @@ STREAM-1D is a Rust 1D open-channel hydraulics engine. It provides steady gradua
 * **Embeddable Execution:** Run hydraulic simulations in web dashboards or Python data pipelines without requiring desktop hydraulic software.
 * **Structural Hydraulics:** Model inline structures and composite roughness on single reaches or a main stem with one joining tributary (steady)—culverts, bridge piers, roadway overtopping, and multi-zone Manning's *n*.
 * **Unsteady Routing:** Dynamic routing with upstream flow and downstream stage hydrographs; stabilization for steep transients and mixed regimes is an active development focus.
-* **WebAssembly API:** Browser and Worker integration via `solveSteady` / `solveUnsteady`, `computeCulvertRatingCurve`, metadata discovery (`getWasmApiMetadata`), and input validation (`validateSteadyInputs`). Culvert inputs include explicit inlet types, invert overrides, roadway overtopping, skew angles, active barrel count, per-barrel geometry, extended diagnostics, and headwater rating curves (**API version 5**).
+* **WebAssembly API:** Browser and Worker integration via `solveSteady` / `solveUnsteady`, `computeCulvertRatingCurve`, metadata discovery (`getWasmApiMetadata`), and input validation (`validateSteadyInputs`). Culvert inputs include explicit inlet types, invert overrides, roadway overtopping, skew angles, active barrel count, per-barrel geometry, extended shape catalog (pipe-arch, elliptical, horseshoe), extended diagnostics, and headwater rating curves (**API version 6**).
 
 **Web app integrators:** See [`docs/wasm_integration.md`](docs/wasm_integration.md) for Worker setup and culvert field mapping. Steady tributary junctions use a two-branch API (one main stem array + one tributary array). HEC-RAS projects with three reaches at a confluence must merge or concatenate the upper and lower main stems before calling WASM. See [`docs/web_gui_tributary_junction.md`](docs/web_gui_tributary_junction.md). Culvert GUI handoff spec (Tier 1 + Tier 2a): [`docs/web_gui_culvert_integration.md`](docs/web_gui_culvert_integration.md).
 
@@ -34,7 +34,7 @@ STREAM-1D is an **embeddable 1D hydraulics engine** — the Rust/WASM/Python sol
 | **Boundary conditions (steady)** | Known WSEL, critical depth, normal depth, rating curve (upstream and downstream) |
 | **Cross-sections** | Arbitrary $(x,y)$ polylines; composite Manning's *n*; optional channel/overbank subdivision (`is_overbank`) |
 | **Main stem + tributary (steady)** | One tributary joining one main channel at a shared WSEL node — main stem above/below the junction plus tributary inflow (`tributary_cross_sections`, `tributary_flow_rate`, `junction_main_station`); subcritical only (see [`docs/web_gui_tributary_junction.md`](docs/web_gui_tributary_junction.md)) |
-| **Culverts (steady, main stem)** | Circular, box, arch, and ConSpan; FHWA-style inlet/outlet control with signed barrel slope (adverse grade supported). Explicit inlet types, invert elevations, roadway overtopping, composite bottom roughness, sediment blockage, control reporting (`inlet` / `outlet` / `overtopping`), extended diagnostics (inlet/outlet HW, barrel vs weir $Q$, barrel depth/velocity/Froude), `computeCulvertRatingCurve`, barrel **skew** (`culvert_skew_angles`), **active barrel count** (`culvert_active_barrels`), and **per-barrel geometry** (`culvert_barrel_spans` / `culvert_barrel_rises`) with capacity-based flow split |
+| **Culverts (steady, main stem)** | Circular, box, arch, ConSpan, **pipe-arch**, **elliptical**, and **horseshoe**; FHWA-style inlet/outlet control with signed barrel slope (adverse grade supported). Explicit inlet types, invert elevations, roadway overtopping, composite bottom roughness, sediment blockage, control reporting (`inlet` / `outlet` / `overtopping`), extended diagnostics (inlet/outlet HW, barrel vs weir $Q$, barrel depth/velocity/Froude), `computeCulvertRatingCurve`, barrel **skew** (`culvert_skew_angles`), **active barrel count** (`culvert_active_barrels`), and **per-barrel geometry** (`culvert_barrel_spans` / `culvert_barrel_rises`) with capacity-based flow split |
 | **Bridges (steady, main stem)** | Yarnell Class A pier loss; pressure (orifice) flow; roadway weir overtopping |
 | **Unsteady flow** | Preissmann Saint-Venant on a **single reach**; upstream $Q(t)$ and downstream WSEL($t$) hydrographs |
 | **Outputs** | WSEL, critical WSEL, velocity, area, top width, Froude number, energy grade slope (+ `tributary_wsel`, `tributary_velocity`, `tributary_froude` when a junction is modeled; + `culvert_control_types` and Tier 2a culvert arrays — `culvert_wsel_inlet`, `culvert_wsel_outlet`, `culvert_q_barrels`, `culvert_q_weirs`, `culvert_barrel_depths`, `culvert_barrel_velocities`, `culvert_barrel_froude` — when culverts are modeled) |
@@ -58,7 +58,7 @@ These are implemented in the **web GUI** that uses this engine, not in the Rust/
 | **Storage & diversions** | Ponds, reservoirs, split flow, lateral structures, pumps, gates | Not modeled |
 | **Inline weirs & dams** | Standalone weirs, inline structures, dam breach | Not modeled (bridge roadway overtopping only) |
 | **Bridge hydraulics** | Full low-flow classes, pressure/weir combinations, bridge methods, abutments, deck geometry | Yarnell **Class A pier loss** only; simplified pressure + weir overtopping; no abutment or Class B/C low flow |
-| **Culvert hydraulics** | Full HEC-RAS culvert catalog (pipe-arch, horseshoe, etc.), supercritical barrel routing in mixed profiles, culverts in unsteady networks | FHWA nomograph (circular, box, arch, ConSpan) with explicit inlet types; multi-barrel capacity-based $Q$ split with optional per-barrel span/rise; skew angles and blocked-barrel count; invert offsets, roadway overtopping, extended diagnostics and rating-curve API — **no** extended shape catalog, supercritical culvert solve in the upstream sweep, or unsteady inline culverts |
+| **Culvert hydraulics** | Full HEC-RAS culvert catalog (all standard shapes), supercritical barrel routing in mixed profiles, culverts in unsteady networks | FHWA nomograph (circular, box, arch, ConSpan, pipe-arch, elliptical, horseshoe) with explicit inlet types; multi-barrel capacity-based $Q$ split with optional per-barrel span/rise; skew angles and blocked-barrel count; invert offsets, roadway overtopping, extended diagnostics and rating-curve API — **no** supercritical culvert solve in the upstream sweep or unsteady inline culverts |
 | **Ineffective flow** | Roadway embankment blocking, blocked obstructions, storage from ineffective areas | Partial: `channel_area` at structure-adjacent sections when overbanks are subdivided — not full RAS ineffective-flow workflow |
 | **Terrain & mapping** | RAS Terrain, TIN/bathymetry authoring, RAS Map | **Not in the engine** — the companion **web app** may edit cross-sections and import HEC-RAS geometry; the solver only receives $(x,y)$ sections and stations |
 | **Sediment & morphology** | Mobile bed, sediment transport, scour | Not modeled (optional fixed culvert blockage depth only) |
@@ -171,14 +171,14 @@ Based on Federal Highway Administration (FHWA) standards, the inlet control head
 * **Per-barrel geometry:** Optional `culvert_barrel_spans` and `culvert_barrel_rises` (nested arrays per culvert) assign span/rise to each open barrel; flow splits by barrel capacity at a shared headwater. Omit entries to use culvert-level `culvert_spans` / `culvert_rises`.
 * **Multi-barrel hydraulics:** Parallel barrels share one upstream pool elevation. With uniform geometry, discharge divides equally among `culvert_active_barrels`. With per-barrel span/rise, the solver bisects on headwater and assigns each barrel the flow its geometry carries at that elevation (capacity-based split). Reported barrel depth, velocity, and Froude are flow-weighted across active barrels.
 
-#### Culvert WASM / JSON field reference (`api_version` 5)
+#### Culvert WASM / JSON field reference (`api_version` 6)
 
 Parallel arrays — index `i` matches `culvert_stations[i]`. Discover enums and field lists via `getWasmApiMetadata()`.
 
 | Field | Required | Description |
 |-------|----------|-------------|
 | `culvert_stations` | Yes (if modeling culverts) | Station of each culvert along the reach |
-| `culvert_shape_types` | Recommended | `0` Circular, `1` Box, `2` Arch, `3` ConSpan |
+| `culvert_shape_types` | Recommended | `0` Circular, `1` Box, `2` Arch, `3` ConSpan, `4` Pipe-arch, `5` Elliptical, `6` Horseshoe |
 | `culvert_spans` | Recommended | Diameter (circular) or width (box/arch/ConSpan), user units |
 | `culvert_rises` | Recommended | Barrel rise / height, user units |
 | `culvert_lengths` | Recommended | Barrel length, user units |
@@ -203,7 +203,7 @@ Parallel arrays — index `i` matches `culvert_stations[i]`. Discover enums and 
 
 **Rating curve:** `computeCulvertRatingCurve({ q_values, ...culvert fields })` — same geometry/loss/skew/barrel fields as steady; `q` in culvert params is ignored.
 
-**API version history:** v3 — Tier 2a diagnostics + rating curve; v4 — `culvert_skew_angles`, `culvert_active_barrels`; v5 — `culvert_barrel_spans`, `culvert_barrel_rises`.
+**API version history:** v3 — Tier 2a diagnostics + rating curve; v4 — `culvert_skew_angles`, `culvert_active_barrels`; v5 — `culvert_barrel_spans`, `culvert_barrel_rises`; v6 — culvert shape types 4–6 (pipe-arch, elliptical, horseshoe). New shapes use arch-style inlet nomographs (types 20/21).
 
 #### B. Outlet Control (Energy losses)
 The outlet control upstream elevation is computed via energy headwater balance:
@@ -283,7 +283,7 @@ This generates the WebAssembly module in the `./pkg` (browser) and `./pkg-node` 
 | `solveUnsteady(inputs)` | Unsteady routing → `UnsteadyResult` |
 | `computeCulvertRatingCurve(inputs)` | Headwater vs $Q$ at fixed tailwater → `CulvertRatingCurveResult` |
 
-All payloads use **snake_case** field names (same schema as Python JSON). Check `getWasmApiMetadata().api_version` after each engine upgrade; **version 5** adds per-barrel geometry (`culvert_barrel_spans`, `culvert_barrel_rises`) on top of version 4 skew/active-barrel fields.
+All payloads use **snake_case** field names (same schema as Python JSON). Check `getWasmApiMetadata().api_version` after each engine upgrade; **version 6** adds culvert shape types 4–6; version 5 adds per-barrel geometry; version 4 adds skew and active-barrel fields.
 
 ### 2. Python Target
 To compile and install the native Python extension locally:
