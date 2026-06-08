@@ -75,6 +75,14 @@ export interface CulvertArrays {
   culvert_weir_coeffs?: number[];
   /** Tier 1 — weir length (default span × num_barrels when 0 or omitted) */
   culvert_weir_lengths?: number[];
+  /** Skew angle in degrees from normal to flow (0 = perpendicular) */
+  culvert_skew_angles?: number[];
+  /** Open barrels (≤ culvert_barrels); omit to use all barrels */
+  culvert_active_barrels?: number[];
+  /** Per-barrel span/diameter — `culvert_barrel_spans[i][j]` for culvert i, barrel j */
+  culvert_barrel_spans?: number[][];
+  /** Per-barrel rise — `culvert_barrel_rises[i][j]` for culvert i, barrel j */
+  culvert_barrel_rises?: number[][];
 }
 
 export interface BridgeArrays {
@@ -160,6 +168,10 @@ export interface CulvertRatingCurveInputs {
   weir_coeff?: number;
   weir_length?: number;
   num_barrels?: number;
+  active_barrels?: number;
+  skew_deg?: number;
+  barrel_spans?: number[];
+  barrel_rises?: number[];
 }
 
 export interface CulvertRatingCurveResult {
@@ -219,6 +231,9 @@ export interface WasmApiMetadata {
   culvert_tier2a_fields: {
     steady_outputs: string[];
     rating_curve_entry_point: string;
+  };
+  culvert_geometry_fields: {
+    inputs: string[];
   };
 }
 

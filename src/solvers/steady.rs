@@ -76,6 +76,18 @@ pub struct SteadyInputs {
     /// Effective weir length per culvert (default span × num_barrels).
     #[serde(default)]
     pub culvert_weir_lengths: Option<Vec<f64>>,
+    /// Barrel skew angle in degrees from normal to flow (0 = no skew), per culvert.
+    #[serde(default)]
+    pub culvert_skew_angles: Option<Vec<f64>>,
+    /// Open barrels per culvert (≤ `culvert_barrels`). Omit to use all barrels.
+    #[serde(default)]
+    pub culvert_active_barrels: Option<Vec<i32>>,
+    /// Per-barrel span/diameter per culvert (length = open barrels). Omit entries to use `culvert_spans`.
+    #[serde(default)]
+    pub culvert_barrel_spans: Option<Vec<Vec<f64>>>,
+    /// Per-barrel rise per culvert (length = open barrels). Omit entries to use `culvert_rises`.
+    #[serde(default)]
+    pub culvert_barrel_rises: Option<Vec<Vec<f64>>>,
 
     /// Stations where bridges are located (in user units, e.g. feet or meters)
     #[serde(default)]
@@ -781,6 +793,28 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                 let weir_coeff = inputs.culvert_weir_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
                 let weir_length = inputs.culvert_weir_lengths.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
                 let num_barrels = inputs.culvert_barrels.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(1).max(1);
+                let active_barrels = inputs
+                    .culvert_active_barrels
+                    .as_ref()
+                    .and_then(|v| v.get(c_idx))
+                    .copied()
+                    .unwrap_or(0);
+                let skew_deg = inputs
+                    .culvert_skew_angles
+                    .as_ref()
+                    .and_then(|v| v.get(c_idx))
+                    .copied()
+                    .unwrap_or(0.0);
+                let barrel_spans = inputs
+                    .culvert_barrel_spans
+                    .as_ref()
+                    .and_then(|v| v.get(c_idx))
+                    .cloned();
+                let barrel_rises = inputs
+                    .culvert_barrel_rises
+                    .as_ref()
+                    .and_then(|v| v.get(c_idx))
+                    .cloned();
 
                 let tw_wsel_user = if raw_units == UnitSystem::USCustomary {
                     sub_wsel[i + 1] / FT_TO_M
@@ -879,6 +913,10 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                             weir_coeff,
                             weir_length,
                             num_barrels,
+                            active_barrels,
+                            skew_deg,
+                            barrel_spans: barrel_spans.clone(),
+                            barrel_rises: barrel_rises.clone(),
                         },
                     );
                     wsel_up_user = culvert_result.wsel;
