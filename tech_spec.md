@@ -12,7 +12,7 @@ This document describes how STREAM-1D fits into a larger application. Mathematic
 
 ## 1. System Architecture Overview
 
-The computational core is **stateless**: no project files, hidden globals, or file I/O inside the engine. Host applications own persistence, GIS, cross-section editing, HEC-RAS geometry import, and visualization.
+The computational core is **stateless**: no project files, hidden globals, or file I/O inside the engine. The **companion web application** (separate from this repository) owns persistence, GIS, cross-section editing, and HEC-RAS geometry import; visualization and Workers wrap the WASM calls.
 
 ```
 +-------------------------------------------------------------------------+
@@ -71,7 +71,7 @@ See the full **[Limitations (read before comparing to HEC-RAS)](README.md#limita
 | Multiple tributaries / networks | **No** | **No** |
 | 2D floodplain, sediment, water quality | **No** | **No** |
 
-Host apps importing HEC-RAS geometry with three reaches at a confluence must merge upper and lower main stems before calling WASM. See [`docs/web_gui_tributary_junction.md`](docs/web_gui_tributary_junction.md).
+Host **web apps** importing HEC-RAS geometry with three reaches at a confluence must merge upper and lower main stems before calling WASM. See [`docs/web_gui_tributary_junction.md`](docs/web_gui_tributary_junction.md). (This import workflow is **not** part of the Python bindings in this repository.)
 
 ---
 
@@ -100,14 +100,17 @@ The current crate accepts structured objects; flat-buffer or SharedArrayBuffer o
 
 ---
 
-## 6. UI Layer (Host Application)
+## 6. UI Layer (Companion Web Application — not in this repository)
 
-STREAM-1D does not ship a GUI. Expected host responsibilities:
+STREAM-1D does not ship a GUI. A separate **web application** built on this engine typically provides:
 
 * **Plan / profile views:** Canvas, SVG, or chart libraries (e.g. uPlot, D3)
 * **GIS:** Mapbox GL, Leaflet, or similar for reach centerlines and cut lines
-* **Import & geometry:** HEC-RAS geometry files (e.g. `.g01`), GeoJSON, or in-app cross-section editing — converted to solver inputs before each `solveSteady` / `solveUnsteady` call
+* **Cross-section editing:** Interactive geometry and Manning's *n* editing in the browser
+* **HEC-RAS geometry import:** Parse `.g01` (and related) files to populate reaches and structures, then map to `SteadyInputs` / `UnsteadyInputs` before each WASM solve
 * **Workers:** Background execution and progress callbacks
+
+Python users supply `cross_sections` arrays directly; there is no HEC-RAS importer in the `streams1d` package.
 
 ---
 

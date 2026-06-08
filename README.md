@@ -26,23 +26,29 @@ STREAM-1D is a Rust 1D open-channel hydraulics engine. It provides steady gradua
 
 STREAM-1D is an **embeddable 1D hydraulics engine** — the Rust/WASM/Python solve core in this repository, not a complete desktop product like HEC-RAS. It exposes a **stateless** API (`cross_sections` and boundary inputs in, profile arrays out). It does **not** ship a user interface, project database, RAS Map, 2D floodplain meshing, or native HEC-RAS Plan/Unsteady solvers.
 
-**Host applications** (such as a web GUI built on this engine) may provide cross-section editing, terrain-aligned geometry, HEC-RAS geometry import, and project persistence — those features live **outside** the solver crate and must convert imported or edited geometry into `SteadyInputs` / `UnsteadyInputs` before calling WASM or Python.
+**Companion web applications** built on this engine (not part of this repository) may provide cross-section editing, HEC-RAS geometry import (e.g. `.g01`), and project persistence. Those features convert imported or edited geometry into `SteadyInputs` / `UnsteadyInputs` before calling WASM. The Python bindings in this repo accept geometry arrays directly — they do not include a HEC-RAS file importer or cross-section editor.
 
-### What STREAM-1D supports today
-
-The **solver** (this repository) and typical **host applications** built on it together support the following:
+### What the STREAM-1D engine supports (this repository)
 
 | Area | Supported |
 |------|-----------|
 | **Steady flow** | Standard Step backwater/drawdown; subcritical, supercritical, and mixed regime (`regime` 0/1/2) |
 | **Boundary conditions (steady)** | Known WSEL, critical depth, normal depth, rating curve (upstream and downstream) |
-| **Cross-sections** | Arbitrary $(x,y)$ polylines; composite Manning's *n*; optional channel/overbank subdivision (`is_overbank`); editable in host-app UIs |
+| **Cross-sections** | Arbitrary $(x,y)$ polylines; composite Manning's *n*; optional channel/overbank subdivision (`is_overbank`) |
 | **Main stem + tributary (steady)** | One tributary joining one main channel at a shared WSEL node — main stem above/below the junction plus tributary inflow (`tributary_cross_sections`, `tributary_flow_rate`, `junction_main_station`); subcritical only (see [`docs/web_gui_tributary_junction.md`](docs/web_gui_tributary_junction.md)) |
 | **Culverts (steady, main stem)** | Circular, box, arch, and ConSpan; FHWA-style inlet/outlet control; optional bottom roughness layer and sediment blockage depth |
 | **Bridges (steady, main stem)** | Yarnell Class A pier loss; pressure (orifice) flow; roadway weir overtopping |
-| **HEC-RAS geometry import (host app)** | Import HEC-RAS geometry (e.g. `.g01`) to populate reaches, cross-sections, and structures automatically; host app maps reaches to `SteadyInputs` / `UnsteadyInputs` (including merging upper + lower main stem at a junction when needed) |
 | **Unsteady flow** | Preissmann Saint-Venant on a **single reach**; upstream $Q(t)$ and downstream WSEL($t$) hydrographs |
 | **Outputs** | WSEL, critical WSEL, velocity, area, top width, Froude number, energy grade slope (+ `tributary_wsel`, `tributary_velocity`, `tributary_froude` when a junction is modeled) |
+
+### Companion web application features (not in this repository)
+
+These are implemented in the **web GUI** that uses this engine, not in the Rust/WASM/Python solver crate:
+
+| Feature | Description |
+|---------|-------------|
+| **Cross-section editing** | Interactive editing of reach geometry and Manning's *n* in the browser |
+| **HEC-RAS geometry import** | Import HEC-RAS geometry files (e.g. `.g01`) to build reaches, cross-sections, and structures automatically, then map to solver inputs (including merging upper + lower main stem at a junction when needed) |
 
 ### Not supported (common HEC-RAS features)
 
@@ -56,15 +62,15 @@ The **solver** (this repository) and typical **host applications** built on it t
 | **Bridge hydraulics** | Full low-flow classes, pressure/weir combinations, bridge methods, abutments, deck geometry | Yarnell **Class A pier loss** only; simplified pressure + weir overtopping; no abutment or Class B/C low flow |
 | **Culvert hydraulics** | Full HEC-RAS culvert catalog, multiple barrels with skew, improved inlet types | FHWA nomograph subset; multi-barrel count supported; no skew or improved-inlet catalog beyond loss coefficients |
 | **Ineffective flow** | Roadway embankment blocking, blocked obstructions, storage from ineffective areas | Partial: `channel_area` at structure-adjacent sections when overbanks are subdivided — not full RAS ineffective-flow workflow |
-| **Terrain & mapping** | RAS Terrain, TIN/bathymetry authoring, RAS Map | **Not in the engine** — host apps may edit cross-sections, import HEC-RAS geometry (e.g. `.g01`), and georeference reaches; the solver only receives $(x,y)$ sections and stations |
+| **Terrain & mapping** | RAS Terrain, TIN/bathymetry authoring, RAS Map | **Not in the engine** — the companion **web app** may edit cross-sections and import HEC-RAS geometry; the solver only receives $(x,y)$ sections and stations |
 | **Sediment & morphology** | Mobile bed, sediment transport, scour | Not modeled (optional fixed culvert blockage depth only) |
 | **Water quality & ice** | Temperature, water quality, ice jams | Not modeled |
-| **Project workflow** | Full HEC-RAS `.prj` with Plan, Geometry, and Unsteady files | **Not in the engine** — no built-in project format; host apps may import geometry and manage projects, then call WASM/Python per solve |
+| **Project workflow** | Full HEC-RAS `.prj` with Plan, Geometry, and Unsteady files | **Not in the engine** — no built-in project format; the **web app** may import geometry and manage projects, then call WASM per solve |
 | **Regulatory reporting** | FEMA, flood insurance, HEC-RAS report templates | Not included |
 
 ### Practical guidance
 
-* **Good fit:** Embedding steady or unsteady 1D profile solves in a custom web dashboard or Python pipeline — including apps that **import HEC-RAS geometry** or **edit cross-sections** in a UI, then pass the resulting arrays to the solver.
+* **Good fit:** Embedding steady or unsteady 1D solves in a **web dashboard** (with optional HEC-RAS import and cross-section editing in that app) or a **Python pipeline** where you supply geometry arrays directly.
 * **Poor fit:** Replacing HEC-RAS for FEMA studies, complex multi-reach unsteady networks, 2D overbank flood routing, or models that rely on RAS-specific structure and ineffective-flow workflows without host-app preprocessing.
 * **Junction models:** Import upper + lower main stem as one `cross_sections` array (see [`docs/web_gui_tributary_junction.md`](docs/web_gui_tributary_junction.md)).
 * **Active development:** Unsteady stabilization for steep transients and mixed regimes; broader network and structure support may follow — check release notes and open issues.
