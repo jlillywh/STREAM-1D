@@ -1,183 +1,128 @@
-Here is a comprehensive, production-ready technical specification for your engineering team. It outlines a modular, decoupled architecture designed to deliver a high-performance, web-native 1D hydraulics engine.
+# STREAM-1D Technical Specification
 
----
+**System architecture and integration blueprint for host applications (web, Python, and batch pipelines).**
 
-# Technical Specification: Project Shrine-1D
+This document describes how STREAM-1D fits into a larger application. Mathematical formulations, verification results, and build instructions are in [`README.md`](README.md). Web GUI tributary import guidance is in [`docs/web_gui_tributary_junction.md`](docs/web_gui_tributary_junction.md).
 
-**System Architecture & Implementation Blueprint**
+**Core language:** Rust (compiled to WebAssembly and a native Python extension via maturin)
 
-**Target Environment:** Modern Web Browsers (WASM + Web Workers + WebGL/Canvas)
-
-**Core Language:** Rust (or Modern C++17/20) compiled to WebAssembly
-
-**GUI Framework:** Decoupled JavaScript (React, Vue, or Vanilla JS/TS)
+**Target environments:** Modern web browsers (WASM + Web Workers), Python 3.7+, Node.js (`pkg-node`)
 
 ---
 
 ## 1. System Architecture Overview
 
-To achieve an interactive, 60 FPS user experience without thread-locking the browser UI, the system must strictly isolate execution layers. No physical file I/O or global state is permitted inside the computational core.
+The computational core is **stateless**: no project files, hidden globals, or file I/O inside the engine. Host applications own persistence, GIS, and visualization.
 
 ```
 +-------------------------------------------------------------------------+
 |                              MAIN THREAD                                |
-|  [GUI Layer] - React/Vue/TS UI, Leaflet/Mapbox GIS, Canvas/D3 Plots     |
+|  [GUI Layer] - React/Vue/TS UI, Leaflet/Mapbox GIS, Canvas/D3 plots     |
 +-------------------------------------------------------------------------+
          |                                                 ^
-         | (Transferable Arrays)                           | (Transferable Arrays)
-         | Event: "RUN_SIMULATION"                         | Event: "SIM_COMPLETE"
+         | structured inputs / typed arrays                | result arrays
          v                                                 |
 +-------------------------------------------------------------------------+
 |                        WEB WORKER THREAD (Background)                   |
-|  [Worker Wrapper] - Message Event Listener, WASM Memory Orchestrator    |
+|  [Worker Wrapper] - message listener, WASM init, payload marshalling      |
 |                                                                         |
 |    +---------------------------------------------------------------+    |
-|    |                      WASM CORE ENGINE                         |    |
-|    |  [Rust/C++ Layer] Stateless Geometry & Numerical Solvers       |    |
-|    |                                                               |    |
-|    |  +--------------------+             +----------------------+  |    |
-|    |  | Geometry Processor | ----------->| Hydraulic Solvers    |  |    |
-|    |  | (Raw XS -> Curves) |             | (Steady / Unsteady)  |  |    |
-|    |  +--------------------+             +----------------------+  |    |
+|    |                      WASM CORE (streams1d)                    |    |
+|    |  Geometry processor  -->  Steady / Unsteady solvers           |    |
 |    +---------------------------------------------------------------+    |
 +-------------------------------------------------------------------------+
-
 ```
 
 ---
 
-## 2. Core Computational Modules (WASM Engine)
+## 2. Implemented Engine Modules
 
-The engine must be written as a pure, stateless library. It exposes deterministic functions that ingest flat arrays and return flat arrays.
+### Module A: Cross-Section Geometry Processor (`src/geometry/processor.rs`)
 
-### Module A: Cross-Section Geometry Processor
+Transforms arbitrary $(x, y)$ cross-section polylines into vertical lookup tables (default 100 slices):
 
-* **Objective:** Transform arbitrary $X,Y$ coordinate cross-sections into discrete hydraulic lookup tables before running numerical simulations.
-* **Inputs:**
-* Flat array of $X$ stations (`Float64Array`).
-* Flat array of $Y$ elevations (`Float64Array`).
-* Manning's $n$ break points (`Float64Array` of stations, `Float64Array` of values).
+* Area, wetted perimeter, top width, conveyance
+* Horton–Einstein composite Manning's $n$ when $n$ varies by station
+* Optional channel / overbank subdivision via `is_overbank` → `channel_area` for structure-adjacent calculations
 
+### Module B: Steady-State Solver (`src/solvers/steady.rs`, `junction.rs`, `bridge.rs`, `culvert.rs`)
 
-* **Processing Pipeline:**
-1. For a given cross-section, identify global $Y_{min}$ and $Y_{max}$.
-2. Slice the vertical domain into $N$ calculation slices (default $N=100$).
-3. At each slice elevation ($y_i$), calculate polygon intersections to resolve:
-* **Area ($A$):** Flow area.
-* **Wetted Perimeter ($P$):** Perimeter touching channel boundary.
-* **Top Width ($T$):** Surface width of water.
-* **Conveyance ($K$):** Evaluated using composite Manning's equation if $n$ varies across the section:
+* Standard Step backwater / drawdown (subcritical, supercritical, mixed regime)
+* Inline culverts (FHWA-style inlet/outlet control) and bridges (Yarnell pier loss, pressure orifice, weir overtopping)
+* **One** main-stem + **one** tributary junction (`solve_steady` with junction fields) — **steady, subcritical only**
 
-$$K = \frac{1.486}{n} A R^{2/3}$$
+### Module C: Unsteady Solver (`src/solvers/unsteady.rs`)
 
-
-
-
-
-
-* **Outputs:** A unified, flat geometric lookup array per cross-section stored in WASM linear memory.
-
-### Module B: Steady-State Solver (Gradually Varied Flow)
-
-* **Objective:** Compute backwater and drawdown curves using the 1D Energy Equation and the Standard Step Method.
-* **Mathematical Formulation:**
-
-$$y_2 + z_2 + \alpha_2 \frac{V_2^2}{2g} = y_1 + z_1 + \alpha_1 \frac{V_1^2}{2g} + h_e$$
-
-
-
-Where friction loss ($h_f$) between cross-sections is approximated via average conveyance:
-
-$$h_f = L \bar{S}_f = L \left( \frac{Q}{\bar{K}} \right)^2$$
-
-
-* **Numerical Implementation:**
-* **Root Finder:** Newton-Raphson or Bisection method targeting the unknown Water Surface Elevation ($WSEL$) at the next section.
-* **Directionality:**
-* *Subcritical Flow Regime:* Step sequentially from downstream to upstream.
-* *Supercritical Flow Regime:* Step sequentially from upstream to downstream.
-* *Mixed Regime:* Evaluate critical depth ($y_c$) at each section to detect hydraulic jumps.
-
-
-
-
-
-### Module C: Unsteady-State Solver (Dynamic Routing)
-
-* **Objective:** Solve the 1D Saint-Venant equations for transient wave routing.
-* **Mathematical Formulation:**
-
-$$\text{Continuity: } \frac{\partial A}{\partial t} + \frac{\partial Q}{\partial x} = 0$$
-
-
-$$\text{Momentum: } \frac{\partial Q}{\partial t} + \frac{\partial}{\partial x} \left( \frac{Q^2}{A} \right) + gA \left( \frac{\partial y}{\partial x} - S_0 + S_f \right) = 0$$
-
-
-* **Numerical Implementation:**
-* **Discretization:** Preissmann four-point implicit finite-difference scheme.
-* **Matrix Structure:** The network topology yields a sparse, tridiagonal linear system at each time step.
-* **Linear Solver:** Utilize the **Thomas Algorithm** ($O(N)$ time complexity) to solve the sparse matrix array directly without dense inversion matrix operations.
-
-
+* Preissmann implicit Saint-Venant routing (Thomas algorithm)
+* Upstream discharge and downstream stage hydrographs
+* **Single reach only** — no tributary junction routing in unsteady mode
 
 ---
 
-## 3. Data Architecture & WASM Interoperability
+## 3. Scope Boundaries (Important for Integrators)
 
-To eliminate performance degradation caused by JSON serialization across the Web Worker boundary, all data must be transferred as raw typed arrays.
+| Feature | Steady | Unsteady |
+|---------|--------|----------|
+| Single reach | Yes | Yes |
+| Culverts / bridges on main stem | Yes | Limited (via steady coupling in places) |
+| One tributary junction | Yes | **No** |
+| Multiple tributaries / networks | **No** | **No** |
 
-### Input/Output Memory Management
-
-* **No Objects Over the Bridge:** Do not compile complex structs across the boundary. Expose flat C-style pointer APIs via `wasm-bindgen` (Rust) or `EMSCRIPTEN_KEEPALIVE` (C++).
-* **Transferables:** Wrap array buffers in JavaScript `Transferable Objects` inside `postMessage()`. This clears the memory buffer from the main thread and maps it directly to the Worker thread with zero copy penalty.
-
-```javascript
-// Example Main Thread Orchestration
-const geometryBuffer = new Float64Array(xsData points);
-worker.postMessage({
-    type: 'RUN_STEADY',
-    payload: { geometry: geometryBuffer }
-}, [geometryBuffer.buffer]); // Zero-copy optimization
-
-```
+Host apps importing HEC-RAS geometry with three reaches at a confluence must merge upper and lower main stems before calling WASM. See [`docs/web_gui_tributary_junction.md`](docs/web_gui_tributary_junction.md).
 
 ---
 
-## 4. UI Layer Architecture (Main Thread)
+## 4. WASM API Surface
 
-The frontend GUI must remain lean, serving only as a visual shell for data presentation and creation.
+Entry points (see `src/lib.rs`):
 
-* **GIS View:** Mapbox GL or Leaflet tracking reach alignments and cross-section cutlines via GeoJSON structures.
-* **Profile/XS Canvas Plotter:** Use custom HTML5 Canvas rendering loops or high-performance visualization packages (e.g., `uPlot` or `D3.js`) to plot cross-sections and HGL profiles instantly during computation.
+* `solveSteady(inputs: SteadyInputs) -> SteadyResult`
+* `solveUnsteady(inputs: UnsteadyInputs) -> UnsteadyResult`
 
----
+Inputs and outputs are JSON-serializable objects (Python uses the same schema via `_streams1d`). Steady junction runs additionally return `tributary_wsel`, `tributary_velocity`, and `tributary_froude` when tributary fields are set.
 
-## 5. Development Milestones & Phased Execution
-
-```
-                       [PROJECT PHASING SCHEDULE]
-  
-  MILESTONE 1: Core Geometry Engine
-  ├─ Implement XS Polygon Slicing Loop
-  └─ Output A, P, T, K Lookup Tables 
-  
-  MILESTONE 2: Steady State Math Verification
-  ├─ Implement Standard Step Root Finder
-  └─ Verify against standard M1, M2, S1 backwater curves
-  
-  MILESTONE 3: WASM Compilation & Worker Integration
-  ├─ Configure wasm-pack / Emscripten build pipelines
-  └─ Establish zero-copy Transferable Array data pipeline
-  
-  MILESTONE 4: GUI Framework Integration
-  ├─ Canvas profile rendering engines
-  └─ Interactive cross-section editor
-
-```
+**Build outputs:** `./build_wasm.sh` produces `./pkg` (web) and `./pkg-node` (Node).
 
 ---
 
-## 6. Verification and Validation Controls
+## 5. Data Transfer Recommendations
 
-* **Unit Test Suite:** The engine must include a suite of automated unit tests compiled natively in the host language (C++/Rust).
-* **Mathematical Baseline:** Validate engine results directly against standardized HEC-RAS verification datasets (e.g., uniform trapezoidal channels, standard step drawdown profiles). Computed water surface profiles must match established analytical baselines to within less than $0.01\text{ ft}$ ($0.003\text{ m}$).
+For interactive web apps, avoid re-parsing large JSON on every keystroke when possible:
+
+* Pass cross-section coordinates and Manning breaks as typed arrays (`Float64Array`) in Worker messages
+* Use [Transferable objects](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Transferable_objects) for zero-copy handoff where buffers are rebuilt each solve
+* Keep the WASM module in a dedicated Worker so profile updates do not block the UI thread
+
+The current crate accepts structured objects; flat-buffer or SharedArrayBuffer optimizations are host-application concerns.
+
+---
+
+## 6. UI Layer (Host Application)
+
+STREAM-1D does not ship a GUI. Expected host responsibilities:
+
+* **Plan / profile views:** Canvas, SVG, or chart libraries (e.g. uPlot, D3)
+* **GIS:** Mapbox GL, Leaflet, or similar for reach centerlines and cut lines
+* **Import:** Geometry parsing (HEC-RAS, GeoJSON, custom) and reach-merge workflows before solver calls
+* **Workers:** Background execution and progress callbacks
+
+---
+
+## 7. Verification
+
+Automated checks ship with the repository:
+
+* `cargo test` — Rust unit and integration tests (geometry, culvert, bridge Yarnell, junction, steady/unsteady)
+* `python/test_streams1d.py`, `python/test_python_bindings.py` — Python binding and HEC-RAS ConSpan benchmark
+* [`python/streams1d_verification.ipynb`](python/streams1d_verification.ipynb) — interactive Binder notebook with HEC-RAS WSEL overlay
+
+ConSpan steady benchmark tolerance: **±0.04 ft** WSEL vs HEC-RAS at key stations (see README verification table).
+
+---
+
+## 8. Related Documentation
+
+| Document | Purpose |
+|----------|---------|
+| [`README.md`](README.md) | Equations, build, usage examples, verification summary |
+| [`docs/web_gui_tributary_junction.md`](docs/web_gui_tributary_junction.md) | Tributary junction API and import merge modal spec |
