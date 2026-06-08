@@ -24,7 +24,7 @@ STREAM-1D is a Rust 1D open-channel hydraulics engine. It provides steady gradua
 
 STREAM-1D is an **embeddable 1D hydraulics engine** — the Rust/WASM/Python solve core in this repository, not a complete desktop product like HEC-RAS. It exposes a **stateless** API (`cross_sections` and boundary inputs in, profile arrays out). It does **not** ship a user interface, project database, RAS Map, 2D floodplain meshing, or native HEC-RAS Plan/Unsteady solvers.
 
-**Companion web applications** built on this engine (not part of this repository) may provide cross-section editing, HEC-RAS geometry import (e.g. `.g01`), and project persistence. Those features convert imported or edited geometry into `SteadyInputs` / `UnsteadyInputs` before calling WASM. The Python bindings in this repo accept geometry arrays directly — they do not include a HEC-RAS file importer or cross-section editor.
+**Companion web applications** built on this engine (not part of this repository) may provide cross-section editing, HEC-RAS geometry import (e.g. `.g01`), and project persistence. Those features convert imported or edited geometry into `SteadyInputs` / `UnsteadyInputs` before calling WASM. The Python bindings in this repo accept geometry arrays directly but they do not include a HEC-RAS file importer or cross-section editor.
 
 ### What the STREAM-1D engine supports
 
