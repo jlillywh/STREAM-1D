@@ -418,10 +418,23 @@ pub struct CulvertSolveParams {
     pub weir_length: f64,
     #[serde(default = "default_num_barrels")]
     pub num_barrels: i32,
+    /// Open barrels carrying flow (≤ `num_barrels`). Zero = use all barrels.
+    #[serde(default)]
+    pub active_barrels: i32,
+    /// Skew angle in degrees from normal to channel flow (0 = perpendicular). Clamped to 59°.
+    #[serde(default)]
+    pub skew_deg: f64,
 }
 
 fn default_num_barrels() -> i32 {
     1
+}
+
+/// HEC-RAS-style skew: projected inlet span × cos(θ), friction length ÷ cos(θ).
+pub fn apply_barrel_skew(skew_deg: f64, span_ft: f64, len_ft: f64) -> (f64, f64) {
+    let deg = skew_deg.clamp(0.0, 59.0);
+    let cos_s = deg.to_radians().cos().max(0.52);
+    (span_ft * cos_s, len_ft / cos_s)
 }
 
 fn normalize_culvert_params(params: &mut CulvertSolveParams) {
@@ -430,6 +443,9 @@ fn normalize_culvert_params(params: &mut CulvertSolveParams) {
     }
     if params.num_barrels < 1 {
         params.num_barrels = 1;
+    }
+    if params.active_barrels < 1 || params.active_barrels > params.num_barrels {
+        params.active_barrels = params.num_barrels;
     }
 }
 
@@ -566,6 +582,8 @@ fn solve_culvert_barrel_internal(params: &CulvertSolveParams, q: f64) -> BarrelS
                 params.depth_bottom_n,
             )
         };
+
+    let (span_ft, len_ft) = apply_barrel_skew(params.skew_deg, span_ft, len_ft);
 
     let d_eff = (rise_ft - db_ft).max(0.01);
     let a_full_eff = get_culvert_effective_area(shape, span_ft, rise_ft, rise_ft, db_ft);
@@ -740,7 +758,7 @@ fn solve_wsel_weir_only(
 pub fn solve_culvert(params: &CulvertSolveParams) -> CulvertSolveResult {
     let mut params = params.clone();
     normalize_culvert_params(&mut params);
-    let barrels = params.num_barrels as f64;
+    let barrels = params.active_barrels as f64;
     let q_total = params.q;
 
     let crest_user = match params.crest_elev {
@@ -768,7 +786,12 @@ pub fn solve_culvert(params: &CulvertSolveParams) -> CulvertSolveResult {
             if params.weir_length > 0.0 {
                 params.weir_length / FT_TO_M
             } else {
-                (params.span / FT_TO_M) * barrels
+                let (span_eff, _) = apply_barrel_skew(
+                    params.skew_deg,
+                    params.span / FT_TO_M,
+                    params.length / FT_TO_M,
+                );
+                span_eff * barrels
             },
         )
     } else {
@@ -782,7 +805,9 @@ pub fn solve_culvert(params: &CulvertSolveParams) -> CulvertSolveResult {
             if params.weir_length > 0.0 {
                 params.weir_length
             } else {
-                params.span * barrels
+                let (span_eff, _) =
+                    apply_barrel_skew(params.skew_deg, params.span, params.length);
+                span_eff * barrels
             },
         )
     };
@@ -944,6 +969,8 @@ pub fn solve_culvert_wsel(
         weir_coeff: 0.0,
         weir_length: 0.0,
         num_barrels: 1,
+        active_barrels: 0,
+        skew_deg: 0.0,
     };
     solve_culvert(&params).wsel
 }
@@ -1070,6 +1097,8 @@ mod tests {
             weir_coeff: 0.0,
             weir_length: 0.0,
             num_barrels: 1,
+            active_barrels: 0,
+            skew_deg: 0.0,
         };
         let legacy = solve_culvert(&base).wsel;
         let mut projecting = base.clone();
@@ -1103,6 +1132,8 @@ mod tests {
             weir_coeff: 0.0,
             weir_length: 0.0,
             num_barrels: 1,
+            active_barrels: 0,
+            skew_deg: 0.0,
         };
         let bed = CulvertSolveParams {
             z_up: 10.0,
@@ -1138,6 +1169,8 @@ mod tests {
             weir_coeff: 2.6,
             weir_length: 20.0,
             num_barrels: 2,
+            active_barrels: 0,
+            skew_deg: 0.0,
         };
         let result = solve_culvert(&params);
         assert!(result.wsel > 14.0);
@@ -1169,6 +1202,8 @@ mod tests {
             weir_coeff: 0.0,
             weir_length: 0.0,
             num_barrels: 1,
+            active_barrels: 0,
+            skew_deg: 0.0,
         };
         assert_eq!(solve_culvert(&params).control_type, "inlet");
 
@@ -1242,6 +1277,8 @@ mod tests {
             weir_coeff: 2.6,
             weir_length: 10.0,
             num_barrels: 1,
+            active_barrels: 0,
+            skew_deg: 0.0,
         };
         let result = solve_culvert(&params);
         assert!(result.wsel < 20.0);
@@ -1273,6 +1310,8 @@ mod tests {
             weir_coeff: 0.0,
             weir_length: 0.0,
             num_barrels: 1,
+            active_barrels: 0,
+            skew_deg: 0.0,
         };
         let result = solve_culvert(&params);
         assert_eq!(result.control_type, "inlet");
@@ -1310,6 +1349,8 @@ mod tests {
             weir_coeff: 0.0,
             weir_length: 0.0,
             num_barrels: 1,
+            active_barrels: 0,
+            skew_deg: 0.0,
         };
         let flat = CulvertSolveParams {
             z_down: 10.0,
@@ -1362,6 +1403,8 @@ mod tests {
                 weir_coeff: 0.0,
                 weir_length: 0.0,
                 num_barrels: 1,
+                active_barrels: 0,
+                skew_deg: 0.0,
             },
         };
         let curve = compute_culvert_rating_curve(&inputs);
@@ -1396,11 +1439,92 @@ mod tests {
             weir_coeff: 2.6,
             weir_length: 20.0,
             num_barrels: 2,
+            active_barrels: 0,
+            skew_deg: 0.0,
         };
         let result = solve_culvert(&params);
         assert_eq!(result.control_type, "overtopping");
         assert!(result.q_weir > 0.0);
         assert!((result.q_barrel + result.q_weir - 500.0).abs() < 1.0);
+    }
+
+    #[test]
+    fn test_apply_barrel_skew_geometry() {
+        let (span, len) = apply_barrel_skew(0.0, 10.0, 100.0);
+        assert!((span - 10.0).abs() < 1e-6);
+        assert!((len - 100.0).abs() < 1e-6);
+        let (span30, len30) = apply_barrel_skew(30.0, 10.0, 100.0);
+        assert!(span30 < 10.0);
+        assert!(len30 > 100.0);
+    }
+
+    #[test]
+    fn test_skew_increases_outlet_control_headwater() {
+        let base = CulvertSolveParams {
+            q: 100.0,
+            shape_type: 0,
+            inlet_type: 1,
+            span: 5.0,
+            rise: 5.0,
+            roughness_n: 0.012,
+            length: 100.0,
+            entrance_loss_coeff: 0.5,
+            exit_loss_coeff: 1.0,
+            z_down: 9.0,
+            z_up: 10.0,
+            tw_wsel: 15.0,
+            units: UnitSystem::USCustomary,
+            manning_n_bottom: 0.012,
+            depth_bottom_n: 0.0,
+            depth_blocked: 0.0,
+            ds_velocity: 0.0,
+            us_velocity: 0.0,
+            crest_elev: None,
+            weir_coeff: 0.0,
+            weir_length: 0.0,
+            num_barrels: 1,
+            active_barrels: 0,
+            skew_deg: 0.0,
+        };
+        let mut skewed = base.clone();
+        skewed.skew_deg = 30.0;
+        let hw_plain = solve_culvert(&base).wsel;
+        let hw_skew = solve_culvert(&skewed).wsel;
+        assert_eq!(solve_culvert(&base).control_type, "outlet");
+        assert!(hw_skew > hw_plain, "skew={} plain={}", hw_skew, hw_plain);
+    }
+
+    #[test]
+    fn test_blocked_barrel_increases_headwater() {
+        let base = CulvertSolveParams {
+            q: 100.0,
+            shape_type: 0,
+            inlet_type: 1,
+            span: 5.0,
+            rise: 5.0,
+            roughness_n: 0.012,
+            length: 100.0,
+            entrance_loss_coeff: 0.5,
+            exit_loss_coeff: 1.0,
+            z_down: 9.0,
+            z_up: 10.0,
+            tw_wsel: 12.0,
+            units: UnitSystem::USCustomary,
+            manning_n_bottom: 0.012,
+            depth_bottom_n: 0.0,
+            depth_blocked: 0.0,
+            ds_velocity: 0.0,
+            us_velocity: 0.0,
+            crest_elev: None,
+            weir_coeff: 0.0,
+            weir_length: 0.0,
+            num_barrels: 2,
+            active_barrels: 2,
+            skew_deg: 0.0,
+        };
+        let mut blocked = base.clone();
+        blocked.active_barrels = 1;
+        assert!(solve_culvert(&blocked).wsel > solve_culvert(&base).wsel);
     }
 
     #[test]
@@ -1428,6 +1552,8 @@ mod tests {
             weir_coeff: 1.44,
             weir_length: 4.0,
             num_barrels: 1,
+            active_barrels: 0,
+            skew_deg: 0.0,
         };
         let result = solve_culvert(&params);
         assert!(result.wsel > 1.2);

@@ -57,6 +57,8 @@ fn wasm_culvert_rating_curve_contract() {
             weir_coeff: 0.0,
             weir_length: 0.0,
             num_barrels: 1,
+            active_barrels: 0,
+            skew_deg: 0.0,
         },
     };
     let curve = compute_culvert_rating_curve(&inputs);
