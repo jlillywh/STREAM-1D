@@ -1018,7 +1018,145 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                 }
             }
 
-            if bridge_idx.is_some() || culvert_idx.is_some() {
+            if let Some(c_idx) = culvert_idx {
+                let shape_type = inputs.culvert_shape_types.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0);
+                let span = inputs.culvert_spans.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(4.0);
+                let rise = inputs.culvert_rises.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(4.0);
+                let roughness_n = inputs.culvert_roughness_ns.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.013);
+                let culv_len = inputs.culvert_lengths.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(100.0);
+                let entrance_loss_coeff = inputs.culvert_entrance_loss_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.5);
+                let exit_loss_coeff = inputs.culvert_exit_loss_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(1.0);
+                let manning_n_bottom = inputs.culvert_roughness_n_bottoms.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(roughness_n);
+                let depth_bottom_n = inputs.culvert_depth_bottom_ns.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
+                let depth_blocked = inputs.culvert_depth_blockeds.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
+                let inlet_type = inputs.culvert_inlet_types.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0);
+                let crest_elev = inputs.culvert_crest_elevs.as_ref().and_then(|v| v.get(c_idx)).copied();
+                let weir_coeff = inputs.culvert_weir_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
+                let weir_length = inputs.culvert_weir_lengths.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
+                let num_barrels = inputs.culvert_barrels.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(1).max(1);
+                let active_barrels = inputs
+                    .culvert_active_barrels
+                    .as_ref()
+                    .and_then(|v| v.get(c_idx))
+                    .copied()
+                    .unwrap_or(0);
+                let skew_deg = inputs
+                    .culvert_skew_angles
+                    .as_ref()
+                    .and_then(|v| v.get(c_idx))
+                    .copied()
+                    .unwrap_or(0.0);
+                let barrel_spans = inputs
+                    .culvert_barrel_spans
+                    .as_ref()
+                    .and_then(|v| v.get(c_idx))
+                    .cloned();
+                let barrel_rises = inputs
+                    .culvert_barrel_rises
+                    .as_ref()
+                    .and_then(|v| v.get(c_idx))
+                    .cloned();
+
+                let hw_wsel_user = if raw_units == UnitSystem::USCustomary {
+                    super_wsel[i] / FT_TO_M
+                } else {
+                    super_wsel[i]
+                };
+                let bed_z_down = if raw_units == UnitSystem::USCustomary {
+                    densified_z_mins[i + 1] / FT_TO_M
+                } else {
+                    densified_z_mins[i + 1]
+                };
+                let bed_z_up = if raw_units == UnitSystem::USCustomary {
+                    densified_z_mins[i] / FT_TO_M
+                } else {
+                    densified_z_mins[i]
+                };
+                let z_down_user = inputs
+                    .culvert_z_downs
+                    .as_ref()
+                    .and_then(|v| v.get(c_idx))
+                    .copied()
+                    .unwrap_or(bed_z_down);
+                let z_up_user = inputs
+                    .culvert_z_ups
+                    .as_ref()
+                    .and_then(|v| v.get(c_idx))
+                    .copied()
+                    .unwrap_or(bed_z_up);
+
+                let table_up = &densified_tables[i];
+                let table_down = &densified_tables[i + 1];
+                let us_row = table_up.interpolate(super_wsel[i]);
+                let us_area_user = if raw_units == UnitSystem::USCustomary {
+                    us_row.channel_area / (FT_TO_M * FT_TO_M)
+                } else {
+                    us_row.channel_area
+                };
+                let us_velocity_user = if us_area_user > 1e-9 {
+                    inputs.flow_rate / us_area_user
+                } else {
+                    0.0
+                };
+
+                let mut tw_wsel_user = hw_wsel_user;
+                for _ in 0..3 {
+                    let tw_metric = if raw_units == UnitSystem::USCustomary {
+                        tw_wsel_user * FT_TO_M
+                    } else {
+                        tw_wsel_user
+                    };
+                    let ds_row = table_down.interpolate(tw_metric);
+                    let ds_area_user = if raw_units == UnitSystem::USCustomary {
+                        ds_row.channel_area / (FT_TO_M * FT_TO_M)
+                    } else {
+                        ds_row.channel_area
+                    };
+                    let ds_velocity_user = if ds_area_user > 1e-9 {
+                        inputs.flow_rate / ds_area_user
+                    } else {
+                        0.0
+                    };
+
+                    let culvert_params = crate::solvers::culvert::CulvertSolveParams {
+                        q: inputs.flow_rate,
+                        shape_type,
+                        inlet_type,
+                        span,
+                        rise,
+                        roughness_n,
+                        length: culv_len,
+                        entrance_loss_coeff,
+                        exit_loss_coeff,
+                        z_down: z_down_user,
+                        z_up: z_up_user,
+                        tw_wsel: tw_wsel_user,
+                        units: raw_units,
+                        manning_n_bottom,
+                        depth_bottom_n,
+                        depth_blocked,
+                        ds_velocity: ds_velocity_user,
+                        us_velocity: us_velocity_user,
+                        crest_elev,
+                        weir_coeff,
+                        weir_length,
+                        num_barrels,
+                        active_barrels,
+                        skew_deg,
+                        barrel_spans: barrel_spans.clone(),
+                        barrel_rises: barrel_rises.clone(),
+                    };
+                    let (tw_new, _) =
+                        crate::solvers::culvert::solve_culvert_from_headwater(&culvert_params, hw_wsel_user);
+                    tw_wsel_user = tw_new;
+                }
+
+                super_wsel[i + 1] = if raw_units == UnitSystem::USCustomary {
+                    tw_wsel_user * FT_TO_M
+                } else {
+                    tw_wsel_user
+                };
+            } else if bridge_idx.is_some() {
                 super_wsel[i + 1] = critical_wsels[i + 1];
             } else {
                 super_wsel[i + 1] = solve_step(
@@ -1578,6 +1716,24 @@ mod tests {
             "Narrow culvert WSEL ({}) should be greater than wide culvert WSEL ({})",
             result_narrow.wsel[1],
             result_wide.wsel[1]
+        );
+    }
+
+    #[test]
+    fn test_steady_supercritical_culvert_routing() {
+        let channel = culvert_tier1_channel();
+        let mut inputs = base_culvert_tier1_inputs(channel);
+        inputs.regime = 1;
+        inputs.upstream_wsel = Some(8.0);
+        inputs.downstream_wsel = None;
+        inputs.downstream_bc_type = Some(1);
+        let result = solve_steady(&inputs);
+        assert!(result.wsel.iter().all(|w| w.is_finite()));
+        assert!(
+            (result.wsel[2] - result.critical_wsel[2]).abs() > 0.01,
+            "outlet WSEL {} should differ from critical stub {}",
+            result.wsel[2],
+            result.critical_wsel[2]
         );
     }
 
