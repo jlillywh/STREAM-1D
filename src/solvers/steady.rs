@@ -1093,11 +1093,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                 } else {
                     us_row.channel_area
                 };
-                let us_velocity_user = if us_area_user > 1e-9 {
-                    inputs.flow_rate / us_area_user
-                } else {
-                    0.0
-                };
+                let us_velocity_user = inputs.flow_rate / us_area_user.max(1e-9);
 
                 let mut tw_wsel_user = hw_wsel_user;
                 for _ in 0..3 {
@@ -1112,11 +1108,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                     } else {
                         ds_row.channel_area
                     };
-                    let ds_velocity_user = if ds_area_user > 1e-9 {
-                        inputs.flow_rate / ds_area_user
-                    } else {
-                        0.0
-                    };
+                    let ds_velocity_user = inputs.flow_rate / ds_area_user.max(1e-9);
 
                     let culvert_params = crate::solvers::culvert::CulvertSolveParams {
                         q: inputs.flow_rate,
@@ -1729,12 +1721,99 @@ mod tests {
         inputs.downstream_bc_type = Some(1);
         let result = solve_steady(&inputs);
         assert!(result.wsel.iter().all(|w| w.is_finite()));
-        assert!(
-            (result.wsel[2] - result.critical_wsel[2]).abs() > 0.01,
-            "outlet WSEL {} should differ from critical stub {}",
-            result.wsel[2],
-            result.critical_wsel[2]
-        );
+        assert!((result.wsel[2] - result.critical_wsel[2]).abs() > 0.01);
+    }
+
+    fn culvert_tier1_channel_metric() -> Vec<CrossSection> {
+        vec![
+            CrossSection {
+                station: 60.0,
+                x: vec![0.0, 0.0, 3.0, 3.0],
+                y: vec![3.66, 0.61, 0.61, 3.66],
+                n_stations: vec![0.0],
+                n_values: vec![0.02],
+                unit_system: UnitSystem::Metric,
+                is_overbank: None,
+            },
+            CrossSection {
+                station: 30.0,
+                x: vec![0.0, 0.0, 3.0, 3.0],
+                y: vec![3.35, 0.30, 0.30, 3.35],
+                n_stations: vec![0.0],
+                n_values: vec![0.02],
+                unit_system: UnitSystem::Metric,
+                is_overbank: None,
+            },
+            CrossSection {
+                station: 0.0,
+                x: vec![0.0, 0.0, 3.0, 3.0],
+                y: vec![3.05, 0.0, 0.0, 3.05],
+                n_stations: vec![0.0],
+                n_values: vec![0.02],
+                unit_system: UnitSystem::Metric,
+                is_overbank: None,
+            },
+        ]
+    }
+
+    #[test]
+    fn test_steady_supercritical_culvert_metric_and_mixed() {
+        let channel = culvert_tier1_channel_metric();
+        let metric = SteadyInputs {
+            cross_sections: channel.clone(),
+            flow_rate: 3.0,
+            num_slices: Some(50),
+            regime: 1,
+            upstream_wsel: Some(2.5),
+            downstream_wsel: None,
+            downstream_bc_type: Some(1),
+            culvert_stations: Some(vec![15.0]),
+            culvert_shape_types: Some(vec![0]),
+            culvert_spans: Some(vec![1.5]),
+            culvert_rises: Some(vec![1.5]),
+            culvert_roughness_ns: Some(vec![0.012]),
+            culvert_lengths: Some(vec![30.0]),
+            culvert_entrance_loss_coeffs: Some(vec![0.5]),
+            culvert_exit_loss_coeffs: Some(vec![1.0]),
+            culvert_inlet_types: Some(vec![1]),
+            ..Default::default()
+        };
+        let metric_result = solve_steady(&metric);
+        assert!(metric_result.wsel.iter().all(|w| w.is_finite()));
+        assert!((metric_result.wsel[2] - metric_result.critical_wsel[2]).abs() > 0.01);
+
+        let mut mixed = base_culvert_tier1_inputs(culvert_tier1_channel());
+        mixed.regime = 2;
+        mixed.upstream_wsel = Some(8.0);
+        mixed.downstream_wsel = Some(3.0);
+        let mixed_result = solve_steady(&mixed);
+        assert!(mixed_result.wsel.iter().all(|w| w.is_finite()));
+        assert!(mixed_result.wsel[1] > mixed.downstream_wsel.unwrap());
+    }
+
+    #[test]
+    fn test_steady_supercritical_bridge_critical_stub() {
+        let channel = culvert_tier1_channel();
+        let inputs = SteadyInputs {
+            cross_sections: channel,
+            flow_rate: 100.0,
+            num_slices: Some(50),
+            regime: 1,
+            upstream_wsel: Some(8.0),
+            downstream_bc_type: Some(1),
+            bridge_stations: Some(vec![50.0]),
+            bridge_low_chords: Some(vec![12.0]),
+            bridge_high_chords: Some(vec![14.0]),
+            bridge_pier_widths: Some(vec![0.0]),
+            bridge_num_piers: Some(vec![0]),
+            bridge_pier_shapes: Some(vec![0]),
+            bridge_weir_coeffs: Some(vec![3.0]),
+            bridge_orifice_coeffs: Some(vec![0.8]),
+            ..Default::default()
+        };
+        let result = solve_steady(&inputs);
+        assert!(result.wsel.iter().all(|w| w.is_finite()));
+        assert!((result.wsel[2] - result.critical_wsel[2]).abs() < 0.05);
     }
 
     #[test]

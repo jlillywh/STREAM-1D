@@ -188,11 +188,7 @@ fn apply_culvert_internal_boundaries(
         } else {
             ds_row.channel_area
         };
-        let ds_velocity_user = if ds_area_user > 1e-9 {
-            q_user / ds_area_user
-        } else {
-            0.0
-        };
+        let ds_velocity_user = q_user / ds_area_user.max(1e-9);
 
         let mut wsel_up_user = tw_wsel_user;
         for _ in 0..3 {
@@ -207,11 +203,7 @@ fn apply_culvert_internal_boundaries(
             } else {
                 us_row.channel_area
             };
-            let us_velocity_user = if us_area_user > 1e-9 {
-                q_user / us_area_user
-            } else {
-                0.0
-            };
+            let us_velocity_user = q_user / us_area_user.max(1e-9);
 
             let result = crate::solvers::culvert::solve_culvert(
                 &crate::solvers::culvert::CulvertSolveParams {
@@ -748,9 +740,7 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
             // Clamp solved WSEL to prevent dry nodes/negative depth, and limit velocity
             for k in 0..dm {
                 let min_wsel = densified_z_mins[k] + 0.05;
-                if densified_y_current[k] < min_wsel {
-                    densified_y_current[k] = min_wsel;
-                }
+                densified_y_current[k] = densified_y_current[k].max(min_wsel);
                 let row = densified_tables[k].interpolate(densified_y_current[k]);
                 let area = row.area.max(1e-6);
                 let depth = (densified_y_current[k] - densified_z_mins[k]).max(0.0);
@@ -1103,6 +1093,72 @@ mod tests {
             res_culvert.wsel[2][0] > res_plain.wsel[2][0],
             "culvert headwater should exceed plain channel upstream WSEL"
         );
+    }
+
+    #[test]
+    fn test_unsteady_inline_culvert_us_customary() {
+        let xs1000 = CrossSection {
+            station: 1000.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![6.0, 1.0, 1.0, 6.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
+        };
+        let xs500 = CrossSection {
+            station: 500.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![5.5, 0.5, 0.5, 5.5],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
+        };
+        let xs0 = CrossSection {
+            station: 0.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![5.0, 0.0, 0.0, 5.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
+        };
+
+        let inputs = UnsteadyInputs {
+            cross_sections: vec![xs1000, xs500, xs0],
+            initial_wsel: vec![8.0, 6.5, 5.0],
+            initial_q: vec![70.0, 70.0, 70.0],
+            dt: 60.0,
+            num_steps: 3,
+            upstream_q_hydrograph: vec![70.0; 3],
+            downstream_wsel_hydrograph: vec![5.0; 3],
+            theta: Some(0.6),
+            num_slices: Some(50),
+            max_spacing: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            culvert: UnsteadyCulvertInputs {
+                culvert_stations: Some(vec![250.0]),
+                culvert_shape_types: Some(vec![0]),
+                culvert_spans: Some(vec![6.0]),
+                culvert_rises: Some(vec![6.0]),
+                culvert_roughness_ns: Some(vec![0.013]),
+                culvert_lengths: Some(vec![100.0]),
+                culvert_entrance_loss_coeffs: Some(vec![0.5]),
+                culvert_exit_loss_coeffs: Some(vec![1.0]),
+                culvert_barrels: Some(vec![1]),
+                culvert_inlet_types: Some(vec![1]),
+                culvert_z_ups: Some(vec![6.0]),
+                culvert_z_downs: Some(vec![5.0]),
+                ..Default::default()
+            },
+        };
+
+        let result = solve_unsteady(&inputs);
+        assert_eq!(result.wsel.len(), 3);
+        assert!(result.wsel[2].iter().all(|w| w.is_finite()));
+        assert!(result.q[2].iter().all(|q| q.is_finite()));
     }
 }
 

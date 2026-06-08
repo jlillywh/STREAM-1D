@@ -1216,10 +1216,6 @@ pub fn solve_culvert_from_headwater(
         return (lo, result);
     }
 
-    while headwater_at(hi).wsel < hw_wsel - 1e-4 && hi < hw_wsel + 500.0 {
-        hi += rise.max(1.0);
-    }
-
     for _ in 0..50 {
         let mid = 0.5 * (lo + hi);
         if headwater_at(mid).wsel >= hw_wsel - 1e-4 {
@@ -1384,6 +1380,21 @@ mod tests {
             solve_culvert_from_headwater(&outlet, forward_outlet.wsel);
         assert!((inverse_out.wsel - forward_outlet.wsel).abs() < 0.05);
         assert!((tw_out - outlet.tw_wsel).abs() < 0.1);
+    }
+
+    #[test]
+    fn test_solve_culvert_from_headwater_edge_cases() {
+        let mut early = us_circular_baseline();
+        early.q = 800.0;
+        let (tw_early, result_early) = solve_culvert_from_headwater(&early, 8.0);
+        assert!(result_early.wsel > 8.0);
+        assert!((tw_early - early.z_down).abs() < 0.05);
+
+        let mut bisect = us_circular_baseline();
+        bisect.q = 200.0;
+        let (tw, result) = solve_culvert_from_headwater(&bisect, 18.0);
+        assert!((result.wsel - 18.0).abs() < 0.1);
+        assert!(tw >= bisect.z_down);
     }
 
     #[test]
