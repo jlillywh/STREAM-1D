@@ -2,7 +2,7 @@
 
 **System architecture and integration blueprint for host applications (web, Python, and batch pipelines).**
 
-This document describes how STREAM-1D fits into a larger application. Mathematical formulations, verification results, and build instructions are in [`README.md`](README.md). Web GUI tributary import guidance is in [`docs/web_gui_tributary_junction.md`](docs/web_gui_tributary_junction.md).
+This document describes how STREAM-1D fits into a larger application. Mathematical formulations, verification results, and build instructions are in [`README.md`](README.md). GUI integration specs for the hosted [stream1d.com](https://stream1d.com) web application are maintained in that product's repository, not here.
 
 **Core language:** Rust (compiled to WebAssembly and a native Python extension via maturin)
 
@@ -71,7 +71,7 @@ See the full **[Limitations (read before comparing to HEC-RAS)](README.md#limita
 | Multiple tributaries / networks | **No** | **No** |
 | 2D floodplain, sediment, water quality | **No** | **No** |
 
-Host **web apps** importing HEC-RAS geometry with three reaches at a confluence must merge upper and lower main stems before calling WASM. See [`docs/web_gui_tributary_junction.md`](docs/web_gui_tributary_junction.md). (This import workflow is **not** part of the Python bindings in this repository.)
+Host **web apps** importing HEC-RAS geometry with three reaches at a confluence must merge upper and lower main stems into one `cross_sections` array before calling WASM, then pass the tributary reach via `tributary_cross_sections` with `junction_main_station` at the shared node. (This import workflow is **not** part of the Python bindings in this repository.)
 
 ---
 
@@ -92,7 +92,7 @@ Inputs and outputs are plain JavaScript objects using **snake_case** field names
 
 **Culvert Tier 1 (API version 2):** optional inputs `culvert_inlet_types`, `culvert_z_ups`, `culvert_z_downs`, `culvert_crest_elevs`, `culvert_weir_coeffs`, `culvert_weir_lengths`; output `culvert_control_types` (`"inlet"` \| `"outlet"` \| `"overtopping"`).
 
-**Web app integrators:** see [`docs/wasm_integration.md`](docs/wasm_integration.md) and [`docs/wasm_api.types.ts`](docs/wasm_api.types.ts).
+**Web app integrators:** see [`docs/wasm_api.types.ts`](docs/wasm_api.types.ts) and [`examples/wasm/`](../examples/wasm/).
 
 **Build outputs:** `./build_wasm.sh` produces `./pkg` (web) and `./pkg-node` (Node), runs JSON contract tests, and executes a Node smoke test.
 
@@ -141,6 +141,5 @@ ConSpan steady benchmark tolerance: **±0.04 ft** WSEL vs HEC-RAS at key station
 | Document | Purpose |
 |----------|---------|
 | [`README.md`](README.md) | Equations, build, usage examples, verification summary |
-| [`docs/web_gui_tributary_junction.md`](docs/web_gui_tributary_junction.md) | Tributary junction API and import merge modal spec |
-| [`docs/wasm_integration.md`](docs/wasm_integration.md) | WASM Worker integration, Tier 1 culvert mapping |
-| [`docs/wasm_api.types.ts`](docs/wasm_api.types.ts) | TypeScript definitions for the web app |
+| [`docs/wasm_api.types.ts`](docs/wasm_api.types.ts) | TypeScript definitions for WASM integrators |
+| [`examples/wasm/`](../examples/wasm/) | Worker reference and Node smoke test |
