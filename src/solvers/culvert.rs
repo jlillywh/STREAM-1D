@@ -1192,6 +1192,43 @@ pub fn solve_culvert(params: &CulvertSolveParams) -> CulvertSolveResult {
     assemble_culvert_result(&params, &last_barrel, q_barrel_total, q_weir, control)
 }
 
+/// Supercritical routing: given upstream headwater and discharge, solve downstream tailwater.
+/// Finds the minimum tailwater that produces the target headwater (inlet-control flat rating limbs).
+pub fn solve_culvert_from_headwater(
+    params: &CulvertSolveParams,
+    hw_wsel: f64,
+) -> (f64, CulvertSolveResult) {
+    let mut base = params.clone();
+    normalize_culvert_params(&mut base);
+
+    let headwater_at = |tw: f64| {
+        let mut p = base.clone();
+        p.tw_wsel = tw;
+        solve_culvert(&p)
+    };
+
+    let rise = base.rise.max(0.01);
+    let mut lo = base.z_down;
+    let mut hi = (hw_wsel + rise).max(lo + 0.1);
+
+    if headwater_at(lo).wsel > hw_wsel + 1e-4 {
+        let result = headwater_at(lo);
+        return (lo, result);
+    }
+
+    for _ in 0..50 {
+        let mid = 0.5 * (lo + hi);
+        if headwater_at(mid).wsel >= hw_wsel - 1e-4 {
+            hi = mid;
+        } else {
+            lo = mid;
+        }
+    }
+
+    let tw = hi;
+    (tw, headwater_at(tw))
+}
+
 /// Compute headwater vs discharge at fixed tailwater (culvert rating curve).
 pub fn compute_culvert_rating_curve(inputs: &CulvertRatingCurveInputs) -> CulvertRatingCurveResult {
     let mut q = Vec::with_capacity(inputs.q_values.len());
@@ -1324,6 +1361,40 @@ mod tests {
             barrel_spans: None,
             barrel_rises: None,
         }
+    }
+
+    #[test]
+    fn test_solve_culvert_from_headwater_roundtrip() {
+        let base = us_circular_baseline();
+        let forward = solve_culvert(&base);
+        let (tw_recovered, inverse) =
+            solve_culvert_from_headwater(&base, forward.wsel);
+        assert!((inverse.wsel - forward.wsel).abs() < 0.05);
+        assert!(tw_recovered <= base.tw_wsel + 1e-3);
+
+        let mut outlet = us_circular_baseline();
+        outlet.tw_wsel = 16.0;
+        let forward_outlet = solve_culvert(&outlet);
+        assert_eq!(forward_outlet.control_type, "outlet");
+        let (tw_out, inverse_out) =
+            solve_culvert_from_headwater(&outlet, forward_outlet.wsel);
+        assert!((inverse_out.wsel - forward_outlet.wsel).abs() < 0.05);
+        assert!((tw_out - outlet.tw_wsel).abs() < 0.1);
+    }
+
+    #[test]
+    fn test_solve_culvert_from_headwater_edge_cases() {
+        let mut early = us_circular_baseline();
+        early.q = 800.0;
+        let (tw_early, result_early) = solve_culvert_from_headwater(&early, 8.0);
+        assert!(result_early.wsel > 8.0);
+        assert!((tw_early - early.z_down).abs() < 0.05);
+
+        let mut bisect = us_circular_baseline();
+        bisect.q = 200.0;
+        let (tw, result) = solve_culvert_from_headwater(&bisect, 18.0);
+        assert!((result.wsel - 18.0).abs() < 0.1);
+        assert!(tw >= bisect.z_down);
     }
 
     #[test]

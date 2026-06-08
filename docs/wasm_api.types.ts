@@ -190,7 +190,36 @@ export interface CulvertRatingCurveResult {
   barrel_froude: number[];
 }
 
-export interface UnsteadyInputs {
+/** Culvert fields accepted by `solveUnsteady` (same keys as `SteadyInputs`, API v7+). */
+export type UnsteadyCulvertInputs = Partial<
+  Pick<
+    SteadyInputs,
+    | 'culvert_stations'
+    | 'culvert_shape_types'
+    | 'culvert_spans'
+    | 'culvert_rises'
+    | 'culvert_roughness_ns'
+    | 'culvert_lengths'
+    | 'culvert_entrance_loss_coeffs'
+    | 'culvert_exit_loss_coeffs'
+    | 'culvert_barrels'
+    | 'culvert_roughness_n_bottoms'
+    | 'culvert_depth_bottom_ns'
+    | 'culvert_depth_blockeds'
+    | 'culvert_inlet_types'
+    | 'culvert_z_ups'
+    | 'culvert_z_downs'
+    | 'culvert_crest_elevs'
+    | 'culvert_weir_coeffs'
+    | 'culvert_weir_lengths'
+    | 'culvert_skew_angles'
+    | 'culvert_active_barrels'
+    | 'culvert_barrel_spans'
+    | 'culvert_barrel_rises'
+  >
+>;
+
+export interface UnsteadyInputs extends UnsteadyCulvertInputs {
   cross_sections: CrossSection[];
   initial_wsel: number[];
   initial_q: number[];

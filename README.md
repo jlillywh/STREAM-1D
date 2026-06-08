@@ -54,11 +54,11 @@ These are implemented in the **web GUI** that uses this engine, not in the Rust/
 |----------|-------------------|-----------------|
 | **Dimensionality** | 1D, 2D, and coupled 1D/2D | **1D only** |
 | **River networks** | Dendritic systems, multiple junctions, looped reaches | **One** main stem + **one** tributary (**steady only**); no general network graph |
-| **Unsteady scope** | Networks, structures, storage areas, lateral inflows | **Single reach**; **no** inline culverts/bridges in the unsteady sweep |
+| **Unsteady scope** | Networks, structures, storage areas, lateral inflows | **Single reach** with optional **inline culverts** (explicit post-step headwater coupling); **no** bridges or multi-reach networks in unsteady |
 | **Storage & diversions** | Ponds, reservoirs, split flow, lateral structures, pumps, gates | Not modeled |
 | **Inline weirs & dams** | Standalone weirs, inline structures, dam breach | Not modeled (bridge roadway overtopping only) |
 | **Bridge hydraulics** | Full low-flow classes, pressure/weir combinations, bridge methods, abutments, deck geometry | Yarnell **Class A pier loss** only; simplified pressure + weir overtopping; no abutment or Class B/C low flow |
-| **Culvert hydraulics** | Full HEC-RAS culvert catalog (all standard shapes), supercritical barrel routing in mixed profiles, culverts in unsteady networks | FHWA nomograph (circular, box, arch, ConSpan, pipe-arch, elliptical, horseshoe) with explicit inlet types; multi-barrel capacity-based $Q$ split with optional per-barrel span/rise; skew angles and blocked-barrel count; invert offsets, roadway overtopping, extended diagnostics and rating-curve API — **no** supercritical culvert solve in the upstream sweep or unsteady inline culverts |
+| **Culvert hydraulics** | Full HEC-RAS culvert catalog (all standard shapes), culverts in multi-reach unsteady networks | FHWA nomograph (circular, box, arch, ConSpan, pipe-arch, elliptical, horseshoe) with explicit inlet types; multi-barrel capacity-based $Q$ split with optional per-barrel span/rise; skew angles and blocked-barrel count; invert offsets, roadway overtopping, extended diagnostics and rating-curve API; **supercritical culvert routing** in mixed-regime steady profiles; **inline culverts** in single-reach unsteady (explicit coupling) |
 | **Ineffective flow** | Roadway embankment blocking, blocked obstructions, storage from ineffective areas | Partial: `channel_area` at structure-adjacent sections when overbanks are subdivided — not full RAS ineffective-flow workflow |
 | **Terrain & mapping** | RAS Terrain, TIN/bathymetry authoring, RAS Map | **Not in the engine** — the companion **web app** may edit cross-sections and import HEC-RAS geometry; the solver only receives $(x,y)$ sections and stations |
 | **Sediment & morphology** | Mobile bed, sediment transport, scour | Not modeled (optional fixed culvert blockage depth only) |
@@ -203,7 +203,7 @@ Parallel arrays — index `i` matches `culvert_stations[i]`. Discover enums and 
 
 **Rating curve:** `computeCulvertRatingCurve({ q_values, ...culvert fields })` — same geometry/loss/skew/barrel fields as steady; `q` in culvert params is ignored.
 
-**API version history:** v3 — Tier 2a diagnostics + rating curve; v4 — `culvert_skew_angles`, `culvert_active_barrels`; v5 — `culvert_barrel_spans`, `culvert_barrel_rises`; v6 — culvert shape types 4–6 (pipe-arch, elliptical, horseshoe). New shapes use arch-style inlet nomographs (types 20/21).
+**API version history:** v3 — Tier 2a diagnostics + rating curve; v4 — `culvert_skew_angles`, `culvert_active_barrels`; v5 — `culvert_barrel_spans`, `culvert_barrel_rises`; v6 — culvert shape types 4–6 (pipe-arch, elliptical, horseshoe); v7 — culvert fields on `UnsteadyInputs` (same keys as steady).
 
 #### B. Outlet Control (Energy losses)
 The outlet control upstream elevation is computed via energy headwater balance:
@@ -600,7 +600,7 @@ print("Culvert control:", results.get("culvert_control_types"))
 print("Diagnostics:", results.get("culvert_wsel_inlet"), results.get("culvert_q_barrels"))
 ```
 
-> **Note:** Python `SteadyInputs` may lag the WASM schema for newest fields (`culvert_skew_angles`, `culvert_active_barrels`, per-barrel geometry). Pass the same keys via JSON/`to_dict()` or extend `python/streams1d/__init__.py` — the Rust solver accepts them in JSON either way.
+Python `SteadyInputs` and `UnsteadyInputs` expose the same culvert field names as the WASM/JSON schema (including skew, active barrels, and per-barrel geometry).
 
 ---
 

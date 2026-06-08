@@ -1,6 +1,15 @@
 import json
 from typing import List, Dict, Optional, Any
 
+# Culvert shape codes (match Rust/WASM `culvert_shape_types`)
+CULVERT_SHAPE_CIRCULAR = 0
+CULVERT_SHAPE_BOX = 1
+CULVERT_SHAPE_ARCH = 2
+CULVERT_SHAPE_CONSPAN = 3
+CULVERT_SHAPE_PIPE_ARCH = 4
+CULVERT_SHAPE_ELLIPTICAL = 5
+CULVERT_SHAPE_HORSESHOE = 6
+
 # Import native binary solver
 try:
     from . import _streams1d
@@ -71,6 +80,10 @@ class SteadyInputs:
         culvert_crest_elevs: Optional[List[float]] = None,
         culvert_weir_coeffs: Optional[List[float]] = None,
         culvert_weir_lengths: Optional[List[float]] = None,
+        culvert_skew_angles: Optional[List[float]] = None,
+        culvert_active_barrels: Optional[List[int]] = None,
+        culvert_barrel_spans: Optional[List[List[float]]] = None,
+        culvert_barrel_rises: Optional[List[List[float]]] = None,
         # Bridge parameters
         bridge_stations: Optional[List[float]] = None,
         bridge_low_chords: Optional[List[float]] = None,
@@ -121,6 +134,10 @@ class SteadyInputs:
         self.culvert_crest_elevs = culvert_crest_elevs or []
         self.culvert_weir_coeffs = culvert_weir_coeffs or []
         self.culvert_weir_lengths = culvert_weir_lengths or []
+        self.culvert_skew_angles = culvert_skew_angles or []
+        self.culvert_active_barrels = culvert_active_barrels or []
+        self.culvert_barrel_spans = culvert_barrel_spans or []
+        self.culvert_barrel_rises = culvert_barrel_rises or []
         self.bridge_stations = bridge_stations or []
         self.bridge_low_chords = bridge_low_chords or []
         self.bridge_high_chords = bridge_high_chords or []
@@ -170,6 +187,10 @@ class SteadyInputs:
             'culvert_crest_elevs': self.culvert_crest_elevs,
             'culvert_weir_coeffs': self.culvert_weir_coeffs,
             'culvert_weir_lengths': self.culvert_weir_lengths,
+            'culvert_skew_angles': self.culvert_skew_angles,
+            'culvert_active_barrels': self.culvert_active_barrels,
+            'culvert_barrel_spans': self.culvert_barrel_spans,
+            'culvert_barrel_rises': self.culvert_barrel_rises,
             'bridge_stations': self.bridge_stations,
             'bridge_low_chords': self.bridge_low_chords,
             'bridge_high_chords': self.bridge_high_chords,
@@ -218,6 +239,28 @@ class UnsteadyInputs:
         max_spacing: Optional[float] = None,
         coeff_contraction: Optional[float] = 0.1,
         coeff_expansion: Optional[float] = 0.3,
+        culvert_stations: Optional[List[float]] = None,
+        culvert_shape_types: Optional[List[int]] = None,
+        culvert_spans: Optional[List[float]] = None,
+        culvert_rises: Optional[List[float]] = None,
+        culvert_roughness_ns: Optional[List[float]] = None,
+        culvert_lengths: Optional[List[float]] = None,
+        culvert_entrance_loss_coeffs: Optional[List[float]] = None,
+        culvert_exit_loss_coeffs: Optional[List[float]] = None,
+        culvert_barrels: Optional[List[int]] = None,
+        culvert_roughness_n_bottoms: Optional[List[float]] = None,
+        culvert_depth_bottom_ns: Optional[List[float]] = None,
+        culvert_depth_blockeds: Optional[List[float]] = None,
+        culvert_inlet_types: Optional[List[int]] = None,
+        culvert_z_ups: Optional[List[float]] = None,
+        culvert_z_downs: Optional[List[float]] = None,
+        culvert_crest_elevs: Optional[List[float]] = None,
+        culvert_weir_coeffs: Optional[List[float]] = None,
+        culvert_weir_lengths: Optional[List[float]] = None,
+        culvert_skew_angles: Optional[List[float]] = None,
+        culvert_active_barrels: Optional[List[int]] = None,
+        culvert_barrel_spans: Optional[List[List[float]]] = None,
+        culvert_barrel_rises: Optional[List[List[float]]] = None,
     ):
         self.cross_sections = cross_sections
         self.initial_wsel = initial_wsel
@@ -231,6 +274,28 @@ class UnsteadyInputs:
         self.max_spacing = max_spacing
         self.coeff_contraction = coeff_contraction
         self.coeff_expansion = coeff_expansion
+        self.culvert_stations = culvert_stations or []
+        self.culvert_shape_types = culvert_shape_types or []
+        self.culvert_spans = culvert_spans or []
+        self.culvert_rises = culvert_rises or []
+        self.culvert_roughness_ns = culvert_roughness_ns or []
+        self.culvert_lengths = culvert_lengths or []
+        self.culvert_entrance_loss_coeffs = culvert_entrance_loss_coeffs or []
+        self.culvert_exit_loss_coeffs = culvert_exit_loss_coeffs or []
+        self.culvert_barrels = culvert_barrels or []
+        self.culvert_roughness_n_bottoms = culvert_roughness_n_bottoms or []
+        self.culvert_depth_bottom_ns = culvert_depth_bottom_ns or []
+        self.culvert_depth_blockeds = culvert_depth_blockeds or []
+        self.culvert_inlet_types = culvert_inlet_types or []
+        self.culvert_z_ups = culvert_z_ups or []
+        self.culvert_z_downs = culvert_z_downs or []
+        self.culvert_crest_elevs = culvert_crest_elevs or []
+        self.culvert_weir_coeffs = culvert_weir_coeffs or []
+        self.culvert_weir_lengths = culvert_weir_lengths or []
+        self.culvert_skew_angles = culvert_skew_angles or []
+        self.culvert_active_barrels = culvert_active_barrels or []
+        self.culvert_barrel_spans = culvert_barrel_spans or []
+        self.culvert_barrel_rises = culvert_barrel_rises or []
 
     def to_dict(self) -> dict:
         return {
@@ -246,6 +311,28 @@ class UnsteadyInputs:
             'max_spacing': self.max_spacing,
             'coeff_contraction': self.coeff_contraction,
             'coeff_expansion': self.coeff_expansion,
+            'culvert_stations': self.culvert_stations,
+            'culvert_shape_types': self.culvert_shape_types,
+            'culvert_spans': self.culvert_spans,
+            'culvert_rises': self.culvert_rises,
+            'culvert_roughness_ns': self.culvert_roughness_ns,
+            'culvert_lengths': self.culvert_lengths,
+            'culvert_entrance_loss_coeffs': self.culvert_entrance_loss_coeffs,
+            'culvert_exit_loss_coeffs': self.culvert_exit_loss_coeffs,
+            'culvert_barrels': self.culvert_barrels,
+            'culvert_roughness_n_bottoms': self.culvert_roughness_n_bottoms,
+            'culvert_depth_bottom_ns': self.culvert_depth_bottom_ns,
+            'culvert_depth_blockeds': self.culvert_depth_blockeds,
+            'culvert_inlet_types': self.culvert_inlet_types,
+            'culvert_z_ups': self.culvert_z_ups,
+            'culvert_z_downs': self.culvert_z_downs,
+            'culvert_crest_elevs': self.culvert_crest_elevs,
+            'culvert_weir_coeffs': self.culvert_weir_coeffs,
+            'culvert_weir_lengths': self.culvert_weir_lengths,
+            'culvert_skew_angles': self.culvert_skew_angles,
+            'culvert_active_barrels': self.culvert_active_barrels,
+            'culvert_barrel_spans': self.culvert_barrel_spans,
+            'culvert_barrel_rises': self.culvert_barrel_rises,
         }
 
 def solve_steady(inputs: Any) -> dict:

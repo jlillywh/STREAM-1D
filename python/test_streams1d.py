@@ -55,6 +55,42 @@ def test_solve_steady_object():
     assert len(res['wsel']) == 3
     assert abs(res['wsel'][2] - 1.5) < 1e-4
 
+def test_steady_inputs_culvert_geometry_serialization():
+    xs = st.CrossSection(100.0, [0.0, 10.0], [1.0, 1.0], [0.0], [0.035])
+    inputs = st.SteadyInputs(
+        cross_sections=[xs],
+        flow_rate=50.0,
+        culvert_stations=[50.0],
+        culvert_skew_angles=[15.0],
+        culvert_active_barrels=[2],
+        culvert_barrel_spans=[[8.0, 6.0]],
+        culvert_barrel_rises=[[6.0, 6.0]],
+        culvert_shape_types=[st.CULVERT_SHAPE_PIPE_ARCH],
+    )
+    d = inputs.to_dict()
+    assert d['culvert_skew_angles'] == [15.0]
+    assert d['culvert_active_barrels'] == [2]
+    assert d['culvert_barrel_spans'] == [[8.0, 6.0]]
+    assert d['culvert_shape_types'] == [4]
+
+def test_unsteady_inputs_culvert_serialization():
+    xs = st.CrossSection(100.0, [0.0, 10.0], [1.0, 1.0], [0.0], [0.035])
+    inputs = st.UnsteadyInputs(
+        cross_sections=[xs, st.CrossSection(0.0, [0.0, 10.0], [0.0, 0.0], [0.0], [0.035])],
+        initial_wsel=[2.0, 1.0],
+        initial_q=[10.0, 10.0],
+        dt=60.0,
+        num_steps=2,
+        upstream_q_hydrograph=[10.0, 10.0],
+        downstream_wsel_hydrograph=[1.0, 1.0],
+        culvert_stations=[50.0],
+        culvert_spans=[2.0],
+        culvert_rises=[2.0],
+    )
+    d = inputs.to_dict()
+    assert d['culvert_stations'] == [50.0]
+    assert d['culvert_spans'] == [2.0]
+
 def test_solve_steady_dict():
     payload = {
         'cross_sections': [
