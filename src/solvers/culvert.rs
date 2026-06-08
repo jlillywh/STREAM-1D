@@ -10,6 +10,12 @@ pub enum CulvertShape {
     Box = 1,
     Arch = 2,
     ConspanArch = 3,
+    /// Corrugated metal pipe-arch: vertical legs + circular crown (FHWA-style).
+    PipeArch = 4,
+    /// Horizontal ellipse; span = major axis, rise = minor axis.
+    Elliptical = 5,
+    /// Horseshoe: circular invert + vertical legs + circular crown.
+    Horseshoe = 6,
 }
 
 impl CulvertShape {
@@ -18,6 +24,9 @@ impl CulvertShape {
             1 => CulvertShape::Box,
             2 => CulvertShape::Arch,
             3 => CulvertShape::ConspanArch,
+            4 => CulvertShape::PipeArch,
+            5 => CulvertShape::Elliptical,
+            6 => CulvertShape::Horseshoe,
             _ => CulvertShape::Circular,
         }
     }
@@ -124,6 +133,120 @@ fn interpolate_conspan(span: f64, rise: f64, y: f64, field: &str) -> f64 {
     }
 }
 
+const GEOM_SLICES: usize = 64;
+
+/// Pipe-arch crown depth (spring line to crown) from span and rise.
+fn pipe_arch_crown_depth(span: f64, rise: f64) -> f64 {
+    (rise * 0.375).clamp(span / 16.0, rise * 0.5)
+}
+
+/// Horseshoe invert and crown arc depths derived from span/rise.
+fn horseshoe_invert_depth(span: f64, rise: f64) -> f64 {
+    (span / 2.0).min(rise * 0.45)
+}
+
+fn horseshoe_crown_depth(span: f64, rise: f64, invert_depth: f64) -> f64 {
+    ((rise - invert_depth) * 0.35).clamp(span / 8.0, rise - invert_depth - 0.01)
+}
+
+/// Top water width at depth `y` (ft above invert) for extended shapes.
+fn extended_shape_width(shape: CulvertShape, span: f64, rise: f64, y: f64) -> f64 {
+    if y <= 0.0 || span <= 0.0 || rise <= 0.0 {
+        return 0.0;
+    }
+    let y_clamp = y.min(rise);
+
+    match shape {
+        CulvertShape::Elliptical => {
+            let a = span / 2.0;
+            let b = rise / 2.0;
+            let yc = y_clamp - b;
+            if yc.abs() >= b {
+                return 0.0;
+            }
+            2.0 * a * (1.0 - (yc / b).powi(2)).max(0.0).sqrt()
+        }
+        CulvertShape::PipeArch => {
+            let crown_h = pipe_arch_crown_depth(span, rise);
+            let spring = rise - crown_h;
+            if y_clamp <= spring {
+                return span;
+            }
+            let yi = y_clamp - spring;
+            if yi >= crown_h {
+                return 0.0;
+            }
+            let r = span * span / (8.0 * crown_h) + crown_h / 2.0;
+            (2.0 * (2.0 * r * yi - yi * yi).max(0.0).sqrt()).min(span)
+        }
+        CulvertShape::Horseshoe => {
+            let h_i = horseshoe_invert_depth(span, rise);
+            let h_c = horseshoe_crown_depth(span, rise, h_i);
+            let spring_top = rise - h_c;
+            if y_clamp <= h_i {
+                let ri = span / 2.0;
+                let dy = ri - y_clamp;
+                if dy.abs() >= ri {
+                    return 0.0;
+                }
+                2.0 * (ri * ri - dy * dy).max(0.0).sqrt()
+            } else if y_clamp <= spring_top {
+                span
+            } else {
+                let yi = y_clamp - spring_top;
+                if yi >= h_c {
+                    return 0.0;
+                }
+                let r = span * span / (8.0 * h_c) + h_c / 2.0;
+                (2.0 * (2.0 * r * yi - yi * yi).max(0.0).sqrt()).min(span)
+            }
+        }
+        _ => 0.0,
+    }
+}
+
+fn integrate_partial_area(width_at: impl Fn(f64) -> f64, y: f64) -> f64 {
+    if y <= 0.0 {
+        return 0.0;
+    }
+    let dy = y / GEOM_SLICES as f64;
+    let mut sum = 0.0;
+    for i in 0..GEOM_SLICES {
+        let y0 = i as f64 * dy;
+        let y1 = (i + 1) as f64 * dy;
+        sum += 0.5 * (width_at(y0) + width_at(y1)) * dy;
+    }
+    sum
+}
+
+fn integrate_partial_perimeter(width_at: impl Fn(f64) -> f64, y: f64, include_flat_bottom: bool) -> f64 {
+    if y <= 0.0 {
+        return 0.0;
+    }
+    let dy = y / GEOM_SLICES as f64;
+    let mut p = if include_flat_bottom { width_at(0.0) } else { 0.0 };
+    for i in 0..GEOM_SLICES {
+        let y0 = i as f64 * dy;
+        let y1 = (i + 1) as f64 * dy;
+        let w0 = width_at(y0);
+        let w1 = width_at(y1);
+        let dw = (w1 - w0) / 2.0;
+        p += 2.0 * (dy * dy + dw * dw).sqrt();
+    }
+    p
+}
+
+fn extended_shape_area(shape: CulvertShape, span: f64, rise: f64, y: f64) -> f64 {
+    let y_clamp = y.min(rise);
+    integrate_partial_area(|d| extended_shape_width(shape, span, rise, d), y_clamp)
+}
+
+fn extended_shape_perimeter(shape: CulvertShape, span: f64, rise: f64, y: f64) -> f64 {
+    let y_clamp = y.min(rise);
+    let flat_bottom = matches!(shape, CulvertShape::PipeArch);
+    integrate_partial_perimeter(|d| extended_shape_width(shape, span, rise, d), y_clamp, flat_bottom)
+}
+
 /// Computes the cross-sectional flow area (A) in sq ft for a given depth (y) in ft inside a culvert barrel.
 pub fn get_culvert_area(shape: CulvertShape, span: f64, rise: f64, y: f64) -> f64 {
     if y <= 0.0 {
@@ -159,6 +282,9 @@ pub fn get_culvert_area(shape: CulvertShape, span: f64, rise: f64, y: f64) -> f6
         CulvertShape::ConspanArch => {
             interpolate_conspan(span, rise, y_clamp, "area")
         }
+        CulvertShape::PipeArch | CulvertShape::Elliptical | CulvertShape::Horseshoe => {
+            extended_shape_area(shape, span, rise, y_clamp)
+        }
     }
 }
 
@@ -182,6 +308,9 @@ pub fn get_culvert_top_width(shape: CulvertShape, span: f64, rise: f64, y: f64) 
         }
         CulvertShape::ConspanArch => {
             interpolate_conspan(span, rise, y, "top_width")
+        }
+        CulvertShape::PipeArch | CulvertShape::Elliptical | CulvertShape::Horseshoe => {
+            extended_shape_width(shape, span, rise, y)
         }
     }
 }
@@ -227,6 +356,9 @@ pub fn get_culvert_perimeter(shape: CulvertShape, span: f64, rise: f64, y: f64) 
         }
         CulvertShape::ConspanArch => {
             interpolate_conspan(span, rise, y_clamp, "perimeter")
+        }
+        CulvertShape::PipeArch | CulvertShape::Elliptical | CulvertShape::Horseshoe => {
+            extended_shape_perimeter(shape, span, rise, y_clamp)
         }
     }
 }
@@ -644,8 +776,16 @@ pub fn inlet_nomograph_coeffs(
             (CulvertShape::Box, 10) => (0.061, 0.75, 0.0400, 0.80),
             (CulvertShape::Box, 11) => (0.026, 1.0, 0.0347, 0.81),
             (CulvertShape::Box, 12) => (0.024, 1.0, 0.0338, 0.82),
-            (CulvertShape::Arch | CulvertShape::ConspanArch, 20) => (0.0300, 1.5, 0.0500, 0.60),
-            (CulvertShape::Arch | CulvertShape::ConspanArch, 21) => (0.0083, 2.0, 0.0374, 0.69),
+            (CulvertShape::Arch
+            | CulvertShape::ConspanArch
+            | CulvertShape::PipeArch
+            | CulvertShape::Elliptical
+            | CulvertShape::Horseshoe, 20) => (0.0300, 1.5, 0.0500, 0.60),
+            (CulvertShape::Arch
+            | CulvertShape::ConspanArch
+            | CulvertShape::PipeArch
+            | CulvertShape::Elliptical
+            | CulvertShape::Horseshoe, 21) => (0.0083, 2.0, 0.0374, 0.69),
             _ => inlet_nomograph_coeffs(shape, 0, entrance_loss_coeff),
         };
     }
@@ -665,7 +805,11 @@ pub fn inlet_nomograph_coeffs(
                 (0.061, 0.75, 0.0400, 0.80)
             }
         }
-        CulvertShape::Arch | CulvertShape::ConspanArch => {
+        CulvertShape::Arch
+        | CulvertShape::ConspanArch
+        | CulvertShape::PipeArch
+        | CulvertShape::Elliptical
+        | CulvertShape::Horseshoe => {
             if entrance_loss_coeff <= 0.2 {
                 (0.0083, 2.0, 0.0374, 0.69)
             } else {
@@ -1955,22 +2099,45 @@ mod tests {
     }
 
     #[test]
+    fn test_extended_shape_geometry() {
+        let span = 8.0;
+        let rise = 6.0;
+        for shape in [
+            CulvertShape::PipeArch,
+            CulvertShape::Elliptical,
+            CulvertShape::Horseshoe,
+        ] {
+            let a_half = get_culvert_area(shape, span, rise, rise / 2.0);
+            let a_full = get_culvert_area(shape, span, rise, rise);
+            assert!(a_half > 0.0 && a_full > a_half);
+            assert!(a_full < span * rise);
+            assert!(get_culvert_top_width(shape, span, rise, rise / 2.0) > 0.0);
+            assert!(get_culvert_perimeter(shape, span, rise, rise) > span);
+        }
+        // Ellipse full area ≈ πab
+        let a_ellipse = get_culvert_area(CulvertShape::Elliptical, 8.0, 6.0, 6.0);
+        let expected = std::f64::consts::PI * 4.0 * 3.0;
+        assert!((a_ellipse - expected).abs() / expected < 0.02);
+    }
+
+    #[test]
     fn test_all_shapes_produce_physical_headwater() {
-        let cases: [(i32, f64, f64); 4] = [
+        let cases: [(i32, f64, f64); 7] = [
             (0, 5.0, 5.0),   // Circular
             (1, 8.0, 6.0),   // Box
             (2, 8.0, 6.0),   // Arch
             (3, 28.0, 6.0),  // ConSpan
+            (4, 8.0, 6.0),   // Pipe-arch
+            (5, 8.0, 6.0),   // Elliptical
+            (6, 8.0, 6.0),   // Horseshoe
         ];
         for (shape, span, rise) in cases {
             let mut p = us_circular_baseline();
             p.shape_type = shape;
             p.span = span;
             p.rise = rise;
-            if shape == 2 {
+            if shape >= 2 {
                 p.inlet_type = 21;
-            } else if shape == 3 {
-                p.inlet_type = 20;
             }
             let r = solve_culvert(&p);
             assert!(
@@ -2116,11 +2283,14 @@ mod tests {
 
     #[test]
     fn test_rating_curve_all_shapes_monotonic() {
-        let shapes: [(i32, f64, f64, i32); 4] = [
+        let shapes: [(i32, f64, f64, i32); 7] = [
             (0, 5.0, 5.0, 1),
             (1, 8.0, 6.0, 10),
             (2, 8.0, 6.0, 21),
             (3, 28.0, 6.0, 20),
+            (4, 8.0, 6.0, 21),
+            (5, 8.0, 6.0, 21),
+            (6, 8.0, 6.0, 21),
         ];
         for (shape, span, rise, inlet) in shapes {
             let mut base = us_circular_baseline();

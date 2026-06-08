@@ -25,6 +25,9 @@ export enum CulvertShapeType {
   Box = 1,
   Arch = 2,
   ConspanArch = 3,
+  PipeArch = 4,
+  Elliptical = 5,
+  Horseshoe = 6,
 }
 
 /**
