@@ -240,6 +240,15 @@ export interface UnsteadyResult {
   velocity: number[][];
   max_courant?: number;
   recommended_dt?: number;
+  /** Present when culverts are modeled — [time_step][culvert_index] */
+  culvert_control_types?: CulvertControlType[][];
+  culvert_wsel_inlet?: number[][];
+  culvert_wsel_outlet?: number[][];
+  culvert_q_barrels?: number[][];
+  culvert_q_weirs?: number[][];
+  culvert_barrel_depths?: number[][];
+  culvert_barrel_velocities?: number[][];
+  culvert_barrel_froude?: number[][];
 }
 
 export interface WasmEnumEntry {
@@ -262,6 +271,7 @@ export interface WasmApiMetadata {
   };
   culvert_tier2a_fields: {
     steady_outputs: string[];
+    unsteady_outputs: string[];
     rating_curve_entry_point: string;
   };
   culvert_geometry_fields: {

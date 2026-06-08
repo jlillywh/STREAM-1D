@@ -3,7 +3,7 @@
 use serde::Serialize;
 
 /// API contract version — increment when SteadyInputs / SteadyResult fields change.
-pub const API_VERSION: u32 = 7;
+pub const API_VERSION: u32 = 8;
 
 /// Engine package version (keep in sync with `Cargo.toml`).
 pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -38,6 +38,7 @@ pub struct CulvertTier1Fields {
 #[derive(Debug, Clone, Serialize)]
 pub struct CulvertTier2aFields {
     pub steady_outputs: Vec<String>,
+    pub unsteady_outputs: Vec<String>,
     pub rating_curve_entry_point: String,
 }
 
@@ -175,6 +176,16 @@ pub fn build_api_metadata() -> WasmApiMetadata {
                 "culvert_barrel_velocities".to_string(),
                 "culvert_barrel_froude".to_string(),
             ],
+            unsteady_outputs: vec![
+                "culvert_control_types".to_string(),
+                "culvert_wsel_inlet".to_string(),
+                "culvert_wsel_outlet".to_string(),
+                "culvert_q_barrels".to_string(),
+                "culvert_q_weirs".to_string(),
+                "culvert_barrel_depths".to_string(),
+                "culvert_barrel_velocities".to_string(),
+                "culvert_barrel_froude".to_string(),
+            ],
             rating_curve_entry_point: "computeCulvertRatingCurve".to_string(),
         },
         culvert_geometry_fields: CulvertGeometryFields {
@@ -197,7 +208,7 @@ mod tests {
     fn test_api_metadata_serializes() {
         let json = serde_json::to_string(&build_api_metadata()).unwrap();
         assert!(json.contains("culvert_inlet_types"));
-        assert!(json.contains("\"api_version\":7"));
+        assert!(json.contains("\"api_version\":8"));
     }
 
     #[test]

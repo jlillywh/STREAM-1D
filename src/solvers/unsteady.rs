@@ -97,7 +97,32 @@ pub struct UnsteadyResult {
     pub max_courant: Option<f64>,
     /// Recommended optimal time-step size to ensure stability (in seconds).
     pub recommended_dt: Option<f64>,
+    /// Per-culvert control mechanism each time step (`"inlet"` | `"outlet"` | `"overtopping"`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub culvert_control_types: Option<Vec<Vec<String>>>,
+    /// Tier 2a culvert diagnostics [step][culvert] (same field names as steady `SteadyResult`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub culvert_wsel_inlet: Option<Vec<Vec<f64>>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub culvert_wsel_outlet: Option<Vec<Vec<f64>>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub culvert_q_barrels: Option<Vec<Vec<f64>>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub culvert_q_weirs: Option<Vec<Vec<f64>>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub culvert_barrel_depths: Option<Vec<Vec<f64>>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub culvert_barrel_velocities: Option<Vec<Vec<f64>>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub culvert_barrel_froude: Option<Vec<Vec<f64>>>,
 }
+
+const CULVERT_HW_MAX_ITER: usize = 12;
+const CULVERT_HW_TOL_FT: f64 = 0.001;
+const CULVERT_HW_TOL_M: f64 = 0.0003;
+const CULVERT_STEP_MAX_PASSES: usize = 5;
+const CULVERT_STEP_TOL_FT: f64 = 0.01;
+const CULVERT_STEP_TOL_M: f64 = 0.003;
 
 fn find_culvert_intervals(
     culvert_stations: &[f64],
@@ -123,6 +148,173 @@ fn find_culvert_intervals(
     out
 }
 
+fn culvert_hw_tolerance(raw_units: UnitSystem) -> f64 {
+    if raw_units == UnitSystem::USCustomary {
+        CULVERT_HW_TOL_FT
+    } else {
+        CULVERT_HW_TOL_M
+    }
+}
+
+fn culvert_step_tolerance(raw_units: UnitSystem) -> f64 {
+    if raw_units == UnitSystem::USCustomary {
+        CULVERT_STEP_TOL_FT
+    } else {
+        CULVERT_STEP_TOL_M
+    }
+}
+
+fn build_unsteady_culvert_params(
+    inputs: &UnsteadyInputs,
+    c_idx: usize,
+    i: usize,
+    raw_units: UnitSystem,
+    densified_tables: &[GeometryTable],
+    densified_z_mins: &[f64],
+    y_metric: &[f64],
+    q_metric: &[f64],
+    tw_wsel_user: f64,
+    upstream_wsel_user: f64,
+) -> crate::solvers::culvert::CulvertSolveParams {
+    let c = &inputs.culvert;
+    let shape_type = c.culvert_shape_types.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0);
+    let span = c.culvert_spans.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(4.0);
+    let rise = c.culvert_rises.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(4.0);
+    let roughness_n = c.culvert_roughness_ns.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.013);
+    let culv_len = c.culvert_lengths.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(100.0);
+    let entrance_loss_coeff = c.culvert_entrance_loss_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.5);
+    let exit_loss_coeff = c.culvert_exit_loss_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(1.0);
+    let manning_n_bottom = c.culvert_roughness_n_bottoms.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(roughness_n);
+    let depth_bottom_n = c.culvert_depth_bottom_ns.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
+    let depth_blocked = c.culvert_depth_blockeds.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
+    let inlet_type = c.culvert_inlet_types.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0);
+    let crest_elev = c.culvert_crest_elevs.as_ref().and_then(|v| v.get(c_idx)).copied();
+    let weir_coeff = c.culvert_weir_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
+    let weir_length = c.culvert_weir_lengths.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
+    let num_barrels = c.culvert_barrels.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(1).max(1);
+    let active_barrels = c.culvert_active_barrels.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0);
+    let skew_deg = c.culvert_skew_angles.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
+    let barrel_spans = c.culvert_barrel_spans.as_ref().and_then(|v| v.get(c_idx)).cloned();
+    let barrel_rises = c.culvert_barrel_rises.as_ref().and_then(|v| v.get(c_idx)).cloned();
+
+    let bed_z_down = if raw_units == UnitSystem::USCustomary {
+        densified_z_mins[i + 1] / FT_TO_M
+    } else {
+        densified_z_mins[i + 1]
+    };
+    let bed_z_up = if raw_units == UnitSystem::USCustomary {
+        densified_z_mins[i] / FT_TO_M
+    } else {
+        densified_z_mins[i]
+    };
+    let z_down_user = c.culvert_z_downs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(bed_z_down);
+    let z_up_user = c.culvert_z_ups.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(bed_z_up);
+
+    let q_user = if raw_units == UnitSystem::USCustomary {
+        q_metric[i] / crate::utils::CFS_TO_CMS
+    } else {
+        q_metric[i]
+    };
+
+    let ds_row = densified_tables[i + 1].interpolate(y_metric[i + 1]);
+    let ds_area_user = if raw_units == UnitSystem::USCustomary {
+        ds_row.channel_area / (FT_TO_M * FT_TO_M)
+    } else {
+        ds_row.channel_area
+    };
+    let ds_velocity_user = q_user / ds_area_user.max(1e-9);
+
+    let wsel_up_metric = if raw_units == UnitSystem::USCustomary {
+        upstream_wsel_user * FT_TO_M
+    } else {
+        upstream_wsel_user
+    };
+    let us_row = densified_tables[i].interpolate(wsel_up_metric);
+    let us_area_user = if raw_units == UnitSystem::USCustomary {
+        us_row.channel_area / (FT_TO_M * FT_TO_M)
+    } else {
+        us_row.channel_area
+    };
+    let us_velocity_user = q_user / us_area_user.max(1e-9);
+
+    crate::solvers::culvert::CulvertSolveParams {
+        q: q_user,
+        shape_type,
+        inlet_type,
+        span,
+        rise,
+        roughness_n,
+        length: culv_len,
+        entrance_loss_coeff,
+        exit_loss_coeff,
+        z_down: z_down_user,
+        z_up: z_up_user,
+        tw_wsel: tw_wsel_user,
+        units: raw_units,
+        manning_n_bottom,
+        depth_bottom_n,
+        depth_blocked,
+        ds_velocity: ds_velocity_user,
+        us_velocity: us_velocity_user,
+        crest_elev,
+        weir_coeff,
+        weir_length,
+        num_barrels,
+        active_barrels,
+        skew_deg,
+        barrel_spans,
+        barrel_rises,
+    }
+}
+
+fn converge_culvert_headwater(
+    inputs: &UnsteadyInputs,
+    c_idx: usize,
+    i: usize,
+    raw_units: UnitSystem,
+    densified_tables: &[GeometryTable],
+    densified_z_mins: &[f64],
+    y_metric: &[f64],
+    q_metric: &[f64],
+    tw_wsel_user: f64,
+    initial_hw: f64,
+) -> crate::solvers::culvert::CulvertSolveResult {
+    let tol = culvert_hw_tolerance(raw_units);
+    let mut wsel_up_user = initial_hw;
+    let mut result = crate::solvers::culvert::CulvertSolveResult {
+        wsel: initial_hw,
+        control_type: "outlet".to_string(),
+        wsel_inlet: initial_hw,
+        wsel_outlet: initial_hw,
+        q_barrel: 0.0,
+        q_weir: 0.0,
+        barrel_depth: 0.0,
+        barrel_velocity: 0.0,
+        barrel_froude: 0.0,
+    };
+
+    for _ in 0..CULVERT_HW_MAX_ITER {
+        let params = build_unsteady_culvert_params(
+            inputs,
+            c_idx,
+            i,
+            raw_units,
+            densified_tables,
+            densified_z_mins,
+            y_metric,
+            q_metric,
+            tw_wsel_user,
+            wsel_up_user,
+        );
+        result = crate::solvers::culvert::solve_culvert(&params);
+        if (result.wsel - wsel_up_user).abs() <= tol {
+            break;
+        }
+        wsel_up_user = result.wsel;
+    }
+    result
+}
+
 fn apply_culvert_internal_boundaries(
     inputs: &UnsteadyInputs,
     raw_units: UnitSystem,
@@ -131,119 +323,74 @@ fn apply_culvert_internal_boundaries(
     y_metric: &mut [f64],
     q_metric: &[f64],
     culvert_intervals: &[(usize, usize)],
-) {
-    let c = &inputs.culvert;
-    let Some(_) = c.culvert_stations.as_ref() else {
-        return;
-    };
+) -> Option<Vec<crate::solvers::culvert::CulvertSolveResult>> {
+    let num_culverts = inputs.culvert.culvert_stations.as_ref().map(|s| s.len()).unwrap_or(0);
+    if num_culverts == 0 || culvert_intervals.is_empty() {
+        return None;
+    }
 
-    for &(i, c_idx) in culvert_intervals {
-        let shape_type = c.culvert_shape_types.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0);
-        let span = c.culvert_spans.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(4.0);
-        let rise = c.culvert_rises.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(4.0);
-        let roughness_n = c.culvert_roughness_ns.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.013);
-        let culv_len = c.culvert_lengths.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(100.0);
-        let entrance_loss_coeff = c.culvert_entrance_loss_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.5);
-        let exit_loss_coeff = c.culvert_exit_loss_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(1.0);
-        let manning_n_bottom = c.culvert_roughness_n_bottoms.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(roughness_n);
-        let depth_bottom_n = c.culvert_depth_bottom_ns.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
-        let depth_blocked = c.culvert_depth_blockeds.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
-        let inlet_type = c.culvert_inlet_types.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0);
-        let crest_elev = c.culvert_crest_elevs.as_ref().and_then(|v| v.get(c_idx)).copied();
-        let weir_coeff = c.culvert_weir_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
-        let weir_length = c.culvert_weir_lengths.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
-        let num_barrels = c.culvert_barrels.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(1).max(1);
-        let active_barrels = c.culvert_active_barrels.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0);
-        let skew_deg = c.culvert_skew_angles.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
-        let barrel_spans = c.culvert_barrel_spans.as_ref().and_then(|v| v.get(c_idx)).cloned();
-        let barrel_rises = c.culvert_barrel_rises.as_ref().and_then(|v| v.get(c_idx)).cloned();
+    let step_tol = culvert_step_tolerance(raw_units);
+    let mut step_results = vec![
+        crate::solvers::culvert::CulvertSolveResult {
+            wsel: 0.0,
+            control_type: String::new(),
+            wsel_inlet: 0.0,
+            wsel_outlet: 0.0,
+            q_barrel: 0.0,
+            q_weir: 0.0,
+            barrel_depth: 0.0,
+            barrel_velocity: 0.0,
+            barrel_froude: 0.0,
+        };
+        num_culverts
+    ];
 
-        let tw_wsel_user = if raw_units == UnitSystem::USCustomary {
-            y_metric[i + 1] / FT_TO_M
-        } else {
-            y_metric[i + 1]
-        };
-        let bed_z_down = if raw_units == UnitSystem::USCustomary {
-            densified_z_mins[i + 1] / FT_TO_M
-        } else {
-            densified_z_mins[i + 1]
-        };
-        let bed_z_up = if raw_units == UnitSystem::USCustomary {
-            densified_z_mins[i] / FT_TO_M
-        } else {
-            densified_z_mins[i]
-        };
-        let z_down_user = c.culvert_z_downs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(bed_z_down);
-        let z_up_user = c.culvert_z_ups.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(bed_z_up);
+    let mut ordered = culvert_intervals.to_vec();
+    ordered.sort_by(|a, b| b.0.cmp(&a.0));
 
-        let q_user = if raw_units == UnitSystem::USCustomary {
-            q_metric[i] / crate::utils::CFS_TO_CMS
-        } else {
-            q_metric[i]
-        };
+    for _pass in 0..CULVERT_STEP_MAX_PASSES {
+        let mut max_delta = 0.0_f64;
 
-        let ds_row = densified_tables[i + 1].interpolate(y_metric[i + 1]);
-        let ds_area_user = if raw_units == UnitSystem::USCustomary {
-            ds_row.channel_area / (FT_TO_M * FT_TO_M)
-        } else {
-            ds_row.channel_area
-        };
-        let ds_velocity_user = q_user / ds_area_user.max(1e-9);
-
-        let mut wsel_up_user = tw_wsel_user;
-        for _ in 0..3 {
-            let wsel_up_metric = if raw_units == UnitSystem::USCustomary {
-                wsel_up_user * FT_TO_M
+        for &(i, c_idx) in &ordered {
+            let tw_wsel_user = if raw_units == UnitSystem::USCustomary {
+                y_metric[i + 1] / FT_TO_M
             } else {
-                wsel_up_user
+                y_metric[i + 1]
             };
-            let us_row = densified_tables[i].interpolate(wsel_up_metric);
-            let us_area_user = if raw_units == UnitSystem::USCustomary {
-                us_row.channel_area / (FT_TO_M * FT_TO_M)
+            let prev_hw_user = if raw_units == UnitSystem::USCustomary {
+                y_metric[i] / FT_TO_M
             } else {
-                us_row.channel_area
+                y_metric[i]
             };
-            let us_velocity_user = q_user / us_area_user.max(1e-9);
 
-            let result = crate::solvers::culvert::solve_culvert(
-                &crate::solvers::culvert::CulvertSolveParams {
-                    q: q_user,
-                    shape_type,
-                    inlet_type,
-                    span,
-                    rise,
-                    roughness_n,
-                    length: culv_len,
-                    entrance_loss_coeff,
-                    exit_loss_coeff,
-                    z_down: z_down_user,
-                    z_up: z_up_user,
-                    tw_wsel: tw_wsel_user,
-                    units: raw_units,
-                    manning_n_bottom,
-                    depth_bottom_n,
-                    depth_blocked,
-                    ds_velocity: ds_velocity_user,
-                    us_velocity: us_velocity_user,
-                    crest_elev,
-                    weir_coeff,
-                    weir_length,
-                    num_barrels,
-                    active_barrels,
-                    skew_deg,
-                    barrel_spans: barrel_spans.clone(),
-                    barrel_rises: barrel_rises.clone(),
-                },
+            let result = converge_culvert_headwater(
+                inputs,
+                c_idx,
+                i,
+                raw_units,
+                densified_tables,
+                densified_z_mins,
+                y_metric,
+                q_metric,
+                tw_wsel_user,
+                prev_hw_user,
             );
-            wsel_up_user = result.wsel;
+            max_delta = max_delta.max((result.wsel - prev_hw_user).abs());
+
+            y_metric[i] = if raw_units == UnitSystem::USCustomary {
+                result.wsel * FT_TO_M
+            } else {
+                result.wsel
+            };
+            step_results[c_idx] = result;
         }
 
-        y_metric[i] = if raw_units == UnitSystem::USCustomary {
-            wsel_up_user * FT_TO_M
-        } else {
-            wsel_up_user
-        };
+        if max_delta <= step_tol {
+            break;
+        }
     }
+
+    Some(step_results)
 }
 
 /// Helper to compute numerical derivative of conveyance K with respect to elevation y.
@@ -614,6 +761,20 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
         .map(|stations| find_culvert_intervals(stations, &densified_stations, raw_units))
         .unwrap_or_default();
 
+    let track_culvert_diagnostics = !culvert_intervals.is_empty();
+
+    if track_culvert_diagnostics {
+        apply_culvert_internal_boundaries(
+            inputs,
+            raw_units,
+            &densified_tables,
+            &densified_z_mins,
+            &mut densified_y_current,
+            &densified_q_current,
+            &culvert_intervals,
+        );
+    }
+
     // Calculate Courant number (Cr) and recommended dt based on initial conditions on the densified grid
     let mut max_courant = 0.0;
     let mut recommended_dt = f64::INFINITY;
@@ -698,6 +859,22 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
     let mut history_wsel = Vec::new();
     let mut history_q = Vec::new();
     let mut history_vel = Vec::new();
+    let mut history_culvert_control_types: Option<Vec<Vec<String>>> =
+        track_culvert_diagnostics.then(|| Vec::with_capacity(inputs.num_steps));
+    let mut history_culvert_wsel_inlet: Option<Vec<Vec<f64>>> =
+        track_culvert_diagnostics.then(|| Vec::with_capacity(inputs.num_steps));
+    let mut history_culvert_wsel_outlet: Option<Vec<Vec<f64>>> =
+        track_culvert_diagnostics.then(|| Vec::with_capacity(inputs.num_steps));
+    let mut history_culvert_q_barrels: Option<Vec<Vec<f64>>> =
+        track_culvert_diagnostics.then(|| Vec::with_capacity(inputs.num_steps));
+    let mut history_culvert_q_weirs: Option<Vec<Vec<f64>>> =
+        track_culvert_diagnostics.then(|| Vec::with_capacity(inputs.num_steps));
+    let mut history_culvert_barrel_depths: Option<Vec<Vec<f64>>> =
+        track_culvert_diagnostics.then(|| Vec::with_capacity(inputs.num_steps));
+    let mut history_culvert_barrel_velocities: Option<Vec<Vec<f64>>> =
+        track_culvert_diagnostics.then(|| Vec::with_capacity(inputs.num_steps));
+    let mut history_culvert_barrel_froude: Option<Vec<Vec<f64>>> =
+        track_culvert_diagnostics.then(|| Vec::with_capacity(inputs.num_steps));
 
     // Loop through time steps
     for step in 0..inputs.num_steps {
@@ -727,7 +904,7 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
             densified_y_current = y_next;
             densified_q_current = q_next;
 
-            apply_culvert_internal_boundaries(
+            let culvert_step_results = apply_culvert_internal_boundaries(
                 inputs,
                 raw_units,
                 &densified_tables,
@@ -736,6 +913,40 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
                 &densified_q_current,
                 &culvert_intervals,
             );
+
+            if let (Some(step_results), Some(ctrl)) =
+                (culvert_step_results.as_ref(), history_culvert_control_types.as_mut())
+            {
+                ctrl.push(step_results.iter().map(|r| r.control_type.clone()).collect());
+                history_culvert_wsel_inlet
+                    .as_mut()
+                    .unwrap()
+                    .push(step_results.iter().map(|r| r.wsel_inlet).collect());
+                history_culvert_wsel_outlet
+                    .as_mut()
+                    .unwrap()
+                    .push(step_results.iter().map(|r| r.wsel_outlet).collect());
+                history_culvert_q_barrels
+                    .as_mut()
+                    .unwrap()
+                    .push(step_results.iter().map(|r| r.q_barrel).collect());
+                history_culvert_q_weirs
+                    .as_mut()
+                    .unwrap()
+                    .push(step_results.iter().map(|r| r.q_weir).collect());
+                history_culvert_barrel_depths
+                    .as_mut()
+                    .unwrap()
+                    .push(step_results.iter().map(|r| r.barrel_depth).collect());
+                history_culvert_barrel_velocities
+                    .as_mut()
+                    .unwrap()
+                    .push(step_results.iter().map(|r| r.barrel_velocity).collect());
+                history_culvert_barrel_froude
+                    .as_mut()
+                    .unwrap()
+                    .push(step_results.iter().map(|r| r.barrel_froude).collect());
+            }
 
             // Clamp solved WSEL to prevent dry nodes/negative depth, and limit velocity
             for k in 0..dm {
@@ -800,6 +1011,14 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
         velocity: history_vel,
         max_courant: max_courant_val,
         recommended_dt: recommended_dt_val,
+        culvert_control_types: history_culvert_control_types,
+        culvert_wsel_inlet: history_culvert_wsel_inlet,
+        culvert_wsel_outlet: history_culvert_wsel_outlet,
+        culvert_q_barrels: history_culvert_q_barrels,
+        culvert_q_weirs: history_culvert_q_weirs,
+        culvert_barrel_depths: history_culvert_barrel_depths,
+        culvert_barrel_velocities: history_culvert_barrel_velocities,
+        culvert_barrel_froude: history_culvert_barrel_froude,
     }
 }
 
@@ -1093,6 +1312,14 @@ mod tests {
             res_culvert.wsel[2][0] > res_plain.wsel[2][0],
             "culvert headwater should exceed plain channel upstream WSEL"
         );
+        let ctrl = res_culvert
+            .culvert_control_types
+            .as_ref()
+            .expect("culvert diagnostics on unsteady run");
+        assert_eq!(ctrl.len(), 3);
+        assert_eq!(ctrl[0].len(), 1);
+        assert!(ctrl[0][0] == "inlet" || ctrl[0][0] == "outlet" || ctrl[0][0] == "overtopping");
+        assert!(res_culvert.culvert_q_barrels.as_ref().unwrap()[2][0] > 0.0);
     }
 
     #[test]
