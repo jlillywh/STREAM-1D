@@ -79,6 +79,10 @@ export interface CulvertArrays {
   culvert_skew_angles?: number[];
   /** Open barrels (≤ culvert_barrels); omit to use all barrels */
   culvert_active_barrels?: number[];
+  /** Per-barrel span/diameter — `culvert_barrel_spans[i][j]` for culvert i, barrel j */
+  culvert_barrel_spans?: number[][];
+  /** Per-barrel rise — `culvert_barrel_rises[i][j]` for culvert i, barrel j */
+  culvert_barrel_rises?: number[][];
 }
 
 export interface BridgeArrays {
@@ -166,6 +170,8 @@ export interface CulvertRatingCurveInputs {
   num_barrels?: number;
   active_barrels?: number;
   skew_deg?: number;
+  barrel_spans?: number[];
+  barrel_rises?: number[];
 }
 
 export interface CulvertRatingCurveResult {
