@@ -1,4 +1,4 @@
-//! Shared mathematical utilities and unit conversions for STREAMS-1D.
+//! Shared mathematical utilities and unit conversions for STREAM-1D.
 
 /// Acceleration due to gravity (g) in m/s^2.
 pub const G_METRIC: f64 = 9.80665;
