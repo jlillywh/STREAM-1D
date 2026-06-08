@@ -1,10 +1,7 @@
-use crate::utils::{UnitSystem, FT_TO_M, CFS_TO_CMS};
+use crate::utils::{UnitSystem, FT_TO_M, CFS_TO_CMS, G_METRIC};
 use crate::geometry::GeometryTable;
 
-/// Standard acceleration due to gravity in metric units (m/s^2).
-pub const G_METRIC: f64 = 9.80665;
-
-/// Supported pier shape types.
+/// Supported pier shape types (Yarnell K coefficients per HEC-RAS).
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum PierShape {
     Square = 0,
@@ -23,14 +20,52 @@ impl PierShape {
         }
     }
 
+    /// Yarnell pier shape coefficient K (HEC-RAS Table: Pier Shape Yarnell K Coefficients).
     pub fn coefficient(&self) -> f64 {
         match self {
             PierShape::Square => 1.25,
             PierShape::Semicircular => 0.90,
-            PierShape::TwinCylinder => 0.95,
-            PierShape::Triangular => 0.90,
+            PierShape::TwinCylinder => 0.95, // twin-cylinder with connecting diaphragm
+            PierShape::Triangular => 1.05,   // 90° triangular nose and tail
         }
     }
+}
+
+/// HEC-RAS Yarnell low-flow pier head loss (Class A): drop from section 3 to section 2.
+///
+/// H₃₋₂ = 2K(K + 10ω − 0.6)(α + 15α⁴) V²/(2g)
+///
+/// * ω = (V²/2g) / y — velocity head to depth ratio at the downstream section
+/// * α = A_piers / (A_flow − A_piers) — pier obstruction over unobstructed flow area
+pub fn yarnell_pier_head_loss(
+    q_metric: f64,
+    wsel_down_metric: f64,
+    z_bed_down_metric: f64,
+    pier_width_m: f64,
+    num_piers: i32,
+    pier_shape: PierShape,
+    flow_area_m2: f64,
+) -> f64 {
+    if q_metric <= 1e-5 || flow_area_m2 <= 1e-5 {
+        return 0.0;
+    }
+
+    let depth_down = (wsel_down_metric - z_bed_down_metric).max(0.0);
+    if depth_down <= 1e-5 {
+        return 0.0;
+    }
+
+    let a_piers = (num_piers as f64) * pier_width_m * depth_down;
+    let a_unobstructed = (flow_area_m2 - a_piers).max(1e-5);
+    let a_piers_clamped = a_piers.min(a_unobstructed * 0.9);
+    let alpha = a_piers_clamped / a_unobstructed;
+
+    let v_ds = q_metric / flow_area_m2;
+    let velocity_head = (v_ds * v_ds) / (2.0 * G_METRIC);
+    let omega = velocity_head / depth_down;
+    let k = pier_shape.coefficient();
+
+    2.0 * k * (k + 10.0 * omega - 0.6) * (alpha + 15.0 * alpha.powi(4)) * velocity_head
 }
 
 /// Solves the upstream water surface elevation (WSEL) for a bridge section
@@ -69,29 +104,30 @@ pub fn solve_bridge_wsel(
 
     let tw_clamped = tw_m.max(z_down_m + 1e-4);
     let pier_shape = PierShape::from_i32(pier_shape_type);
-    let kp = pier_shape.coefficient();
 
     // 2. Evaluate downstream conditions to decide if low flow or high flow holds
     let is_low_flow_initially = tw_clamped < low_chord_m;
 
     let wsel_up_metric = if is_low_flow_initially {
-        // --- LOW FLOW: Yarnell Pier Energy Loss ---
+        // --- LOW FLOW: HEC-RAS Yarnell pier equation (Class A) ---
         let row_down = table_down.interpolate(tw_clamped);
-        let a_total = row_down.area;
+        // Use channel_area when subdivided; falls back to total area for simple sections.
+        let flow_area = if row_down.channel_area > 1e-6 {
+            row_down.channel_area
+        } else {
+            row_down.area
+        };
 
-        if a_total > 1e-5 && q_metric > 1e-5 {
-            let v_ds = q_metric / a_total;
-            let depth_down = (tw_clamped - z_down_m).max(0.0);
-            
-            // Total pier obstruction area
-            let a_piers = (num_piers as f64) * pier_width_m * depth_down;
-            let a_piers_clamped = a_piers.min(a_total * 0.9); // prevent complete blockage numerical issues
-            let beta = a_piers_clamped / a_total;
-
-            // Yarnell loss equation: HL = 2 * Kp * (Kp + 10 * beta - 0.6) * alpha * (v_ds^2 / 2g)
-            let alpha = 1.0;
-            let hl = 2.0 * kp * (kp + 10.0 * beta - 0.6) * alpha * (v_ds * v_ds) / (2.0 * G_METRIC);
-            let hl_clamped = hl.max(0.0);
+        if flow_area > 1e-5 && q_metric > 1e-5 {
+            let hl_clamped = yarnell_pier_head_loss(
+                q_metric,
+                tw_clamped,
+                z_down_m,
+                pier_width_m,
+                num_piers,
+                pier_shape,
+                flow_area,
+            );
             let wsel_up_low = tw_clamped + hl_clamped;
 
             if wsel_up_low < low_chord_m {
@@ -202,4 +238,41 @@ fn solve_high_flow(
     }
 
     best_h
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Rectangular 10 m channel, WSEL = 3 m, Q = 15 cms, two 0.5 m square piers.
+    /// Hand-checked against HEC-RAS Yarnell form: H₃₋₂ ≈ 0.00247 m.
+    #[test]
+    fn test_yarnell_pier_head_loss_hec_ras() {
+        let hl = yarnell_pier_head_loss(
+            15.0,
+            3.0,
+            0.0,
+            0.5,
+            2,
+            PierShape::Square,
+            30.0,
+        );
+        assert!(
+            (hl - 0.00247).abs() < 1e-4,
+            "Yarnell head loss should match HEC-RAS formula, got {hl}"
+        );
+    }
+
+    #[test]
+    fn test_yarnell_zero_piers_no_loss() {
+        let hl = yarnell_pier_head_loss(15.0, 3.0, 0.0, 0.5, 0, PierShape::Square, 30.0);
+        assert_eq!(hl, 0.0);
+    }
+
+    #[test]
+    fn test_yarnell_square_pier_loss_exceeds_semicircular() {
+        let square = yarnell_pier_head_loss(15.0, 3.0, 0.0, 0.5, 2, PierShape::Square, 30.0);
+        let semi = yarnell_pier_head_loss(15.0, 3.0, 0.0, 0.5, 2, PierShape::Semicircular, 30.0);
+        assert!(square > semi, "Square piers (K=1.25) should produce more loss than semicircular (K=0.90)");
+    }
 }

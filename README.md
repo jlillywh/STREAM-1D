@@ -2,14 +2,16 @@
 
 **An open-source 1D open-channel hydraulics engine for the web and Python.**
 
-STREAMS-1D is a Rust 1D open-channel hydraulics engine. It provides steady gradually varied flow (Standard Step, including culverts and bridges) and unsteady Saint-Venant routing on single reaches. The core solver is decoupled from any specific user interface and compiles to two primary targets: WebAssembly (WASM) for client-side execution in the browser, and a native Python extension for automated scripting and batch processing. The API is stateless: structured inputs in, result arrays out.
+STREAMS-1D is a Rust 1D open-channel hydraulics engine. It provides steady gradually varied flow (Standard Step, including culverts, bridges, and main-stem/tributary junctions) and unsteady Saint-Venant routing on single reaches. The core solver is decoupled from any specific user interface and compiles to two primary targets: WebAssembly (WASM) for client-side execution in the browser, and a native Python extension for automated scripting and batch processing. The API is stateless: structured inputs in, result arrays out.
 
 ## Project Goals
 
 * **Embeddable Execution:** Run hydraulic simulations in web dashboards or Python data pipelines without requiring desktop hydraulic software.
-* **Structural Hydraulics:** Model inline structures and composite roughness on single reaches—culverts, bridge piers, roadway overtopping, and multi-zone Manning's *n* (steady solver today).
+* **Structural Hydraulics:** Model inline structures and composite roughness on single reaches or a main stem with one joining tributary (steady)—culverts, bridge piers, roadway overtopping, and multi-zone Manning's *n*.
 * **Unsteady Routing:** Dynamic routing with upstream flow and downstream stage hydrographs; stabilization for steep transients and mixed regimes is an active development focus.
 * **Interactive Web Integration (planned):** Designed for background Web Worker execution so profile plots can update as geometry or boundaries change without blocking the UI.
+
+**Web app integrators:** Steady tributary junctions use a two-branch API (one main stem array + one tributary array). HEC-RAS projects with three reaches at a confluence must merge or concatenate the upper and lower main stems before calling WASM. See [`docs/web_gui_tributary_junction.md`](docs/web_gui_tributary_junction.md).
 
 ## Architecture
 

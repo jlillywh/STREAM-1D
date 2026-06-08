@@ -140,5 +140,33 @@ def test_solve_steady_integrated_bridge():
 
     result = st.solve_steady(inputs)
     assert abs(result['wsel'][2] - 3.0) < 1e-4
-    assert result['wsel'][1] > 3.0
+    assert abs(result['wsel'][1] - 3.00247) < 0.001
+
+def test_solve_steady_tributary_junction():
+    main = [
+        st.CrossSection(1000.0, [0.0, 0.0, 10.0, 10.0], [5.2, 0.2, 0.2, 5.2], [0.0], [0.025], "Metric"),
+        st.CrossSection(500.0, [0.0, 0.0, 10.0, 10.0], [5.1, 0.1, 0.1, 5.1], [0.0], [0.025], "Metric"),
+        st.CrossSection(0.0, [0.0, 0.0, 10.0, 10.0], [5.0, 0.0, 0.0, 5.0], [0.0], [0.025], "Metric"),
+    ]
+    trib = [
+        st.CrossSection(800.0, [0.0, 0.0, 10.0, 10.0], [5.15, 0.15, 0.15, 5.15], [0.0], [0.030], "Metric"),
+        st.CrossSection(600.0, [0.0, 0.0, 10.0, 10.0], [5.12, 0.12, 0.12, 5.12], [0.0], [0.030], "Metric"),
+        st.CrossSection(400.0, [0.0, 0.0, 10.0, 10.0], [5.10, 0.10, 0.10, 5.10], [0.0], [0.030], "Metric"),
+    ]
+    inputs = st.SteadyInputs(
+        cross_sections=main,
+        flow_rate=10.0,
+        num_slices=50,
+        regime=0,
+        downstream_wsel=1.5,
+        downstream_bc_type=0,
+        tributary_cross_sections=trib,
+        tributary_flow_rate=5.0,
+        junction_main_station=500.0,
+    )
+    result = st.solve_steady(inputs)
+    assert 'tributary_wsel' in result
+    assert len(result['tributary_wsel']) == 3
+    assert abs(result['wsel'][1] - result['tributary_wsel'][2]) < 1e-3
+    assert result['velocity'][2] > result['velocity'][1]
 
