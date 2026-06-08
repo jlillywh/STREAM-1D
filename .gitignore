@@ -15,6 +15,10 @@ worker.js
 *.mov
 benchmark_results_*.png
 
+# Coverage reports (generated in CI)
+lcov.info
+coverage/
+
 # Standard Rust / Cargo build artifacts
 /target/
 **/*.rs.bk
