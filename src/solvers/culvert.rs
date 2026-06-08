@@ -339,14 +339,54 @@ pub struct CulvertSolveResult {
     pub wsel: f64,
     /// Controlling mechanism: `"inlet"`, `"outlet"`, or `"overtopping"`.
     pub control_type: String,
+    /// Headwater from inlet-control nomograph (user units).
+    pub wsel_inlet: f64,
+    /// Headwater from outlet-control energy balance (user units).
+    pub wsel_outlet: f64,
+    /// Total discharge through barrel(s) (user units).
+    pub q_barrel: f64,
+    /// Discharge over roadway weir when overtopping is modeled (user units).
+    pub q_weir: f64,
+    /// Flow depth inside barrel at downstream end (user units, above downstream invert).
+    pub barrel_depth: f64,
+    /// Mean velocity inside barrel (user units).
+    pub barrel_velocity: f64,
+    /// Froude number inside barrel (based on hydraulic depth).
+    pub barrel_froude: f64,
+}
+
+/// Headwater rating curve for a single culvert at fixed tailwater.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CulvertRatingCurveInputs {
+    pub q_values: Vec<f64>,
+    /// Culvert geometry, losses, tailwater (`tw_wsel`); field `q` is ignored.
+    #[serde(flatten)]
+    pub culvert: CulvertSolveParams,
+}
+
+/// Headwater vs discharge samples for one culvert.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CulvertRatingCurveResult {
+    pub q: Vec<f64>,
+    pub wsel: Vec<f64>,
+    pub control_types: Vec<String>,
+    pub wsel_inlet: Vec<f64>,
+    pub wsel_outlet: Vec<f64>,
+    pub q_barrel: Vec<f64>,
+    pub q_weir: Vec<f64>,
+    pub barrel_depth: Vec<f64>,
+    pub barrel_velocity: Vec<f64>,
+    pub barrel_froude: Vec<f64>,
 }
 
 /// Parameters for a culvert headwater solve (user units unless noted).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CulvertSolveParams {
+    #[serde(default)]
     pub q: f64,
     pub shape_type: i32,
     /// Inlet type for FHWA nomograph (0 = legacy Ke threshold).
+    #[serde(default)]
     pub inlet_type: i32,
     pub span: f64,
     pub rise: f64,
@@ -358,18 +398,39 @@ pub struct CulvertSolveParams {
     pub z_up: f64,
     pub tw_wsel: f64,
     pub units: UnitSystem,
+    #[serde(default)]
     pub manning_n_bottom: f64,
+    #[serde(default)]
     pub depth_bottom_n: f64,
+    #[serde(default)]
     pub depth_blocked: f64,
+    #[serde(default)]
     pub ds_velocity: f64,
+    #[serde(default)]
     pub us_velocity: f64,
     /// Roadway/embankment crest elevation for overtopping weir (optional).
     pub crest_elev: Option<f64>,
     /// Weir discharge coefficient (default 2.6 US / 1.44 metric).
+    #[serde(default)]
     pub weir_coeff: f64,
     /// Effective weir length for overtopping (default span × num_barrels).
+    #[serde(default)]
     pub weir_length: f64,
+    #[serde(default = "default_num_barrels")]
     pub num_barrels: i32,
+}
+
+fn default_num_barrels() -> i32 {
+    1
+}
+
+fn normalize_culvert_params(params: &mut CulvertSolveParams) {
+    if params.manning_n_bottom == 0.0 {
+        params.manning_n_bottom = params.roughness_n;
+    }
+    if params.num_barrels < 1 {
+        params.num_barrels = 1;
+    }
 }
 
 /// FHWA HDS-5 inlet-control nomograph coefficients (K, M, c, Y).
@@ -427,6 +488,52 @@ struct BarrelSolveInternal {
     wsel: f64,
     wsel_inlet: f64,
     wsel_outlet: f64,
+    barrel_depth_ft: f64,
+    barrel_velocity_ft: f64,
+    barrel_froude: f64,
+}
+
+fn assemble_culvert_result(
+    params: &CulvertSolveParams,
+    barrel: &BarrelSolveInternal,
+    q_barrel: f64,
+    q_weir: f64,
+    control_type: String,
+) -> CulvertSolveResult {
+    let (barrel_depth, barrel_velocity) = if params.units == UnitSystem::Metric {
+        (
+            barrel.barrel_depth_ft * FT_TO_M,
+            barrel.barrel_velocity_ft * FT_TO_M,
+        )
+    } else {
+        (barrel.barrel_depth_ft, barrel.barrel_velocity_ft)
+    };
+
+    CulvertSolveResult {
+        wsel: barrel.wsel,
+        control_type,
+        wsel_inlet: barrel.wsel_inlet,
+        wsel_outlet: barrel.wsel_outlet,
+        q_barrel,
+        q_weir,
+        barrel_depth,
+        barrel_velocity,
+        barrel_froude: barrel.barrel_froude,
+    }
+}
+
+fn overtopping_only_result(wsel: f64, q_weir: f64) -> CulvertSolveResult {
+    CulvertSolveResult {
+        wsel,
+        control_type: "overtopping".to_string(),
+        wsel_inlet: 0.0,
+        wsel_outlet: 0.0,
+        q_barrel: 0.0,
+        q_weir,
+        barrel_depth: 0.0,
+        barrel_velocity: 0.0,
+        barrel_froude: 0.0,
+    }
 }
 
 fn solve_culvert_barrel_internal(params: &CulvertSolveParams, q: f64) -> BarrelSolveInternal {
@@ -487,7 +594,8 @@ fn solve_culvert_barrel_internal(params: &CulvertSolveParams, q: f64) -> BarrelS
 
     let (k, m, c, y) = inlet_nomograph_coeffs(shape, params.inlet_type, params.entrance_loss_coeff);
 
-    let culv_slope = ((z_up_ft - z_down_ft) / len_ft).max(0.0);
+    // FHWA barrel slope S0 (positive when downstream invert is lower than upstream).
+    let culv_slope = (z_up_ft - z_down_ft) / len_ft;
     let f_param = q_cfs / (a_full_eff * d_eff.sqrt());
 
     // Unsubmerged Eq (Form 1)
@@ -558,10 +666,25 @@ fn solve_culvert_barrel_internal(params: &CulvertSolveParams, q: f64) -> BarrelS
         wsel_outlet
     };
 
+    let t_barrel = get_culvert_effective_top_width(shape, span_ft, rise_ft, y_barrel, db_ft);
+    let d_hyd = if t_barrel > 1e-9 {
+        a_barrel / t_barrel
+    } else {
+        0.0
+    };
+    let barrel_froude = if d_hyd > 1e-9 {
+        v_barrel / (G_ENGLISH * d_hyd).sqrt()
+    } else {
+        0.0
+    };
+
     BarrelSolveInternal {
         wsel: wsel_user,
         wsel_inlet: wsel_inlet_user,
         wsel_outlet: wsel_outlet_user,
+        barrel_depth_ft: y_barrel,
+        barrel_velocity_ft: v_barrel,
+        barrel_froude,
     }
 }
 
@@ -581,19 +704,56 @@ fn weir_flow_us(cw: f64, length_ft: f64, wsel_ft: f64, crest_ft: f64) -> f64 {
     cw * length_ft * head.powf(1.5)
 }
 
+fn solve_wsel_weir_only(
+    params: &CulvertSolveParams,
+    cw_us: f64,
+    length_ft: f64,
+    crest_ft: f64,
+    q_target: f64,
+) -> f64 {
+    let q_target_cfs = if params.units == UnitSystem::Metric {
+        q_target / CFS_TO_CMS
+    } else {
+        q_target
+    };
+    let mut low = crest_ft;
+    let mut high = crest_ft + 50.0;
+    let mut best = high;
+    for _ in 0..50 {
+        let mid = 0.5 * (low + high);
+        let q_mid = weir_flow_us(cw_us, length_ft, mid, crest_ft);
+        if q_mid < q_target_cfs {
+            low = mid;
+        } else {
+            high = mid;
+        }
+        best = mid;
+    }
+    if params.units == UnitSystem::Metric {
+        best * FT_TO_M
+    } else {
+        best
+    }
+}
+
 /// Solve culvert headwater including optional roadway overtopping weir.
 pub fn solve_culvert(params: &CulvertSolveParams) -> CulvertSolveResult {
-    let barrels = params.num_barrels.max(1) as f64;
+    let mut params = params.clone();
+    normalize_culvert_params(&mut params);
+    let barrels = params.num_barrels as f64;
     let q_total = params.q;
 
     let crest_user = match params.crest_elev {
         Some(c) => c,
         None => {
-            let barrel = solve_culvert_barrel_internal(params, q_total / barrels);
-            return CulvertSolveResult {
-                wsel: barrel.wsel,
-                control_type: barrel_control_type(&barrel),
-            };
+            let barrel = solve_culvert_barrel_internal(&params, q_total / barrels);
+            return assemble_culvert_result(
+                &params,
+                &barrel,
+                q_total,
+                0.0,
+                barrel_control_type(&barrel),
+            );
         }
     };
 
@@ -628,7 +788,7 @@ pub fn solve_culvert(params: &CulvertSolveParams) -> CulvertSolveResult {
     };
 
     let mut q_barrel_total = q_total;
-    let mut last_barrel = solve_culvert_barrel_internal(params, q_barrel_total / barrels);
+    let mut last_barrel = solve_culvert_barrel_internal(&params, q_barrel_total / barrels);
     let mut last_control = barrel_control_type(&last_barrel);
 
     for _ in 0..25 {
@@ -639,10 +799,7 @@ pub fn solve_culvert(params: &CulvertSolveParams) -> CulvertSolveResult {
         };
 
         if wsel_ft <= crest_ft + 1e-6 {
-            return CulvertSolveResult {
-                wsel: last_barrel.wsel,
-                control_type: last_control,
-            };
+            return assemble_culvert_result(&params, &last_barrel, q_barrel_total, 0.0, last_control);
         }
 
         let q_weir_cfs = weir_flow_us(cw_us, length_ft, wsel_ft, crest_ft);
@@ -653,43 +810,9 @@ pub fn solve_culvert(params: &CulvertSolveParams) -> CulvertSolveResult {
         };
 
         if q_weir >= q_total - 1e-6 {
-            let wsel_overtopping = if params.units == UnitSystem::Metric {
-                // Bisection for WSEL where weir alone passes Q_total
-                let q_target_cfs = q_total / CFS_TO_CMS;
-                let mut low = crest_ft;
-                let mut high = crest_ft + 50.0;
-                let mut best = high;
-                for _ in 0..50 {
-                    let mid = 0.5 * (low + high);
-                    let q_mid = weir_flow_us(cw_us, length_ft, mid, crest_ft);
-                    if q_mid < q_target_cfs {
-                        low = mid;
-                    } else {
-                        high = mid;
-                    }
-                    best = mid;
-                }
-                best * FT_TO_M
-            } else {
-                let mut low = crest_ft;
-                let mut high = crest_ft + 50.0;
-                let mut best = high;
-                for _ in 0..50 {
-                    let mid = 0.5 * (low + high);
-                    let q_mid = weir_flow_us(cw_us, length_ft, mid, crest_ft);
-                    if q_mid < q_total {
-                        low = mid;
-                    } else {
-                        high = mid;
-                    }
-                    best = mid;
-                }
-                best
-            };
-            return CulvertSolveResult {
-                wsel: wsel_overtopping,
-                control_type: "overtopping".to_string(),
-            };
+            let wsel_overtopping =
+                solve_wsel_weir_only(&params, cw_us, length_ft, crest_ft, q_total);
+            return overtopping_only_result(wsel_overtopping, q_total);
         }
 
         let q_barrel_new = (q_total - q_weir).max(0.0);
@@ -699,14 +822,11 @@ pub fn solve_culvert(params: &CulvertSolveParams) -> CulvertSolveResult {
             } else {
                 last_control.clone()
             };
-            return CulvertSolveResult {
-                wsel: last_barrel.wsel,
-                control_type: control,
-            };
+            return assemble_culvert_result(&params, &last_barrel, q_barrel_total, q_weir, control);
         }
 
         q_barrel_total = q_barrel_new;
-        last_barrel = solve_culvert_barrel_internal(params, q_barrel_total / barrels);
+        last_barrel = solve_culvert_barrel_internal(&params, q_barrel_total / barrels);
         last_control = barrel_control_type(&last_barrel);
     }
 
@@ -716,15 +836,68 @@ pub fn solve_culvert(params: &CulvertSolveParams) -> CulvertSolveResult {
         last_barrel.wsel
     };
     let q_weir_cfs = weir_flow_us(cw_us, length_ft, wsel_ft, crest_ft);
-    let control = if wsel_ft > crest_ft + 1e-6 && q_weir_cfs > 0.01 * (q_total / CFS_TO_CMS).max(q_total) {
+    let q_weir = if params.units == UnitSystem::Metric {
+        q_weir_cfs * CFS_TO_CMS
+    } else {
+        q_weir_cfs
+    };
+    let q_thresh = if params.units == UnitSystem::Metric {
+        0.01 * q_total
+    } else {
+        0.01 * q_total
+    };
+    let control = if wsel_ft > crest_ft + 1e-6 && q_weir > q_thresh {
         "overtopping".to_string()
     } else {
         last_control
     };
 
-    CulvertSolveResult {
-        wsel: last_barrel.wsel,
-        control_type: control,
+    assemble_culvert_result(&params, &last_barrel, q_barrel_total, q_weir, control)
+}
+
+/// Compute headwater vs discharge at fixed tailwater (culvert rating curve).
+pub fn compute_culvert_rating_curve(inputs: &CulvertRatingCurveInputs) -> CulvertRatingCurveResult {
+    let mut q = Vec::with_capacity(inputs.q_values.len());
+    let mut wsel = Vec::with_capacity(inputs.q_values.len());
+    let mut control_types = Vec::with_capacity(inputs.q_values.len());
+    let mut wsel_inlet = Vec::with_capacity(inputs.q_values.len());
+    let mut wsel_outlet = Vec::with_capacity(inputs.q_values.len());
+    let mut q_barrel = Vec::with_capacity(inputs.q_values.len());
+    let mut q_weir = Vec::with_capacity(inputs.q_values.len());
+    let mut barrel_depth = Vec::with_capacity(inputs.q_values.len());
+    let mut barrel_velocity = Vec::with_capacity(inputs.q_values.len());
+    let mut barrel_froude = Vec::with_capacity(inputs.q_values.len());
+
+    let mut base = inputs.culvert.clone();
+    normalize_culvert_params(&mut base);
+
+    for &q_sample in &inputs.q_values {
+        let mut params = base.clone();
+        params.q = q_sample;
+        let result = solve_culvert(&params);
+        q.push(q_sample);
+        wsel.push(result.wsel);
+        control_types.push(result.control_type);
+        wsel_inlet.push(result.wsel_inlet);
+        wsel_outlet.push(result.wsel_outlet);
+        q_barrel.push(result.q_barrel);
+        q_weir.push(result.q_weir);
+        barrel_depth.push(result.barrel_depth);
+        barrel_velocity.push(result.barrel_velocity);
+        barrel_froude.push(result.barrel_froude);
+    }
+
+    CulvertRatingCurveResult {
+        q,
+        wsel,
+        control_types,
+        wsel_inlet,
+        wsel_outlet,
+        q_barrel,
+        q_weir,
+        barrel_depth,
+        barrel_velocity,
+        barrel_froude,
     }
 }
 
@@ -1073,6 +1246,161 @@ mod tests {
         let result = solve_culvert(&params);
         assert!(result.wsel < 20.0);
         assert_eq!(result.control_type, "inlet");
+    }
+
+    #[test]
+    fn test_extended_diagnostics_inlet_control() {
+        let params = CulvertSolveParams {
+            q: 100.0,
+            shape_type: 0,
+            inlet_type: 0,
+            span: 5.0,
+            rise: 5.0,
+            roughness_n: 0.012,
+            length: 100.0,
+            entrance_loss_coeff: 0.5,
+            exit_loss_coeff: 1.0,
+            z_down: 9.0,
+            z_up: 10.0,
+            tw_wsel: 12.0,
+            units: UnitSystem::USCustomary,
+            manning_n_bottom: 0.012,
+            depth_bottom_n: 0.0,
+            depth_blocked: 0.0,
+            ds_velocity: 0.0,
+            us_velocity: 0.0,
+            crest_elev: None,
+            weir_coeff: 0.0,
+            weir_length: 0.0,
+            num_barrels: 1,
+        };
+        let result = solve_culvert(&params);
+        assert_eq!(result.control_type, "inlet");
+        assert!((result.wsel - result.wsel_inlet).abs() < 1e-6);
+        assert!(result.wsel_outlet < result.wsel_inlet);
+        assert!((result.q_barrel - 100.0).abs() < 1e-6);
+        assert!(result.q_weir.abs() < 1e-6);
+        assert!(result.barrel_depth > 0.0);
+        assert!(result.barrel_velocity > 0.0);
+        assert!(result.barrel_froude > 0.0);
+    }
+
+    #[test]
+    fn test_adverse_barrel_slope_increases_headwater() {
+        let base = CulvertSolveParams {
+            q: 100.0,
+            shape_type: 0,
+            inlet_type: 1,
+            span: 5.0,
+            rise: 5.0,
+            roughness_n: 0.012,
+            length: 100.0,
+            entrance_loss_coeff: 0.5,
+            exit_loss_coeff: 1.0,
+            z_down: 10.0,
+            z_up: 10.0,
+            tw_wsel: 12.0,
+            units: UnitSystem::USCustomary,
+            manning_n_bottom: 0.012,
+            depth_bottom_n: 0.0,
+            depth_blocked: 0.0,
+            ds_velocity: 0.0,
+            us_velocity: 0.0,
+            crest_elev: None,
+            weir_coeff: 0.0,
+            weir_length: 0.0,
+            num_barrels: 1,
+        };
+        let flat = CulvertSolveParams {
+            z_down: 10.0,
+            ..base.clone()
+        };
+        let adverse = CulvertSolveParams {
+            z_down: 11.0,
+            ..base.clone()
+        };
+        let downhill = CulvertSolveParams {
+            z_down: 9.0,
+            ..base
+        };
+        let flat_hw = solve_culvert(&flat).wsel;
+        let adverse_hw = solve_culvert(&adverse).wsel;
+        let downhill_hw = solve_culvert(&downhill).wsel;
+        assert!(
+            adverse_hw > flat_hw && flat_hw > downhill_hw,
+            "adverse={} flat={} downhill={}",
+            adverse_hw,
+            flat_hw,
+            downhill_hw
+        );
+    }
+
+    #[test]
+    fn test_culvert_rating_curve() {
+        let inputs = CulvertRatingCurveInputs {
+            q_values: vec![50.0, 100.0, 150.0],
+            culvert: CulvertSolveParams {
+                q: 0.0,
+                shape_type: 0,
+                inlet_type: 1,
+                span: 5.0,
+                rise: 5.0,
+                roughness_n: 0.012,
+                length: 100.0,
+                entrance_loss_coeff: 0.5,
+                exit_loss_coeff: 1.0,
+                z_down: 9.0,
+                z_up: 10.0,
+                tw_wsel: 12.0,
+                units: UnitSystem::USCustomary,
+                manning_n_bottom: 0.012,
+                depth_bottom_n: 0.0,
+                depth_blocked: 0.0,
+                ds_velocity: 0.0,
+                us_velocity: 0.0,
+                crest_elev: None,
+                weir_coeff: 0.0,
+                weir_length: 0.0,
+                num_barrels: 1,
+            },
+        };
+        let curve = compute_culvert_rating_curve(&inputs);
+        assert_eq!(curve.q.len(), 3);
+        assert!(curve.wsel[1] > curve.wsel[0]);
+        assert!(curve.wsel[2] > curve.wsel[1]);
+        assert_eq!(curve.q_barrel[0], 50.0);
+    }
+
+    #[test]
+    fn test_overtopping_reports_flow_split() {
+        let params = CulvertSolveParams {
+            q: 500.0,
+            shape_type: 0,
+            inlet_type: 1,
+            span: 5.0,
+            rise: 5.0,
+            roughness_n: 0.012,
+            length: 100.0,
+            entrance_loss_coeff: 0.5,
+            exit_loss_coeff: 1.0,
+            z_down: 9.0,
+            z_up: 10.0,
+            tw_wsel: 10.0,
+            units: UnitSystem::USCustomary,
+            manning_n_bottom: 0.012,
+            depth_bottom_n: 0.0,
+            depth_blocked: 0.0,
+            ds_velocity: 0.0,
+            us_velocity: 0.0,
+            crest_elev: Some(14.0),
+            weir_coeff: 2.6,
+            weir_length: 20.0,
+            num_barrels: 2,
+        };
+        let result = solve_culvert(&params);
+        assert_eq!(result.control_type, "overtopping");
+        assert!(result.q_weir > 0.0);
+        assert!((result.q_barrel + result.q_weir - 500.0).abs() < 1.0);
     }
 
     #[test]

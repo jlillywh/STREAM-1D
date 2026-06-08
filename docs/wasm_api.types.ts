@@ -125,6 +125,54 @@ export interface SteadyResult {
   tributary_froude?: number[];
   /** Tier 1 — aligned with `culvert_stations`; omitted when no culverts modeled */
   culvert_control_types?: CulvertControlType[];
+  /** Tier 2a — inlet-control headwater per culvert */
+  culvert_wsel_inlet?: number[];
+  culvert_wsel_outlet?: number[];
+  culvert_q_barrels?: number[];
+  culvert_q_weirs?: number[];
+  culvert_barrel_depths?: number[];
+  culvert_barrel_velocities?: number[];
+  culvert_barrel_froude?: number[];
+}
+
+/** Inputs for `computeCulvertRatingCurve` — `q` in culvert fields is ignored. */
+export interface CulvertRatingCurveInputs {
+  q_values: number[];
+  q?: number;
+  tw_wsel: number;
+  units: UnitSystem;
+  shape_type: number;
+  inlet_type?: number;
+  span: number;
+  rise: number;
+  roughness_n: number;
+  length: number;
+  entrance_loss_coeff: number;
+  exit_loss_coeff: number;
+  z_down: number;
+  z_up: number;
+  manning_n_bottom?: number;
+  depth_bottom_n?: number;
+  depth_blocked?: number;
+  ds_velocity?: number;
+  us_velocity?: number;
+  crest_elev?: number;
+  weir_coeff?: number;
+  weir_length?: number;
+  num_barrels?: number;
+}
+
+export interface CulvertRatingCurveResult {
+  q: number[];
+  wsel: number[];
+  control_types: CulvertControlType[];
+  wsel_inlet: number[];
+  wsel_outlet: number[];
+  q_barrel: number[];
+  q_weir: number[];
+  barrel_depth: number[];
+  barrel_velocity: number[];
+  barrel_froude: number[];
 }
 
 export interface UnsteadyInputs {
@@ -168,6 +216,10 @@ export interface WasmApiMetadata {
     inputs: string[];
     outputs: string[];
   };
+  culvert_tier2a_fields: {
+    steady_outputs: string[];
+    rating_curve_entry_point: string;
+  };
 }
 
 /** Module exports from `pkg/streams1d.js` after `wasm-pack build --target web` */
@@ -178,4 +230,5 @@ export interface Streams1dWasmModule {
   validateSteadyInputs: (inputs: SteadyInputs) => void;
   solveSteady: (inputs: SteadyInputs) => SteadyResult;
   solveUnsteady: (inputs: UnsteadyInputs) => UnsteadyResult;
+  computeCulvertRatingCurve: (inputs: CulvertRatingCurveInputs) => CulvertRatingCurveResult;
 }

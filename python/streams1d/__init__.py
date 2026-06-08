@@ -262,6 +262,16 @@ def solve_steady(inputs: Any) -> dict:
     json_out = _streams1d.solve_steady_json(json_in)
     return json.loads(json_out)
 
+def compute_culvert_rating_curve(payload: Any) -> dict:
+    """
+    Headwater vs discharge at fixed tailwater for one culvert.
+    Pass a dict with `q_values` plus culvert geometry fields (`tw_wsel`, `span`, etc.).
+    """
+    if not isinstance(payload, dict):
+        raise TypeError("compute_culvert_rating_curve expects a dict payload")
+    json_out = _streams1d.compute_culvert_rating_curve_json(json.dumps(payload))
+    return json.loads(json_out)
+
 def solve_unsteady(inputs: Any) -> dict:
     """
     Executes an unsteady flow routing simulation.

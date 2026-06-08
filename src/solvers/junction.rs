@@ -174,6 +174,41 @@ pub fn solve_steady_junction(inputs: &SteadyInputs) -> SteadyResult {
         ds_result.culvert_control_types.as_deref(),
         us_result.culvert_control_types.as_deref(),
     );
+    let culvert_wsel_inlet = merge_culvert_f64(
+        inputs.culvert_stations.as_deref(),
+        ds_result.culvert_wsel_inlet.as_deref(),
+        us_result.culvert_wsel_inlet.as_deref(),
+    );
+    let culvert_wsel_outlet = merge_culvert_f64(
+        inputs.culvert_stations.as_deref(),
+        ds_result.culvert_wsel_outlet.as_deref(),
+        us_result.culvert_wsel_outlet.as_deref(),
+    );
+    let culvert_q_barrels = merge_culvert_f64(
+        inputs.culvert_stations.as_deref(),
+        ds_result.culvert_q_barrels.as_deref(),
+        us_result.culvert_q_barrels.as_deref(),
+    );
+    let culvert_q_weirs = merge_culvert_f64(
+        inputs.culvert_stations.as_deref(),
+        ds_result.culvert_q_weirs.as_deref(),
+        us_result.culvert_q_weirs.as_deref(),
+    );
+    let culvert_barrel_depths = merge_culvert_f64(
+        inputs.culvert_stations.as_deref(),
+        ds_result.culvert_barrel_depths.as_deref(),
+        us_result.culvert_barrel_depths.as_deref(),
+    );
+    let culvert_barrel_velocities = merge_culvert_f64(
+        inputs.culvert_stations.as_deref(),
+        ds_result.culvert_barrel_velocities.as_deref(),
+        us_result.culvert_barrel_velocities.as_deref(),
+    );
+    let culvert_barrel_froude = merge_culvert_f64(
+        inputs.culvert_stations.as_deref(),
+        ds_result.culvert_barrel_froude.as_deref(),
+        us_result.culvert_barrel_froude.as_deref(),
+    );
 
     SteadyResult {
         wsel: out_wsel,
@@ -187,6 +222,42 @@ pub fn solve_steady_junction(inputs: &SteadyInputs) -> SteadyResult {
         tributary_velocity: Some(trib_result.velocity),
         tributary_froude: Some(trib_result.froude),
         culvert_control_types,
+        culvert_wsel_inlet,
+        culvert_wsel_outlet,
+        culvert_q_barrels,
+        culvert_q_weirs,
+        culvert_barrel_depths,
+        culvert_barrel_velocities,
+        culvert_barrel_froude,
+    }
+}
+
+fn merge_culvert_f64(
+    stations: Option<&[f64]>,
+    ds: Option<&[f64]>,
+    us: Option<&[f64]>,
+) -> Option<Vec<f64>> {
+    let n = stations?.len();
+    if n == 0 {
+        return None;
+    }
+    let mut out = vec![0.0; n];
+    for i in 0..n {
+        if let Some(ds_vals) = ds {
+            if i < ds_vals.len() && ds_vals[i].abs() > 1e-12 {
+                out[i] = ds_vals[i];
+            }
+        }
+        if let Some(us_vals) = us {
+            if i < us_vals.len() && us_vals[i].abs() > 1e-12 {
+                out[i] = us_vals[i];
+            }
+        }
+    }
+    if out.iter().all(|v| v.abs() < 1e-12) {
+        None
+    } else {
+        Some(out)
     }
 }
 

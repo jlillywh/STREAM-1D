@@ -48,6 +48,16 @@ pub fn solve_steady_wasm(inputs_val: JsValue) -> Result<JsValue, JsValue> {
     Ok(js_res)
 }
 
+/// Compute culvert headwater vs discharge at fixed tailwater (rating curve).
+#[wasm_bindgen(js_name = computeCulvertRatingCurve)]
+pub fn compute_culvert_rating_curve_wasm(inputs_val: JsValue) -> Result<JsValue, JsValue> {
+    let inputs: solvers::CulvertRatingCurveInputs = serde_wasm_bindgen::from_value(inputs_val)
+        .map_err(|e| JsValue::from_str(&format!("Failed to parse CulvertRatingCurveInputs: {}", e)))?;
+    let result = solvers::compute_culvert_rating_curve(&inputs);
+    serde_wasm_bindgen::to_value(&result)
+        .map_err(|e| JsValue::from_str(&format!("Failed to serialize CulvertRatingCurveResult: {}", e)))
+}
+
 /// WebAssembly entrypoint to run an unsteady-state hydraulic routing simulation.
 /// Receives a serialized `UnsteadyInputs` JS object and returns an `UnsteadyResult` JS object.
 #[wasm_bindgen(js_name = solveUnsteady)]
@@ -83,6 +93,17 @@ pub fn solve_steady_json_py(inputs_json: &str) -> PyResult<String> {
 
 #[cfg(feature = "python")]
 #[pyfunction]
+#[pyo3(name = "compute_culvert_rating_curve_json")]
+pub fn compute_culvert_rating_curve_json_py(inputs_json: &str) -> PyResult<String> {
+    let inputs: solvers::CulvertRatingCurveInputs = serde_json::from_str(inputs_json)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("Failed to parse CulvertRatingCurveInputs JSON: {}", e)))?;
+    let result = solvers::compute_culvert_rating_curve(&inputs);
+    serde_json::to_string(&result)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("Failed to serialize CulvertRatingCurveResult: {}", e)))
+}
+
+#[cfg(feature = "python")]
+#[pyfunction]
 #[pyo3(name = "solve_unsteady_json")]
 pub fn solve_unsteady_json_py(inputs_json: &str) -> PyResult<String> {
     let inputs: solvers::UnsteadyInputs = serde_json::from_str(inputs_json)
@@ -97,6 +118,7 @@ pub fn solve_unsteady_json_py(inputs_json: &str) -> PyResult<String> {
 #[pymodule]
 fn _streams1d(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(solve_steady_json_py, m)?)?;
+    m.add_function(wrap_pyfunction!(compute_culvert_rating_curve_json_py, m)?)?;
     m.add_function(wrap_pyfunction!(solve_unsteady_json_py, m)?)?;
     Ok(())
 }

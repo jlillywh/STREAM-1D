@@ -250,3 +250,49 @@ def test_solve_steady_tributary_junction():
     assert abs(result['wsel'][1] - result['tributary_wsel'][2]) < 1e-3
     assert result['velocity'][2] > result['velocity'][1]
 
+def test_solve_steady_culvert_tier2a_diagnostics():
+    inputs = st.SteadyInputs(
+        cross_sections=_culvert_channel_us(),
+        flow_rate=100.0,
+        num_slices=50,
+        regime=0,
+        downstream_wsel=3.0,
+        downstream_bc_type=0,
+        culvert_stations=[50.0],
+        culvert_shape_types=[0],
+        culvert_spans=[5.0],
+        culvert_rises=[5.0],
+        culvert_roughness_ns=[0.012],
+        culvert_lengths=[100.0],
+        culvert_entrance_loss_coeffs=[0.5],
+        culvert_exit_loss_coeffs=[1.0],
+        culvert_inlet_types=[1],
+    )
+    result = st.solve_steady(inputs)
+    assert result['culvert_q_barrels'][0] == pytest.approx(100.0)
+    assert result['culvert_wsel_inlet'][0] == pytest.approx(result['wsel'][1], rel=0.02)
+    assert result['culvert_barrel_velocities'][0] > 0.0
+    assert result['culvert_barrel_froude'][0] > 0.0
+
+def test_compute_culvert_rating_curve():
+    curve = st.compute_culvert_rating_curve({
+        'q_values': [50.0, 100.0, 150.0],
+        'tw_wsel': 12.0,
+        'units': 'USCustomary',
+        'shape_type': 0,
+        'inlet_type': 1,
+        'span': 5.0,
+        'rise': 5.0,
+        'roughness_n': 0.012,
+        'length': 100.0,
+        'entrance_loss_coeff': 0.5,
+        'exit_loss_coeff': 1.0,
+        'z_down': 9.0,
+        'z_up': 10.0,
+        'manning_n_bottom': 0.012,
+        'num_barrels': 1,
+    })
+    assert len(curve['q']) == 3
+    assert curve['wsel'][2] > curve['wsel'][0]
+    assert curve['q_barrel'][0] == pytest.approx(50.0)
+

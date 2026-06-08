@@ -38,7 +38,7 @@ Copy `pkg/` into the web app (npm file dependency, git submodule, or CI artifact
 
 - **Field naming:** `snake_case` (e.g. `cross_sections`, `culvert_inlet_types`) — same as Python JSON.
 - **Units:** Per cross-section `unit_system`: `"USCustomary"` or `"Metric"`.
-- **Versioning:** Call `getWasmApiMetadata()` after `init()`. Check `api_version` (currently **2** for Tier 1 culvert fields). Bump web app mapping when `api_version` increases.
+- **Versioning:** Call `getWasmApiMetadata()` after `init()`. Check `api_version` (currently **3** for Tier 1 culvert inputs, Tier 2a diagnostics, and rating curves). Bump web app mapping when `api_version` increases. Culvert GUI spec: [`web_gui_culvert_integration.md`](web_gui_culvert_integration.md).
 
 ### Entry points
 
@@ -49,6 +49,7 @@ import init, {
   validateSteadyInputs,
   solveSteady,
   solveUnsteady,
+  computeCulvertRatingCurve,
 } from './pkg/streams1d.js';
 
 await init();
