@@ -1976,6 +1976,38 @@ fn test_approach_narrowing_vs_reach_only_contraction_coefficient() {
 }
 
 #[test]
+fn test_wspro_guide_banks_narrow_approach_raises_headwater() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let table_down = rectangular_table(10.0, 0.0, 50);
+    let sections = approach_sections_with_guide_banks(20.0, 8.0, 12.0);
+    let coupling = BridgeCouplingParams {
+        low_flow_method: 4,
+        abutment: BridgeAbutmentUserInput {
+            legacy_total_width: 1.0,
+            ..Default::default()
+        },
+        length: 50.0,
+        ..Default::default()
+    };
+    let args = (
+        20.0, 5.0, 7.0, 0.0, 0, 0, 1.44, 0.5, 0.0, 0.0, 2.5,
+        UnitSystem::Metric, &table_up, &table_down, &coupling, 50.0, None,
+    );
+    let hw_plain = solve_bridge_wsel(
+        args.0, args.1, args.2, args.3, args.4, args.5, args.6, args.7, args.8, args.9,
+        args.10, args.11, args.12, args.13, args.14, args.15, args.16, None,
+    );
+    let hw_guided = solve_bridge_wsel(
+        args.0, args.1, args.2, args.3, args.4, args.5, args.6, args.7, args.8, args.9,
+        args.10, args.11, args.12, args.13, args.14, args.15, args.16, Some(&sections),
+    );
+    assert!(
+        hw_guided > hw_plain + 0.001,
+        "WSPRO with guide banks should raise HW, plain={hw_plain}, guided={hw_guided}"
+    );
+}
+
+#[test]
 fn test_high_flow_energy_supercritical_roundtrip() {
     let table_up = rectangular_table(10.0, 0.0, 50);
     let table_down = rectangular_table(10.0, 0.0, 50);

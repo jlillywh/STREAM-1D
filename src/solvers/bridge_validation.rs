@@ -354,6 +354,99 @@ mod tests {
     }
 
     #[test]
+    fn warns_on_invalid_guide_bank_polyline() {
+        use crate::geometry::{GuideBankPolyline, GuideBanks};
+        let parent = box_xs(50.0, 100.0, 30.0);
+        let inputs = SteadyInputs {
+            cross_sections: vec![parent.clone(), box_xs(0.0, 0.0, 200.0)],
+            flow_rate: 10.0,
+            bridge_stations: Some(vec![50.0]),
+            bridge_low_chords: Some(vec![5.0]),
+            bridge_high_chords: Some(vec![7.0]),
+            bridge_approach_guide_banks: Some(vec![GuideBanks {
+                left_polylines: vec![GuideBankPolyline {
+                    stations: vec![0.0, 0.0],
+                    elevations: vec![1.0, 2.0],
+                }],
+                ..Default::default()
+            }]),
+            ..Default::default()
+        };
+        let result = validate_steady_inputs(&inputs);
+        assert_eq!(result.warnings.len(), 1);
+        assert!(result.warnings[0].contains("approach"));
+    }
+
+    #[test]
+    fn cross_section_lateral_bounds_returns_min_max() {
+        let xs = box_xs(50.0, 100.0, 30.0);
+        assert_eq!(cross_section_lateral_bounds(&xs), (100.0, 130.0));
+    }
+
+    #[test]
+    fn warns_with_pier_extent_on_anchor_reach_parent() {
+        let parent = box_xs(600.0, 80.0, 50.0);
+        let inputs = SteadyInputs {
+            cross_sections: vec![parent.clone(), box_xs(0.0, 0.0, 200.0)],
+            flow_rate: 10.0,
+            bridge_stations: Some(vec![50.0]),
+            bridge_low_chords: Some(vec![5.0]),
+            bridge_high_chords: Some(vec![7.0]),
+            bridge_deck_stations: Some(vec![vec![0.0, 55.0]]),
+            bridge_deck_low_elevations: Some(vec![vec![5.0, 5.0]]),
+            bridge_deck_high_elevations: Some(vec![vec![7.0, 7.0]]),
+            bridge_pier_stations: Some(vec![vec![50.0]]),
+            bridge_pier_widths: Some(vec![2.0]),
+            bridge_opening_anchor_modes: Some(vec![1]),
+            bridge_opening_anchor_reach_stations: Some(vec![600.0]),
+            ..Default::default()
+        };
+        let result = validate_steady_inputs(&inputs);
+        assert_eq!(result.warnings.len(), 1);
+        assert!(result.warnings[0].contains("anchor reach cross section"));
+    }
+
+    #[test]
+    fn warns_on_invalid_departure_guide_bank_polyline() {
+        use crate::geometry::{GuideBankPolyline, GuideBanks};
+        let inputs = SteadyInputs {
+            bridge_stations: Some(vec![50.0]),
+            bridge_departure_guide_banks: Some(vec![GuideBanks {
+                right_polylines: vec![GuideBankPolyline {
+                    stations: vec![1.0, 1.0],
+                    elevations: vec![2.0, 3.0],
+                }],
+                ..Default::default()
+            }]),
+            ..Default::default()
+        };
+        let result = validate_steady_inputs(&inputs);
+        assert_eq!(result.warnings.len(), 1);
+        assert!(result.warnings[0].contains("departure"));
+    }
+
+    #[test]
+    fn warns_on_guide_banks_embedded_in_approach_cross_section() {
+        use crate::geometry::{GuideBankPolyline, GuideBanks};
+        let mut approach = box_xs(60.0, 100.0, 30.0);
+        approach.guide_banks = Some(GuideBanks {
+            left_polylines: vec![GuideBankPolyline {
+                stations: vec![0.0, 0.0],
+                elevations: vec![1.0, 2.0],
+            }],
+            ..Default::default()
+        });
+        let inputs = SteadyInputs {
+            bridge_stations: Some(vec![50.0]),
+            bridge_approach_cross_sections: Some(vec![approach]),
+            ..Default::default()
+        };
+        let result = validate_steady_inputs(&inputs);
+        assert_eq!(result.warnings.len(), 1);
+        assert!(result.warnings[0].contains("approach cross section"));
+    }
+
+    #[test]
     fn no_warning_without_deck_or_abutment_span() {
         let parent = box_xs(50.0, 100.0, 30.0);
         let inputs = SteadyInputs {

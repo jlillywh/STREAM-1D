@@ -151,6 +151,26 @@ fn steady_validation_bridge_opening_width_warning() {
 }
 
 #[test]
+fn steady_validation_guide_bank_polyline_warning() {
+    use stream1d::geometry::{GuideBankPolyline, GuideBanks};
+    use stream1d::solvers::{validate_steady_inputs, SteadyInputs};
+    let inputs = SteadyInputs {
+        bridge_stations: Some(vec![50.0]),
+        bridge_departure_guide_banks: Some(vec![GuideBanks {
+            right_polylines: vec![GuideBankPolyline {
+                stations: vec![1.0, 1.0],
+                elevations: vec![2.0, 3.0],
+            }],
+            ..Default::default()
+        }]),
+        ..Default::default()
+    };
+    let result = validate_steady_inputs(&inputs);
+    assert_eq!(result.warnings.len(), 1);
+    assert!(result.warnings[0].contains("departure"));
+}
+
+#[test]
 fn wasm_api_metadata_version() {
     let meta = build_api_metadata();
     assert_eq!(meta.api_version, API_VERSION);

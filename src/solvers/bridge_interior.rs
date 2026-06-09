@@ -1501,6 +1501,7 @@ mod tests {
         assert_eq!(gb_dep.unwrap().left_toe.unwrap().station, 99.0);
     }
 
+    #[test]
     fn pier_stations_remapped_to_reach_frame() {
         let bu = box_xs(100.0, 30.0, 1.0, 6.0);
         let interior = BridgeInteriorInput {
@@ -1542,6 +1543,86 @@ mod tests {
         let blocks = IneffectiveFlowAreas::from_block_pairs(&[8.0], &[3.0], &[], &[]).unwrap();
         let shifted = remap_ineffective_opening_to_reach(Some(blocks), 100.0).unwrap();
         assert!((shifted.left_blocks[0].station - 108.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn approach_resolves_from_reach_station_pointer() {
+        use crate::geometry::{GuideBankToe, GuideBanks};
+        let stations = vec![600.0, 550.0, 500.0, 450.0];
+        let xs: Vec<Option<CrossSection>> = stations
+            .iter()
+            .map(|&st| {
+                let width = if (st - 550.0_f64).abs() < 1e-9 { 30.0 } else { 10.0 };
+                let mut section = box_xs(st, width, 0.0, 5.0);
+                section.station = st;
+                Some(section)
+            })
+            .collect();
+        let interior = BridgeInteriorInput {
+            approach_reach_station: Some(550.0),
+            approach_guide_banks: Some(GuideBanks {
+                left_toe: Some(GuideBankToe {
+                    station: 60.0,
+                    elevation: 0.0,
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let (app, _, gb_app, _) =
+            resolve_approach_departure_sections(&interior, 1, &stations, &xs, UnitSystem::Metric);
+        let app = app.expect("approach from reach station");
+        assert!((app.station - 550.0).abs() < 1e-9);
+        let width: f64 = app.x[2] - app.x[0];
+        assert!((width - 30.0).abs() < 1e-9);
+        assert_eq!(gb_app.unwrap().left_toe.unwrap().station, 60.0);
+    }
+
+    #[test]
+    fn interior_from_unsteady_carries_guide_bank_fields() {
+        use crate::geometry::{GuideBankToe, GuideBanks};
+        use crate::solvers::unsteady::UnsteadyBridgeInputs;
+        let bridge = UnsteadyBridgeInputs {
+            bridge_departure_guide_banks: Some(vec![GuideBanks {
+                right_toe: Some(GuideBankToe {
+                    station: 90.0,
+                    elevation: 0.0,
+                }),
+                ..Default::default()
+            }]),
+            bridge_departure_reach_stations: Some(vec![45.0]),
+            ..UnsteadyBridgeInputs::default()
+        };
+        let interior = interior_from_unsteady(&bridge, 0);
+        assert_eq!(
+            interior.departure_guide_banks.unwrap().right_toe.unwrap().station,
+            90.0
+        );
+        assert_eq!(interior.departure_reach_station, Some(45.0));
+    }
+
+    #[test]
+    fn interior_from_steady_carries_guide_bank_fields() {
+        use crate::geometry::{GuideBankToe, GuideBanks};
+        use crate::solvers::steady::SteadyInputs;
+        let inputs = SteadyInputs {
+            bridge_stations: Some(vec![50.0]),
+            bridge_approach_guide_banks: Some(vec![GuideBanks {
+                left_toe: Some(GuideBankToe {
+                    station: 12.0,
+                    elevation: 0.0,
+                }),
+                ..Default::default()
+            }]),
+            bridge_departure_reach_stations: Some(vec![40.0]),
+            ..Default::default()
+        };
+        let interior = interior_from_steady(&inputs, 0);
+        assert_eq!(
+            interior.approach_guide_banks.unwrap().left_toe.unwrap().station,
+            12.0
+        );
+        assert_eq!(interior.departure_reach_station, Some(40.0));
     }
 
     #[test]

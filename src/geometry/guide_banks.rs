@@ -260,6 +260,124 @@ mod tests {
     }
 
     #[test]
+    fn validation_warnings_for_invalid_polyline() {
+        let gb = GuideBanks {
+            left_polylines: vec![GuideBankPolyline {
+                stations: vec![1.0, 1.0],
+                elevations: vec![2.0, 3.0],
+            }],
+            ..Default::default()
+        };
+        let msgs = gb.validation_warnings("Test");
+        assert_eq!(msgs.len(), 1);
+        assert!(msgs[0].contains("left guide-bank polyline 0"));
+    }
+
+    #[test]
+    fn to_metric_scales_us_customary() {
+        let gb = GuideBanks {
+            left_toe: Some(GuideBankToe {
+                station: 10.0,
+                elevation: 5.0,
+            }),
+            left_polylines: vec![GuideBankPolyline {
+                stations: vec![0.0, 10.0],
+                elevations: vec![4.0, 6.0],
+            }],
+            ..Default::default()
+        };
+        let m = gb.to_metric(UnitSystem::USCustomary);
+        assert!((m.left_toe.unwrap().station - 10.0 * FT_TO_M).abs() < 1e-9);
+        assert!((m.left_polylines[0].stations[1] - 10.0 * FT_TO_M).abs() < 1e-9);
+    }
+
+    #[test]
+    fn polyline_limits_interpolate_crossing() {
+        let gb = GuideBanks {
+            left_polylines: vec![GuideBankPolyline {
+                stations: vec![0.0, 10.0],
+                elevations: vec![2.0, 4.0],
+            }],
+            right_polylines: vec![GuideBankPolyline {
+                stations: vec![20.0, 30.0],
+                elevations: vec![4.0, 2.0],
+            }],
+            ..Default::default()
+        };
+        let limits = lateral_limits_at_wsel(&gb, 3.0).unwrap();
+        assert!((limits.0 - 5.0).abs() < 1e-6);
+        assert!((limits.1 - 25.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn polyline_exact_vertex_elevation() {
+        let gb = GuideBanks {
+            left_polylines: vec![GuideBankPolyline {
+                stations: vec![0.0, 10.0, 20.0],
+                elevations: vec![2.0, 3.0, 4.0],
+            }],
+            right_toe: Some(GuideBankToe {
+                station: 40.0,
+                elevation: 0.0,
+            }),
+            ..Default::default()
+        };
+        let limits = lateral_limits_at_wsel(&gb, 3.0).unwrap();
+        assert!((limits.0 - 10.0).abs() < 1e-9);
+        assert!((limits.1 - 40.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn invalid_limits_when_left_meets_right() {
+        let gb = GuideBanks {
+            left_toe: Some(GuideBankToe {
+                station: 15.0,
+                elevation: 0.0,
+            }),
+            right_toe: Some(GuideBankToe {
+                station: 10.0,
+                elevation: 0.0,
+            }),
+            ..Default::default()
+        };
+        assert!(lateral_limits_at_wsel(&gb, 2.0).is_none());
+    }
+
+    #[test]
+    fn segment_helpers_clip_fraction() {
+        let limits = (5.0, 15.0);
+        assert!(segment_outside_guided_channel(3.0, limits));
+        assert!(!segment_outside_guided_channel(10.0, limits));
+        assert!((segment_guide_fraction(0.0, 20.0, limits) - 0.5).abs() < 1e-9);
+        assert_eq!(segment_guide_fraction(0.0, 4.0, limits), 0.0);
+    }
+
+    #[test]
+    fn resolve_falls_back_to_bridge_level() {
+        let cut = crate::geometry::CrossSection {
+            station: 1.0,
+            x: vec![0.0, 10.0],
+            y: vec![0.0, 0.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.03],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let bridge = GuideBanks {
+            right_toe: Some(GuideBankToe {
+                station: 7.0,
+                elevation: 0.0,
+            }),
+            ..Default::default()
+        };
+        let resolved = resolve_guide_banks(Some(&cut), Some(&bridge)).unwrap();
+        assert_eq!(resolved.right_toe.unwrap().station, 7.0);
+    }
+
+    #[test]
     fn resolve_prefers_cut_over_bridge_level() {
         use crate::geometry::CrossSection;
         let cut = CrossSection {
@@ -289,5 +407,138 @@ mod tests {
         };
         let resolved = resolve_guide_banks(Some(&cut), Some(&bridge)).unwrap();
         assert_eq!(resolved.left_toe.unwrap().station, 5.0);
+    }
+
+    #[test]
+    fn right_polyline_only_is_configured() {
+        let gb = GuideBanks {
+            right_polylines: vec![GuideBankPolyline {
+                stations: vec![5.0, 15.0],
+                elevations: vec![3.0, 4.0],
+            }],
+            ..Default::default()
+        };
+        assert!(gb.is_configured());
+        let limits = lateral_limits_at_wsel(&gb, 3.5).unwrap();
+        assert!((limits.1 - 10.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn fully_submerged_polyline_defers_to_toe_limits() {
+        let gb = GuideBanks {
+            left_polylines: vec![GuideBankPolyline {
+                stations: vec![0.0, 10.0],
+                elevations: vec![2.0, 3.0],
+            }],
+            left_toe: Some(GuideBankToe {
+                station: 8.0,
+                elevation: 0.0,
+            }),
+            right_toe: Some(GuideBankToe {
+                station: 30.0,
+                elevation: 0.0,
+            }),
+            ..Default::default()
+        };
+        let limits = lateral_limits_at_wsel(&gb, 5.0).unwrap();
+        assert!((limits.0 - 8.0).abs() < 1e-9);
+        assert_eq!(limits.1, 30.0);
+    }
+
+    #[test]
+    fn left_only_toe_yields_half_bounded_limits() {
+        let gb = GuideBanks {
+            left_toe: Some(GuideBankToe {
+                station: 12.0,
+                elevation: 0.0,
+            }),
+            ..Default::default()
+        };
+        let limits = lateral_limits_at_wsel(&gb, 2.0).unwrap();
+        assert!((limits.0 - 12.0).abs() < 1e-9);
+        assert!(limits.1.is_infinite());
+    }
+
+    #[test]
+    fn to_metric_is_identity_for_metric_units() {
+        let gb = GuideBanks {
+            left_toe: Some(GuideBankToe {
+                station: 3.0,
+                elevation: 1.0,
+            }),
+            ..Default::default()
+        };
+        assert_eq!(gb.to_metric(UnitSystem::Metric), gb);
+    }
+
+    #[test]
+    fn empty_polyline_arrays_are_ignored_in_validation() {
+        let gb = GuideBanks {
+            left_polylines: vec![GuideBankPolyline {
+                stations: vec![],
+                elevations: vec![],
+            }],
+            ..Default::default()
+        };
+        assert!(gb.validation_warnings("Cut").is_empty());
+        assert!(!gb.is_configured());
+    }
+
+    #[test]
+    fn polyline_crossing_rejects_invalid_polyline() {
+        let poly = GuideBankPolyline {
+            stations: vec![1.0, 1.0],
+            elevations: vec![2.0, 3.0],
+        };
+        assert!(polyline_crossing_station_at_wsel(&poly, 2.5).is_none());
+    }
+
+    #[test]
+    fn polyline_crossing_at_start_vertex_elevation() {
+        let poly = GuideBankPolyline {
+            stations: vec![0.0, 10.0],
+            elevations: vec![3.0, 5.0],
+        };
+        assert_eq!(polyline_crossing_station_at_wsel(&poly, 3.0), Some(0.0));
+    }
+
+    #[test]
+    fn polyline_crossing_skips_fully_submerged_segment() {
+        let poly = GuideBankPolyline {
+            stations: vec![0.0, 10.0, 20.0],
+            elevations: vec![1.0, 2.0, 3.0],
+        };
+        assert!(polyline_crossing_station_at_wsel(&poly, 5.0).is_none());
+    }
+
+    #[test]
+    fn lateral_limits_none_when_unconfigured() {
+        assert!(lateral_limits_at_wsel(&GuideBanks::default(), 2.0).is_none());
+    }
+
+    #[test]
+    fn resolve_skips_unconfigured_cut_guide_banks() {
+        use crate::geometry::CrossSection;
+        let cut = CrossSection {
+            station: 1.0,
+            x: vec![0.0, 10.0],
+            y: vec![0.0, 0.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.03],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: Some(GuideBanks::default()),
+        };
+        let bridge = GuideBanks {
+            right_toe: Some(GuideBankToe {
+                station: 7.0,
+                elevation: 0.0,
+            }),
+            ..Default::default()
+        };
+        let resolved = resolve_guide_banks(Some(&cut), Some(&bridge)).unwrap();
+        assert_eq!(resolved.right_toe.unwrap().station, 7.0);
     }
 }

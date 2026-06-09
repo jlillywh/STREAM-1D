@@ -2625,5 +2625,24 @@ mod tests {
         let ds_wsel = result.wsel[1];
         assert!((ds_wsel - 2.5).abs() < 1e-5, "Expected 2.5, got {}", ds_wsel);
     }
+
+    #[test]
+    fn test_validate_steady_inputs_guide_bank_warning() {
+        use crate::geometry::{GuideBankPolyline, GuideBanks};
+        let inputs = SteadyInputs {
+            bridge_stations: Some(vec![50.0]),
+            bridge_approach_guide_banks: Some(vec![GuideBanks {
+                left_polylines: vec![GuideBankPolyline {
+                    stations: vec![0.0, 0.0],
+                    elevations: vec![1.0, 2.0],
+                }],
+                ..Default::default()
+            }]),
+            ..Default::default()
+        };
+        let warnings = crate::solvers::validate_steady_inputs(&inputs).warnings;
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("approach"));
+    }
 }
 
