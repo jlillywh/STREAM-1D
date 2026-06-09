@@ -1,20 +1,20 @@
 # PyPI publishing
 
-Package name: **streams1d** (`pip install streams1d`).
+PyPI distribution name: **stream1d** (`pip install stream1d`). Python import: **streams1d** (`import streams1d`).
 
 ## One-time setup
 
-1. On [pypi.org](https://pypi.org): add a trusted publisher (GitHub):
-   - PyPI project name: `streams1d`
+1. On [pypi.org](https://pypi.org): trusted publisher (GitHub). PyPI project name must match `[project] name` in `pyproject.toml`:
+   - PyPI project name: `stream1d`
    - Owner: `jlillywh`
    - Repository: `STREAM-1D`
    - Workflow name: `publish.yml`
    - Environment name: `pypi`
-2. On GitHub (`jlillywh/STREAM-1D`): Settings → Environments → create **pypi** (no secrets required for trusted publishing).
+2. On GitHub (`jlillywh/STREAM-1D`): Settings → Environments → **pypi** (no API token needed).
 
 ## Release
 
-1. Set version in `Cargo.toml` and `pyproject.toml` (keep them in sync).
+1. Set version in `Cargo.toml` and `pyproject.toml` (keep in sync).
 2. Commit and push to `main`.
 3. Tag and push:
 
@@ -23,7 +23,7 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-Workflow [`.github/workflows/publish.yml`](../../.github/workflows/publish.yml) builds Linux (x86_64, aarch64), Windows, and macOS wheels plus an sdist, then publishes via OIDC.
+Or: Actions → Publish → Run workflow (if `workflow_dispatch` is enabled on `main`).
 
 ## Local build (without publishing)
 

@@ -1,5 +1,5 @@
 # Publish Python wheels to PyPI (trusted publishing).
-# PyPI trusted publisher: owner jlillywh, repo STREAM-1D, workflow publish.yml, environment pypi.
+# PyPI trusted publisher: project stream1d, owner jlillywh, repo STREAM-1D, workflow publish.yml, environment pypi.
 # Trigger: git tag v* && git push origin v*
 
 name: Publish
@@ -8,6 +8,7 @@ on:
   push:
     tags:
       - v*
+  workflow_dispatch:
 
 permissions:
   contents: read

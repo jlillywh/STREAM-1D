@@ -20,10 +20,10 @@ Full HEC-RAS comparison: [`docs/reference/hecras_parity.md`](docs/reference/hecr
 ### Install
 
 ```bash
-pip install streams1d
+pip install stream1d
 ```
 
-Requires Python ≥ 3.7. Wheels are published for Linux, macOS, and Windows (see [PyPI](https://pypi.org/project/streams1d/)).
+Requires Python ≥ 3.7. Wheels are published for Linux, macOS, and Windows (see [PyPI](https://pypi.org/project/stream1d/)). The install name is `stream1d`; import the module as `streams1d` (see examples below).
 
 ### Install from source
 
