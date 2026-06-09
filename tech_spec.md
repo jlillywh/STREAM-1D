@@ -27,7 +27,7 @@ The computational core is **stateless**: no project files, hidden globals, or fi
 |  [Worker Wrapper] - message listener, WASM init, payload marshalling      |
 |                                                                         |
 |    +---------------------------------------------------------------+    |
-|    |                      WASM CORE (streams1d)                    |    |
+|    |                      WASM CORE (stream1d)                    |    |
 |    |  Geometry processor  -->  Steady / Unsteady solvers           |    |
 |    +---------------------------------------------------------------+    |
 +-------------------------------------------------------------------------+
@@ -129,7 +129,7 @@ STREAM-1D does not ship a GUI. A separate **web application** built on this engi
 * **HEC-RAS geometry import:** Parse `.g01` (and related) files to populate reaches and structures, then map to `SteadyInputs` / `UnsteadyInputs` before each WASM solve
 * **Workers:** Background execution and progress callbacks
 
-Python users supply `cross_sections` arrays directly; there is no HEC-RAS importer in the `streams1d` package.
+Python users supply `cross_sections` arrays directly; there is no HEC-RAS importer in the `stream1d` package.
 
 ---
 
@@ -140,8 +140,8 @@ Automated checks ship with the repository:
 * `cargo test` — Rust unit and integration tests (geometry, culvert, bridge Yarnell/abutments, junction, steady/unsteady)
 * `tests/bridge_abutment_hecras_verification.rs` — per-side abutment hand-calc / WSPRO benchmarks (`python/verification/bridge_abutment_hecras.json`)
 * `tests/wasm_json_contract.rs` — JSON schema contract (including API v21 abutment fields)
-* `python/test_streams1d.py`, `python/test_python_bindings.py` — Python binding and HEC-RAS ConSpan benchmark (run `maturin develop --features python` after engine changes)
-* [`python/streams1d_verification.ipynb`](python/streams1d_verification.ipynb) — interactive Binder notebook with HEC-RAS WSEL overlay
+* `python/test_stream1d.py`, `python/test_python_bindings.py` — Python binding and HEC-RAS ConSpan benchmark (run `maturin develop --features python` after engine changes)
+* [`python/stream1d_verification.ipynb`](python/stream1d_verification.ipynb) — interactive Binder notebook with HEC-RAS WSEL overlay
 
 ConSpan steady benchmark tolerance: **±0.04 ft** WSEL vs HEC-RAS at key stations (see README verification table).
 

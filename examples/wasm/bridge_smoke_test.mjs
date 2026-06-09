@@ -19,7 +19,7 @@ const {
   getWasmApiMetadata,
   validateSteadyInputs,
   solveSteady,
-} = require('../../pkg-node/streams1d.js');
+} = require('../../pkg-node/stream1d.js');
 
 const meta = getWasmApiMetadata();
 if (meta.api_version < 22) {

@@ -41,7 +41,7 @@ import init, {
     getWasmApiMetadata,
     validateSteadyInputs,
     solveSteady,
-} from './pkg/streams1d.js';
+} from './pkg/stream1d.js';
 
 async function run() {
     // Initialize the WebAssembly module
@@ -138,7 +138,7 @@ console.log(results.culvert_wsel_inlet, results.culvert_q_barrels);
 #### Culvert rating curve (WASM)
 
 ```javascript
-import { computeCulvertRatingCurve } from './pkg/streams1d.js';
+import { computeCulvertRatingCurve } from './pkg/stream1d.js';
 
 const curve = computeCulvertRatingCurve({
     q_values: [50, 100, 150],
@@ -165,7 +165,7 @@ console.log(curve.wsel, curve.control_types);
 #### Bridge rating curve (WASM)
 
 ```javascript
-import { computeBridgeRatingCurve } from './pkg/streams1d.js';
+import { computeBridgeRatingCurve } from './pkg/stream1d.js';
 
 const curve = computeBridgeRatingCurve({
     q_values: [10, 20, 30],
@@ -192,7 +192,7 @@ console.log(curve.wsel, curve.flow_regimes, curve.head_losses);
 #### Unsteady inline culvert (WASM)
 
 ```javascript
-import { solveUnsteady } from './pkg/streams1d.js';
+import { solveUnsteady } from './pkg/stream1d.js';
 
 const unsteadyInputs = {
     cross_sections: crossSections,

@@ -2,7 +2,7 @@
 
 1D open-channel hydraulics solver (Rust). Steady gradually varied flow (Standard Step) and unsteady Saint-Venant routing on single reaches. Optional culverts, bridges, and one steady tributary junction.
 
-Primary interface: Python extension (`streams1d`). Also compiles to WebAssembly. Stateless API: geometry and boundary inputs in, profile arrays out.
+Primary interface: Python extension (`stream1d`). Also compiles to WebAssembly. Stateless API: geometry and boundary inputs in, profile arrays out.
 
 This repository is the solver only. It does not include a GUI, project database, or HEC-RAS file importer. [stream1d.com](https://stream1d.com) is a separate hosted application built on this engine (see [License](#license)).
 
@@ -23,7 +23,7 @@ Full HEC-RAS comparison: [`docs/reference/hecras_parity.md`](docs/reference/hecr
 pip install stream1d
 ```
 
-Requires Python ≥ 3.7. Wheels are published for Linux, macOS, and Windows (see [PyPI](https://pypi.org/project/stream1d/)). The install name is `stream1d`; import the module as `streams1d` (see examples below).
+Requires Python ≥ 3.7. Wheels are published for Linux, macOS, and Windows (see [PyPI](https://pypi.org/project/stream1d/)).
 
 ### Install from source
 
@@ -41,7 +41,7 @@ Rebuild with `maturin develop --features python` after pulling solver changes. R
 ### Steady profile
 
 ```python
-import streams1d as st
+import stream1d as st
 
 xs_us = st.CrossSection(
     station=1000.0,
@@ -87,15 +87,15 @@ print(result["wsel"][-1])
 
 ### JSON fixtures
 
-Load geometry from JSON with `streams1d.import_utils.cross_section_from_dict`. Example fixtures: [`tests/fixtures/wasm_steady_culvert_tier1.json`](tests/fixtures/wasm_steady_culvert_tier1.json), [`tests/fixtures/wasm_steady_bridge_bu_bd_v22.json`](tests/fixtures/wasm_steady_bridge_bu_bd_v22.json).
+Load geometry from JSON with `stream1d.import_utils.cross_section_from_dict`. Example fixtures: [`tests/fixtures/wasm_steady_culvert_tier1.json`](tests/fixtures/wasm_steady_culvert_tier1.json), [`tests/fixtures/wasm_steady_bridge_bu_bd_v22.json`](tests/fixtures/wasm_steady_bridge_bu_bd_v22.json).
 
 Culvert, bridge, junction, and rating-curve examples: [`docs/python/getting_started.md`](docs/python/getting_started.md).
 
 ### Interactive notebook
 
-[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/STREAM-1D/main?filepath=python%2Fstreams1d_verification.ipynb)
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/STREAM-1D/main?filepath=python%2Fstream1d_verification.ipynb)
 
-[`python/streams1d_verification.ipynb`](python/streams1d_verification.ipynb) — profiles and HEC-RAS comparison plots. First Binder build may take several minutes.
+[`python/stream1d_verification.ipynb`](python/stream1d_verification.ipynb) — profiles and HEC-RAS comparison plots. First Binder build may take several minutes.
 
 ## Inputs and outputs
 
@@ -107,7 +107,7 @@ Culvert, bridge, junction, and rating-curve examples: [`docs/python/getting_star
 
 **Results** — `wsel`, `velocity`, `area`, `froude_number`, `critical_wsel`, `energy_grade_slope`. With culverts: control type, inlet/outlet HW, barrel and weir discharge. With bridges: flow regime, head loss. Unsteady structure outputs are `[time_step][structure_index]`.
 
-Field reference: [`python/streams1d/__init__.py`](python/streams1d/__init__.py), [`docs/wasm_api.types.ts`](docs/wasm_api.types.ts). Equations: [`docs/reference/equations.md`](docs/reference/equations.md).
+Field reference: [`python/stream1d/__init__.py`](python/stream1d/__init__.py), [`docs/wasm_api.types.ts`](docs/wasm_api.types.ts). Equations: [`docs/reference/equations.md`](docs/reference/equations.md).
 
 ## Verification
 
@@ -151,7 +151,7 @@ WASM API: [`docs/web/wasm_integration.md`](docs/web/wasm_integration.md).
 
 ```
 src/solvers/     steady, unsteady, culvert, bridge, junction
-python/          streams1d bindings, verification data, notebook
+python/          stream1d bindings, verification data, notebook
 docs/            reference manuals and WASM types
 tests/           Rust integration tests and JSON fixtures
 examples/wasm/   Node smoke tests and sample payloads

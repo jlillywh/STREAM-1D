@@ -1,6 +1,6 @@
 # PyPI publishing
 
-PyPI distribution name: **stream1d** (`pip install stream1d`). Python import: **streams1d** (`import streams1d`).
+PyPI distribution name and Python import: **stream1d** (`pip install stream1d`, `import stream1d`).
 
 ## One-time setup
 

@@ -1,9 +1,9 @@
 //! JSON contract tests for the WASM API (same schema as `serde_wasm_bindgen`).
 
-use streams1d::geometry::CrossSection;
-use streams1d::solvers::{solve_steady, SteadyInputs};
-use streams1d::utils::UnitSystem;
-use streams1d::wasm_api::{build_api_metadata, API_VERSION};
+use stream1d::geometry::CrossSection;
+use stream1d::solvers::{solve_steady, SteadyInputs};
+use stream1d::utils::UnitSystem;
+use stream1d::wasm_api::{build_api_metadata, API_VERSION};
 
 #[test]
 fn wasm_fixture_deserializes_and_solves() {
@@ -31,8 +31,8 @@ fn wasm_fixture_deserializes_and_solves() {
 
 #[test]
 fn wasm_culvert_rating_curve_contract() {
-    use streams1d::solvers::{compute_culvert_rating_curve, CulvertRatingCurveInputs, CulvertSolveParams};
-    use streams1d::utils::UnitSystem;
+    use stream1d::solvers::{compute_culvert_rating_curve, CulvertRatingCurveInputs, CulvertSolveParams};
+    use stream1d::utils::UnitSystem;
 
     let inputs = CulvertRatingCurveInputs {
         q_values: vec![50.0, 100.0],
@@ -73,10 +73,10 @@ fn wasm_culvert_rating_curve_contract() {
 
 #[test]
 fn wasm_bridge_rating_curve_contract() {
-    use streams1d::solvers::{
+    use stream1d::solvers::{
         compute_bridge_rating_curve, BridgeRatingCurveInputs, BridgeSolveParams,
     };
-    use streams1d::utils::UnitSystem;
+    use stream1d::utils::UnitSystem;
 
     let inputs = BridgeRatingCurveInputs {
         q_values: vec![10.0, 20.0],
@@ -152,10 +152,10 @@ fn wasm_api_metadata_version() {
 
 #[test]
 fn wasm_bridge_rating_curve_per_side_abutments() {
-    use streams1d::solvers::{
+    use stream1d::solvers::{
         compute_bridge_rating_curve, BridgeRatingCurveInputs, BridgeSolveParams,
     };
-    use streams1d::utils::UnitSystem;
+    use stream1d::utils::UnitSystem;
 
     let json = r#"{
         "q_values": [15.0, 20.0],
@@ -390,7 +390,7 @@ fn bridge_abutment_per_side_fields_deserialize() {
 
 #[test]
 fn bridge_abutment_per_side_unsteady_deserialize() {
-    use streams1d::solvers::{solve_unsteady, UnsteadyInputs};
+    use stream1d::solvers::{solve_unsteady, UnsteadyInputs};
 
     let json = r#"{
         "cross_sections": [{
@@ -430,7 +430,7 @@ fn bridge_abutment_per_side_unsteady_deserialize() {
 
 #[test]
 fn bridge_bu_bd_v22_unsteady_deserialize() {
-    use streams1d::solvers::{solve_unsteady, UnsteadyInputs};
+    use stream1d::solvers::{solve_unsteady, UnsteadyInputs};
 
     let json = r#"{
         "cross_sections": [{

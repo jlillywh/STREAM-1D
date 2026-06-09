@@ -1,10 +1,10 @@
 //! HEC-RAS alignment tests for culvert hydraulics.
 
-use streams1d::geometry::CrossSection;
-use streams1d::solvers::culvert::{solve_culvert, CulvertSolveParams};
-use streams1d::solvers::steady::SteadyInputs;
-use streams1d::solvers::solve_steady;
-use streams1d::utils::UnitSystem;
+use stream1d::geometry::CrossSection;
+use stream1d::solvers::culvert::{solve_culvert, CulvertSolveParams};
+use stream1d::solvers::steady::SteadyInputs;
+use stream1d::solvers::solve_steady;
+use stream1d::utils::UnitSystem;
 
 #[derive(serde::Deserialize)]
 struct ConspanProfilesFile {

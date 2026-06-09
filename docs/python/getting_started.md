@@ -5,7 +5,7 @@ Install: see [README](../README.md#python). `SteadyInputs` / `UnsteadyInputs` fi
 ## Steady and unsteady examples
 
 ```python
-import streams1d as st
+import stream1d as st
 
 # 1. Define cross-sections
 xs1000 = st.CrossSection(

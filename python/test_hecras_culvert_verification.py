@@ -4,7 +4,7 @@ import json
 import os
 import sys
 
-import streams1d as st
+import stream1d as st
 
 
 def load_conspan_project(verification_dir: str) -> dict:

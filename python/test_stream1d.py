@@ -1,6 +1,6 @@
 import pytest
 import json
-import streams1d as st
+import stream1d as st
 
 def test_cross_section_serialization():
     xs = st.CrossSection(

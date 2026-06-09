@@ -4,10 +4,10 @@
 //! `expected_a_eff_tw_m2` values are hand-derived from rectangular channel geometry;
 //! `expected_wsel_up_m` values are reference solutions for WSPRO (low-flow method 4).
 
-use streams1d::geometry::{CrossSection, GeometryTable};
-use streams1d::solvers::bridge::{solve_bridge_wsel, BridgeCouplingParams};
-use streams1d::solvers::bridge_abutment::{resolve_abutments, BridgeAbutmentUserInput};
-use streams1d::utils::UnitSystem;
+use stream1d::geometry::{CrossSection, GeometryTable};
+use stream1d::solvers::bridge::{solve_bridge_wsel, BridgeCouplingParams};
+use stream1d::solvers::bridge_abutment::{resolve_abutments, BridgeAbutmentUserInput};
+use stream1d::utils::UnitSystem;
 
 #[derive(serde::Deserialize)]
 struct BenchmarkFile {

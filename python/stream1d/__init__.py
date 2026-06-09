@@ -15,10 +15,10 @@ CULVERT_SHAPE_HORSESHOE = 6
 
 # Import native binary solver
 try:
-    from . import _streams1d
+    from . import _stream1d
 except ImportError:
     # Handle direct local importing during development/testing
-    import _streams1d
+    import _stream1d
 
 class CrossSection:
     """Reach or bridge-face polyline. Optional `ineffective_flow_areas` uses reach lateral `x` (API v22 on BU/BD cuts)."""
@@ -616,7 +616,7 @@ def solve_steady(inputs: Any) -> dict:
     else:
         payload = inputs
     json_in = json.dumps(payload)
-    json_out = _streams1d.solve_steady_json(json_in)
+    json_out = _stream1d.solve_steady_json(json_in)
     return json.loads(json_out)
 
 def compute_culvert_rating_curve(payload: Any) -> dict:
@@ -626,7 +626,7 @@ def compute_culvert_rating_curve(payload: Any) -> dict:
     """
     if not isinstance(payload, dict):
         raise TypeError("compute_culvert_rating_curve expects a dict payload")
-    json_out = _streams1d.compute_culvert_rating_curve_json(json.dumps(payload))
+    json_out = _stream1d.compute_culvert_rating_curve_json(json.dumps(payload))
     return json.loads(json_out)
 
 def compute_bridge_rating_curve(payload: Any) -> dict:
@@ -639,7 +639,7 @@ def compute_bridge_rating_curve(payload: Any) -> dict:
     """
     if not isinstance(payload, dict):
         raise TypeError("compute_bridge_rating_curve expects a dict payload")
-    json_out = _streams1d.compute_bridge_rating_curve_json(json.dumps(payload))
+    json_out = _stream1d.compute_bridge_rating_curve_json(json.dumps(payload))
     return json.loads(json_out)
 
 def solve_unsteady(inputs: Any) -> dict:
@@ -652,5 +652,5 @@ def solve_unsteady(inputs: Any) -> dict:
     else:
         payload = inputs
     json_in = json.dumps(payload)
-    json_out = _streams1d.solve_unsteady_json(json_in)
+    json_out = _stream1d.solve_unsteady_json(json_in)
     return json.loads(json_out)

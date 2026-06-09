@@ -137,7 +137,7 @@ pub fn solve_unsteady_json_py(inputs_json: &str) -> PyResult<String> {
 
 #[cfg(feature = "python")]
 #[pymodule]
-fn _streams1d(_py: Python, m: &PyModule) -> PyResult<()> {
+fn _stream1d(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(solve_steady_json_py, m)?)?;
     m.add_function(wrap_pyfunction!(compute_culvert_rating_curve_json_py, m)?)?;
     m.add_function(wrap_pyfunction!(compute_bridge_rating_curve_json_py, m)?)?;

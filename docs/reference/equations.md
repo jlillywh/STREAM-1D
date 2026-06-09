@@ -1,6 +1,6 @@
 # Equations and structure hydraulics
 
-Theory, culvert/bridge formulations, and input field tables. Field names match Python `streams1d` and [`docs/wasm_api.types.ts`](../wasm_api.types.ts). Release notes: [`api_changelog.md`](api_changelog.md).
+Theory, culvert/bridge formulations, and input field tables. Field names match Python `stream1d` and [`docs/wasm_api.types.ts`](../wasm_api.types.ts). Release notes: [`api_changelog.md`](api_changelog.md).
 
 ## Mathematical Formulations
 

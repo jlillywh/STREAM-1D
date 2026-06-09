@@ -1,7 +1,7 @@
 /**
  * STREAM-1D WASM API TypeScript definitions.
  *
- * Copy into the web app (e.g. `src/types/streams1d.ts`).
+ * Copy into the web app (e.g. `src/types/stream1d.ts`).
  * Field names use snake_case to match Rust/Python JSON and `solveSteady()` payloads.
  *
  * Check `api_version` from `getWasmApiMetadata()` after each engine upgrade.
@@ -493,7 +493,7 @@ export interface WasmApiMetadata {
   structure_coupling_orders: WasmEnumEntry[];
 }
 
-/** Module exports from `pkg/streams1d.js` after `wasm-pack build --target web` */
+/** Module exports from `pkg/stream1d.js` after `wasm-pack build --target web` */
 export interface Streams1dWasmModule {
   default: (url?: string | URL) => Promise<unknown>;
   getEngineVersion: () => string;

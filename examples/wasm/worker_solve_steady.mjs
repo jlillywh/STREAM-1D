@@ -2,9 +2,9 @@
  * Reference Web Worker for STREAM-1D steady solves.
  *
  * Usage in the web app:
- *   new Worker(new URL('./streams1d.worker.js', import.meta.url), { type: 'module' })
+ *   new Worker(new URL('./stream1d.worker.js', import.meta.url), { type: 'module' })
  *
- * Copy this file, adjust the import path to your deployed `pkg/streams1d.js`.
+ * Copy this file, adjust the import path to your deployed `pkg/stream1d.js`.
  *
  * Example BU/BD bridge payload (API v22): `steady_bridge_bu_bd_v22.json` in this folder.
  * TypeScript field definitions: `docs/wasm_api.types.ts`.
@@ -15,7 +15,7 @@ import init, {
   getWasmApiMetadata,
   validateSteadyInputs,
   solveSteady,
-} from '../../pkg/streams1d.js';
+} from '../../pkg/stream1d.js';
 
 let ready = false;
 

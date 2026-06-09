@@ -1,7 +1,7 @@
 import os
 import json
 import sys
-import streams1d as st
+import stream1d as st
 
 def main():
     print("=========================================================")

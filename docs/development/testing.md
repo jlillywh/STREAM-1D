@@ -73,7 +73,7 @@ CI uploads coverage to [Codecov](https://codecov.io) on every push/PR (`.github/
 * **Python pytest suite** (rebuild the native extension after pulling engine changes):
   ```bash
   maturin develop --features python
-  PYTHONPATH=python pytest -c /dev/null python/test_streams1d.py
+  PYTHONPATH=python pytest -c /dev/null python/test_stream1d.py
   ```
 * **Python HEC-RAS verification (ConSpan 5/25/50 yr profiles):**
   ```bash
@@ -94,8 +94,8 @@ CI uploads coverage to [Codecov](https://codecov.io) on every push/PR (`.github/
 
 To run calculations, view water surface profile charts, and inspect tables interactively on the web without any local installation:
 
-[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/STREAM-1D/main?filepath=python%2Fstreams1d_verification.ipynb)
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/STREAM-1D/main?filepath=python%2Fstream1d_verification.ipynb)
 
-* **Interactive Notebook:** [python/streams1d_verification.ipynb](python/streams1d_verification.ipynb)
+* **Interactive Notebook:** [python/stream1d_verification.ipynb](python/stream1d_verification.ipynb)
 * Click the **Binder** badge above to launch a sandbox environment in your browser. The first launch compiles Rust and may take **5–10 minutes**; later launches reuse the cached image.
 

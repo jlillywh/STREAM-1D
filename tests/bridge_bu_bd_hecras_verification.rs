@@ -3,15 +3,15 @@
 //! Benchmarks: `python/verification/bridge_bu_bd_hecras.json`
 //! Layout regression: 3-section reach (BU + internal + BD) vs 2-face baseline.
 
-use streams1d::geometry::CrossSection;
-use streams1d::solvers::bridge::{solve_bridge_wsel, BridgeCouplingParams};
-use streams1d::solvers::bridge_interior::{
+use stream1d::geometry::CrossSection;
+use stream1d::solvers::bridge::{solve_bridge_wsel, BridgeCouplingParams};
+use stream1d::solvers::bridge_interior::{
     friction_path_from_interior, interior_from_steady, layout_cuts_for_bridge,
     resolve_bridge_face_solve_geometry, resolve_bridge_face_stations_metric,
     resolve_bridge_friction_length_metric,
 };
-use streams1d::solvers::{solve_steady, SteadyInputs};
-use streams1d::utils::UnitSystem;
+use stream1d::solvers::{solve_steady, SteadyInputs};
+use stream1d::utils::UnitSystem;
 
 #[derive(serde::Deserialize)]
 struct BenchmarkFile {

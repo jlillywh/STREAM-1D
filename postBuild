@@ -12,5 +12,5 @@ python -m pip install dist/*.whl --no-cache-dir --force-reinstall
 
 # The verification notebook runs from python/, which shadows site-packages.
 # Copy the compiled extension next to the package source for that import path.
-EXT=$(python -c "import streams1d._streams1d as m; print(m.__file__)")
-cp "$EXT" python/streams1d/
+EXT=$(python -c "import stream1d._stream1d as m; print(m.__file__)")
+cp "$EXT" python/stream1d/
