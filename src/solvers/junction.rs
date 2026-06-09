@@ -305,6 +305,7 @@ mod tests {
             unit_system: UnitSystem::Metric,
             is_overbank: None,
             blocked_obstructions: None,
+        ineffective_flow_areas: None,
         }
     }
 
@@ -335,6 +336,7 @@ mod tests {
             unit_system: UnitSystem::USCustomary,
             is_overbank: None,
             blocked_obstructions: None,
+        ineffective_flow_areas: None,
         }
     }
 

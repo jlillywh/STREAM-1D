@@ -204,6 +204,18 @@ pub struct SteadyInputs {
     /// Pier centerline stations across opening per bridge `[bridge][pier]` (deck station frame).
     #[serde(default)]
     pub bridge_pier_stations: Option<Vec<Vec<f64>>>,
+    /// HEC-RAS BU (bridge upstream face) cross section per bridge. Overrides reach US geometry.
+    #[serde(default)]
+    pub bridge_upstream_cross_sections: Option<Vec<CrossSection>>,
+    /// HEC-RAS BD (bridge downstream face) cross section per bridge.
+    #[serde(default)]
+    pub bridge_downstream_cross_sections: Option<Vec<CrossSection>>,
+    /// Optional interior bridge cuts per bridge `[bridge][section]`, ordered US → DS.
+    #[serde(default)]
+    pub bridge_internal_cross_sections: Option<Vec<Vec<CrossSection>>>,
+    /// Reach XS lateral `x` at bridge opening station 0 per bridge.
+    #[serde(default)]
+    pub bridge_opening_reach_station_origins: Option<Vec<f64>>,
 
     /// Downstream boundary condition type (0 = Known WSEL, 1 = Critical Depth, 2 = Normal Depth, 3 = Rating Curve)
     #[serde(default)]
@@ -697,29 +709,59 @@ fn bridge_ineffective_downstream_for(inputs: &SteadyInputs, b_idx: usize) -> Opt
     IneffectiveFlowAreas::from_block_pairs(&left_s, &left_e, &right_s, &right_e)
 }
 
-fn bridge_sections_context_for(
+fn bridge_face_geometry_for(
     inputs: &SteadyInputs,
     b_idx: usize,
-    xs_up: Option<&CrossSection>,
-    xs_down: Option<&CrossSection>,
-) -> crate::solvers::bridge::BridgeSectionContext {
-    crate::solvers::bridge::BridgeSectionContext {
-        ineffective_up: bridge_ineffective_upstream_for(inputs, b_idx),
-        ineffective_down: bridge_ineffective_downstream_for(inputs, b_idx),
-        xs_up: xs_up.cloned(),
-        xs_down: xs_down.cloned(),
-        skew_deg: inputs
+    i: usize,
+    raw_units: UnitSystem,
+    num_slices: usize,
+    densified_tables: &[GeometryTable],
+    densified_xs: &[Option<CrossSection>],
+    densified_z_mins: &[f64],
+    interval_length_m: f64,
+) -> crate::solvers::bridge_interior::BridgeFaceSolveGeometry {
+    let reach_z_up_user = if raw_units == UnitSystem::USCustomary {
+        densified_z_mins[i] / FT_TO_M
+    } else {
+        densified_z_mins[i]
+    };
+    let reach_z_down_user = if raw_units == UnitSystem::USCustomary {
+        densified_z_mins[i + 1] / FT_TO_M
+    } else {
+        densified_z_mins[i + 1]
+    };
+    let interior = crate::solvers::bridge_interior::interior_from_steady(inputs, b_idx);
+    crate::solvers::bridge_interior::resolve_bridge_face_solve_geometry(
+        &interior,
+        densified_xs[i].as_ref(),
+        densified_xs[i + 1].as_ref(),
+        &densified_tables[i],
+        &densified_tables[i + 1],
+        reach_z_up_user,
+        reach_z_down_user,
+        raw_units,
+        num_slices,
+        bridge_ineffective_upstream_for(inputs, b_idx),
+        bridge_ineffective_downstream_for(inputs, b_idx),
+        inputs
             .bridge_skew_angles
             .as_ref()
             .and_then(|v| v.get(b_idx))
             .copied()
             .unwrap_or(0.0),
-        pier_stations: inputs
+        inputs
             .bridge_pier_stations
             .as_ref()
             .and_then(|v| v.get(b_idx))
             .cloned(),
-    }
+        interval_length_m,
+        inputs
+            .bridge_lengths
+            .as_ref()
+            .and_then(|v| v.get(b_idx))
+            .copied()
+            .unwrap_or(0.0),
+    )
 }
 
 fn bridge_coupling_for(inputs: &SteadyInputs, b_idx: usize) -> crate::solvers::bridge::BridgeCouplingParams {
@@ -867,6 +909,27 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
         }
     }
 
+    let bridge_face_intervals = crate::solvers::bridge_interior::apply_bridge_reach_layout_steady(
+        inputs,
+        raw_units,
+        num_slices,
+        &mut densified_stations,
+        &mut densified_tables,
+        &mut densified_z_mins,
+        &mut densified_xs,
+    );
+    let original_stations: Vec<f64> = xs_list.iter().map(|xs| xs.station).collect();
+    crate::solvers::bridge_interior::refresh_original_to_densified(
+        &original_stations,
+        &densified_stations,
+        &mut original_to_densified,
+    );
+    let bridge_at_interval: std::collections::HashMap<usize, usize> = bridge_face_intervals
+        .iter()
+        .enumerate()
+        .filter_map(|(b_idx, interval)| interval.map(|i| (i, b_idx)))
+        .collect();
+
     let dm = densified_tables.len();
 
     // Calculate critical depths and elevations for the densified grid
@@ -945,40 +1008,27 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
             }
         }
     }
-    if let Some(ref b_stations) = inputs.bridge_stations {
-        for (b_idx, &b_st) in b_stations.iter().enumerate() {
-            let b_st_metric = if raw_units == UnitSystem::USCustomary {
-                b_st * FT_TO_M
+    for (b_idx, interval) in bridge_face_intervals.iter().enumerate() {
+        let Some(j) = *interval else { continue };
+        structure_adjacent_indices.insert(j);
+        structure_adjacent_indices.insert(j + 1);
+        if let Some(ineff) = bridge_ineffective_upstream_for(inputs, b_idx).map(|ineff| {
+            if raw_units == UnitSystem::USCustomary {
+                ineff.to_metric(UnitSystem::USCustomary)
             } else {
-                b_st
-            };
-            let ineffective_up = bridge_ineffective_upstream_for(inputs, b_idx).map(|ineff| {
-                if raw_units == UnitSystem::USCustomary {
-                    ineff.to_metric(UnitSystem::USCustomary)
-                } else {
-                    ineff
-                }
-            });
-            let ineffective_down = bridge_ineffective_downstream_for(inputs, b_idx).map(|ineff| {
-                if raw_units == UnitSystem::USCustomary {
-                    ineff.to_metric(UnitSystem::USCustomary)
-                } else {
-                    ineff
-                }
-            });
-            for j in 0..dm - 1 {
-                if structure_in_reach_interval(b_st_metric, &densified_stations, j) {
-                    structure_adjacent_indices.insert(j);
-                    structure_adjacent_indices.insert(j + 1);
-                    if let Some(ineff) = ineffective_up.clone() {
-                        structure_ineffective.insert(j, ineff);
-                    }
-                    if let Some(ineff) = ineffective_down {
-                        structure_ineffective.insert(j + 1, ineff);
-                    }
-                    break;
-                }
+                ineff
             }
+        }) {
+            structure_ineffective.insert(j, ineff);
+        }
+        if let Some(ineff) = bridge_ineffective_downstream_for(inputs, b_idx).map(|ineff| {
+            if raw_units == UnitSystem::USCustomary {
+                ineff.to_metric(UnitSystem::USCustomary)
+            } else {
+                ineff
+            }
+        }) {
+            structure_ineffective.insert(j + 1, ineff);
         }
     }
 
@@ -993,21 +1043,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
         for i in (0..dm - 1).rev() {
             let length = densified_stations[i] - densified_stations[i + 1];
 
-            // Check if there is a bridge in this reach interval
-            let mut bridge_idx = None;
-            if let Some(ref b_stations) = inputs.bridge_stations {
-                for (b_idx, &b_st) in b_stations.iter().enumerate() {
-                    let b_st_metric = if raw_units == UnitSystem::USCustomary {
-                        b_st * FT_TO_M
-                    } else {
-                        b_st
-                    };
-                    if structure_in_reach_interval(b_st_metric, &densified_stations, i) {
-                        bridge_idx = Some(b_idx);
-                        break;
-                    }
-                }
-            }
+            let bridge_idx = bridge_at_interval.get(&i).copied();
 
             // Check if there is a culvert in this reach interval
             let mut culvert_idx = None;
@@ -1042,22 +1078,17 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                 } else {
                     sub_wsel[i + 1]
                 };
-                let z_down_user = if raw_units == UnitSystem::USCustomary {
-                    densified_z_mins[i + 1] / FT_TO_M
-                } else {
-                    densified_z_mins[i + 1]
-                };
-                let z_up_user = if raw_units == UnitSystem::USCustomary {
-                    densified_z_mins[i] / FT_TO_M
-                } else {
-                    densified_z_mins[i]
-                };
 
-                let sections = bridge_sections_context_for(
+                let face_geo = bridge_face_geometry_for(
                     inputs,
                     b_idx,
-                    densified_xs[i].as_ref(),
-                    densified_xs[i + 1].as_ref(),
+                    i,
+                    raw_units,
+                    num_slices,
+                    &densified_tables,
+                    &densified_xs,
+                    &densified_z_mins,
+                    length,
                 );
                 let wsel_up_user = crate::solvers::bridge::solve_bridge_wsel(
                     inputs.flow_rate,
@@ -1068,16 +1099,16 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                     pier_shape,
                     weir_coeff,
                     orifice_coeff,
-                    z_down_user,
-                    z_up_user,
+                    face_geo.z_down_user,
+                    face_geo.z_up_user,
                     tw_wsel_user,
                     raw_units,
-                    &densified_tables[i],
-                    &densified_tables[i + 1],
+                    &face_geo.table_up,
+                    &face_geo.table_down,
                     &coupling,
                     length,
                     deck_ref,
-                    Some(&sections),
+                    Some(&face_geo.sections),
                 );
 
                 sub_wsel[i] = if raw_units == UnitSystem::USCustomary {
@@ -1294,21 +1325,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
         for i in 0..dm - 1 {
             let length = densified_stations[i] - densified_stations[i + 1];
 
-            // Check if there is a bridge in this reach interval
-            let mut bridge_idx = None;
-            if let Some(ref b_stations) = inputs.bridge_stations {
-                for (b_idx, &b_st) in b_stations.iter().enumerate() {
-                    let b_st_metric = if raw_units == UnitSystem::USCustomary {
-                        b_st * FT_TO_M
-                    } else {
-                        b_st
-                    };
-                    if structure_in_reach_interval(b_st_metric, &densified_stations, i) {
-                        bridge_idx = Some(b_idx);
-                        break;
-                    }
-                }
-            }
+            let bridge_idx = bridge_at_interval.get(&i).copied();
 
             // Check if there is a culvert in this reach interval
             let mut culvert_idx = None;
@@ -1473,22 +1490,17 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                 } else {
                     super_wsel[i]
                 };
-                let z_down_user = if raw_units == UnitSystem::USCustomary {
-                    densified_z_mins[i + 1] / FT_TO_M
-                } else {
-                    densified_z_mins[i + 1]
-                };
-                let z_up_user = if raw_units == UnitSystem::USCustomary {
-                    densified_z_mins[i] / FT_TO_M
-                } else {
-                    densified_z_mins[i]
-                };
 
-                let sections = bridge_sections_context_for(
+                let face_geo = bridge_face_geometry_for(
                     inputs,
                     b_idx,
-                    densified_xs[i].as_ref(),
-                    densified_xs[i + 1].as_ref(),
+                    i,
+                    raw_units,
+                    num_slices,
+                    &densified_tables,
+                    &densified_xs,
+                    &densified_z_mins,
+                    length,
                 );
                 let tw_wsel_user = crate::solvers::bridge::solve_bridge_tailwater(
                     inputs.flow_rate,
@@ -1499,16 +1511,16 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                     pier_shape,
                     weir_coeff,
                     orifice_coeff,
-                    z_down_user,
-                    z_up_user,
+                    face_geo.z_down_user,
+                    face_geo.z_up_user,
                     hw_wsel_user,
                     raw_units,
-                    &densified_tables[i],
-                    &densified_tables[i + 1],
+                    &face_geo.table_up,
+                    &face_geo.table_down,
                     &coupling,
                     length,
                     deck_ref,
-                    Some(&sections),
+                    Some(&face_geo.sections),
                 );
 
                 super_wsel[i + 1] = if raw_units == UnitSystem::USCustomary {
@@ -1671,6 +1683,7 @@ mod tests {
             unit_system: UnitSystem::Metric,
             is_overbank: None,
             blocked_obstructions: None,
+        ineffective_flow_areas: None,
         };
 
         let table = xs.generate_lookup_table(10);
@@ -1694,6 +1707,7 @@ mod tests {
             unit_system: UnitSystem::Metric,
             is_overbank: None,
             blocked_obstructions: None,
+        ineffective_flow_areas: None,
         };
         let xs100 = CrossSection {
             station: 100.0,
@@ -1704,6 +1718,7 @@ mod tests {
             unit_system: UnitSystem::Metric,
             is_overbank: None,
             blocked_obstructions: None,
+        ineffective_flow_areas: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -1714,6 +1729,7 @@ mod tests {
             unit_system: UnitSystem::Metric,
             is_overbank: None,
             blocked_obstructions: None,
+        ineffective_flow_areas: None,
         };
 
         let inputs = SteadyInputs {
@@ -1771,6 +1787,7 @@ mod tests {
             unit_system: UnitSystem::Metric,
             is_overbank: None,
             blocked_obstructions: None,
+        ineffective_flow_areas: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -1781,6 +1798,7 @@ mod tests {
             unit_system: UnitSystem::Metric,
             is_overbank: None,
             blocked_obstructions: None,
+        ineffective_flow_areas: None,
         };
 
         // Run with a max spacing of 100.0m (which should create 9 intermediate cross sections, total 11 sections internally)
@@ -1830,6 +1848,7 @@ mod tests {
             unit_system: UnitSystem::USCustomary,
             is_overbank: None,
             blocked_obstructions: None,
+        ineffective_flow_areas: None,
         };
         let xs100 = CrossSection {
             station: 100.0,
@@ -1840,6 +1859,7 @@ mod tests {
             unit_system: UnitSystem::USCustomary,
             is_overbank: None,
             blocked_obstructions: None,
+        ineffective_flow_areas: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -1850,6 +1870,7 @@ mod tests {
             unit_system: UnitSystem::USCustomary,
             is_overbank: None,
             blocked_obstructions: None,
+        ineffective_flow_areas: None,
         };
 
         let inputs = SteadyInputs {
@@ -1910,6 +1931,7 @@ mod tests {
             unit_system: UnitSystem::USCustomary,
             is_overbank: None,
             blocked_obstructions: None,
+        ineffective_flow_areas: None,
         };
         let xs100 = CrossSection {
             station: 100.0,
@@ -1920,6 +1942,7 @@ mod tests {
             unit_system: UnitSystem::USCustomary,
             is_overbank: None,
             blocked_obstructions: None,
+        ineffective_flow_areas: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -1930,6 +1953,7 @@ mod tests {
             unit_system: UnitSystem::USCustomary,
             is_overbank: None,
             blocked_obstructions: None,
+        ineffective_flow_areas: None,
         };
 
         let mut on_xs = SteadyInputs {
@@ -1979,6 +2003,7 @@ mod tests {
                 unit_system: UnitSystem::USCustomary,
                 is_overbank: None,
                 blocked_obstructions: None,
+            ineffective_flow_areas: None,
             },
             CrossSection {
                 station: 100.0,
@@ -1989,6 +2014,7 @@ mod tests {
                 unit_system: UnitSystem::USCustomary,
                 is_overbank: None,
                 blocked_obstructions: None,
+            ineffective_flow_areas: None,
             },
             CrossSection {
                 station: 0.0,
@@ -1999,6 +2025,7 @@ mod tests {
                 unit_system: UnitSystem::USCustomary,
                 is_overbank: None,
                 blocked_obstructions: None,
+            ineffective_flow_areas: None,
             },
         ]
     }
@@ -2124,6 +2151,7 @@ mod tests {
             unit_system: UnitSystem::USCustomary,
             is_overbank: None,
             blocked_obstructions: None,
+        ineffective_flow_areas: None,
         };
         let xs100 = CrossSection {
             station: 100.0,
@@ -2134,6 +2162,7 @@ mod tests {
             unit_system: UnitSystem::USCustomary,
             is_overbank: None,
             blocked_obstructions: None,
+        ineffective_flow_areas: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -2144,6 +2173,7 @@ mod tests {
             unit_system: UnitSystem::USCustomary,
             is_overbank: None,
             blocked_obstructions: None,
+        ineffective_flow_areas: None,
         };
 
         let mut inputs = SteadyInputs {
@@ -2206,6 +2236,7 @@ mod tests {
                 unit_system: UnitSystem::Metric,
                 is_overbank: None,
                 blocked_obstructions: None,
+            ineffective_flow_areas: None,
             },
             CrossSection {
                 station: 30.0,
@@ -2216,6 +2247,7 @@ mod tests {
                 unit_system: UnitSystem::Metric,
                 is_overbank: None,
                 blocked_obstructions: None,
+            ineffective_flow_areas: None,
             },
             CrossSection {
                 station: 0.0,
@@ -2226,6 +2258,7 @@ mod tests {
                 unit_system: UnitSystem::Metric,
                 is_overbank: None,
                 blocked_obstructions: None,
+            ineffective_flow_areas: None,
             },
         ]
     }
@@ -2311,6 +2344,7 @@ mod tests {
             unit_system: UnitSystem::Metric,
             is_overbank: None,
             blocked_obstructions: None,
+        ineffective_flow_areas: None,
         };
         let xs100 = CrossSection {
             station: 100.0,
@@ -2321,6 +2355,7 @@ mod tests {
             unit_system: UnitSystem::Metric,
             is_overbank: None,
             blocked_obstructions: None,
+        ineffective_flow_areas: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -2331,6 +2366,7 @@ mod tests {
             unit_system: UnitSystem::Metric,
             is_overbank: None,
             blocked_obstructions: None,
+        ineffective_flow_areas: None,
         };
 
         let inputs = SteadyInputs {
@@ -2368,6 +2404,65 @@ mod tests {
     }
 
     #[test]
+    fn test_steady_bridge_bu_bd_face_layout() {
+        let channel = |station: f64, bed: f64| CrossSection {
+            station,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![bed + 10.0, bed, bed, bed + 10.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.03],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+        ineffective_flow_areas: None,
+        };
+        let bu = CrossSection {
+            station: 52.0,
+            x: vec![0.0, 0.0, 5.0, 5.0],
+            y: vec![10.0, 0.0, 0.0, 10.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.03],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+        ineffective_flow_areas: None,
+        };
+        let bd = CrossSection {
+            station: 48.0,
+            x: vec![0.0, 0.0, 5.0, 5.0],
+            y: vec![10.0, 0.0, 0.0, 10.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.03],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+        ineffective_flow_areas: None,
+        };
+        let inputs = SteadyInputs {
+            cross_sections: vec![channel(200.0, 0.2), channel(100.0, 0.1), channel(0.0, 0.0)],
+            flow_rate: 15.0,
+            num_slices: Some(50),
+            regime: 0,
+            downstream_wsel: Some(3.0),
+            bridge_stations: Some(vec![50.0]),
+            bridge_low_chords: Some(vec![5.0]),
+            bridge_high_chords: Some(vec![7.0]),
+            bridge_pier_widths: Some(vec![0.5]),
+            bridge_num_piers: Some(vec![2]),
+            bridge_upstream_cross_sections: Some(vec![bu]),
+            bridge_downstream_cross_sections: Some(vec![bd]),
+            ..Default::default()
+        };
+        let result = solve_steady(&inputs);
+        assert!(result.wsel.iter().all(|w| w.is_finite()));
+        assert_eq!(result.wsel[2], 3.0);
+        assert!(
+            result.wsel[1] > 3.0,
+            "narrow BU/BD opening should backwater above tailwater"
+        );
+    }
+
+    #[test]
     fn test_steady_normal_depth_boundary() {
         let xs100 = CrossSection {
             station: 100.0,
@@ -2378,6 +2473,7 @@ mod tests {
             unit_system: UnitSystem::Metric,
             is_overbank: None,
             blocked_obstructions: None,
+        ineffective_flow_areas: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -2388,6 +2484,7 @@ mod tests {
             unit_system: UnitSystem::Metric,
             is_overbank: None,
             blocked_obstructions: None,
+        ineffective_flow_areas: None,
         };
 
         let inputs = SteadyInputs {
@@ -2417,6 +2514,7 @@ mod tests {
             unit_system: UnitSystem::Metric,
             is_overbank: None,
             blocked_obstructions: None,
+        ineffective_flow_areas: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -2427,6 +2525,7 @@ mod tests {
             unit_system: UnitSystem::Metric,
             is_overbank: None,
             blocked_obstructions: None,
+        ineffective_flow_areas: None,
         };
 
         let inputs = SteadyInputs {

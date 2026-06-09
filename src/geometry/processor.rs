@@ -20,6 +20,9 @@ pub struct CrossSection {
     /// HEC-RAS-style blocked obstructions (permanent fill; removes area from flow and storage).
     #[serde(default)]
     pub blocked_obstructions: Option<Vec<BlockedObstruction>>,
+    /// HEC-RAS normal ineffective-flow blocks on this cut (reach lateral `x` frame).
+    #[serde(default)]
+    pub ineffective_flow_areas: Option<IneffectiveFlowAreas>,
 }
 
 /// One blocked-obstruction polyline across the section (station/elevation pairs, monotonic stations).
@@ -195,12 +198,22 @@ impl IneffectiveFlowAreas {
     }
 
     pub fn to_metric(&self, units: UnitSystem) -> Self {
-        if units == UnitSystem::Metric {
+        self.convert_units(units, UnitSystem::Metric)
+    }
+
+    /// Scale block stations/elevations between unit systems.
+    pub fn convert_units(&self, from: UnitSystem, to: UnitSystem) -> Self {
+        if from == to {
             return self.clone();
         }
+        let scale = match (from, to) {
+            (UnitSystem::USCustomary, UnitSystem::Metric) => FT_TO_M,
+            (UnitSystem::Metric, UnitSystem::USCustomary) => 1.0 / FT_TO_M,
+            _ => 1.0,
+        };
         let scale_block = |b: IneffectiveBlock| IneffectiveBlock {
-            station: b.station * FT_TO_M,
-            elevation: b.elevation * FT_TO_M,
+            station: b.station * scale,
+            elevation: b.elevation * scale,
         };
         Self {
             left_blocks: self.left_blocks.iter().copied().map(scale_block).collect(),
@@ -259,6 +272,9 @@ impl CrossSection {
                 .blocked_obstructions
                 .as_ref()
                 .map(|blocks| blocks.iter().map(scale_blocked).collect()),
+            ineffective_flow_areas: self.ineffective_flow_areas.as_ref().map(|areas| {
+                areas.convert_units(self.unit_system, UnitSystem::Metric)
+            }),
         }
     }
 
@@ -838,6 +854,7 @@ mod tests {
             unit_system: UnitSystem::Metric,
             is_overbank: None,
             blocked_obstructions: None,
+        ineffective_flow_areas: None,
         };
         let table1 = xs1.generate_lookup_table(10);
 
@@ -851,6 +868,7 @@ mod tests {
             unit_system: UnitSystem::Metric,
             is_overbank: None,
             blocked_obstructions: None,
+        ineffective_flow_areas: None,
         };
         let table2 = xs2.generate_lookup_table(10);
 
@@ -881,6 +899,7 @@ mod tests {
             unit_system: UnitSystem::Metric,
             is_overbank: None,
             blocked_obstructions: None,
+        ineffective_flow_areas: None,
         };
 
         // Generating a table
@@ -938,6 +957,7 @@ mod tests {
                 false, false, false, false, true, true, true, true, true, true,
             ]),
             blocked_obstructions: None,
+        ineffective_flow_areas: None,
         };
         // Single block inactive at WSEL 2.5 (activation 2.0); multi blocks left of 20 and 30.
         let single = IneffectiveFlowAreas::from_block_pairs(&[30.0], &[2.0], &[], &[]).unwrap();
@@ -971,6 +991,7 @@ mod tests {
             unit_system: UnitSystem::Metric,
             is_overbank: Some(vec![false, false, false, false, true, true, true, true]),
             blocked_obstructions: None,
+        ineffective_flow_areas: None,
         };
         let ineffective =
             IneffectiveFlowAreas::from_block_pairs(&[30.0], &[3.0], &[], &[]).unwrap();
@@ -996,6 +1017,7 @@ mod tests {
             unit_system: UnitSystem::Metric,
             is_overbank: None,
             blocked_obstructions: None,
+        ineffective_flow_areas: None,
         };
         let blocked = CrossSection {
             blocked_obstructions: Some(vec![BlockedObstruction {
@@ -1028,6 +1050,7 @@ mod tests {
                 stations: vec![12.0, 18.0],
                 elevations: vec![2.0, 2.0],
             }]),
+            ineffective_flow_areas: None,
         };
         let row_low = xs.compute_properties_at_elevation(2.5);
         let row_high = xs.compute_properties_at_elevation(3.5);
@@ -1046,6 +1069,7 @@ mod tests {
             unit_system: UnitSystem::Metric,
             is_overbank: Some(vec![false, false, false, false, true, true, true, true]),
             blocked_obstructions: None,
+        ineffective_flow_areas: None,
         };
         let blocked = CrossSection {
             blocked_obstructions: Some(vec![BlockedObstruction {
@@ -1088,6 +1112,7 @@ mod tests {
             unit_system: UnitSystem::USCustomary,
             is_overbank: None,
             blocked_obstructions: None,
+        ineffective_flow_areas: None,
         };
 
         let table = xs.generate_lookup_table(50);

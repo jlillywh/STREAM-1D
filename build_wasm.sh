@@ -15,6 +15,7 @@ echo "=== Building WASM target: nodejs ==="
 wasm-pack build --target nodejs --out-dir pkg-node
 echo "=== JSON contract tests ==="
 cargo test --test wasm_json_contract --quiet
-echo "=== Node WASM smoke test ==="
+echo "=== Node WASM smoke tests ==="
 node examples/wasm/node_smoke_test.mjs
+node examples/wasm/bridge_smoke_test.mjs
 echo "=== Build Complete ==="

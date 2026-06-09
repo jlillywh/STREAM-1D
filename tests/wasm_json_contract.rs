@@ -104,13 +104,17 @@ fn wasm_bridge_rating_curve_contract() {
 fn wasm_api_metadata_version() {
     let meta = build_api_metadata();
     assert_eq!(meta.api_version, API_VERSION);
-    assert_eq!(API_VERSION, 21);
+    assert_eq!(API_VERSION, 22);
     assert!(meta.culvert_tier1_fields.inputs.contains(&"culvert_inlet_types".to_string()));
     assert_eq!(
         meta.bridge_fields.rating_curve_entry_point,
         "computeBridgeRatingCurve"
     );
     for key in [
+        "bridge_upstream_cross_sections",
+        "bridge_downstream_cross_sections",
+        "bridge_internal_cross_sections",
+        "bridge_opening_reach_station_origins",
         "bridge_abutment_left_widths",
         "bridge_abutment_right_widths",
         "bridge_abutment_left_stations",
@@ -128,6 +132,8 @@ fn wasm_api_metadata_version() {
         );
     }
     for key in [
+        "opening_reach_station_origin",
+        "xs_internal",
         "abutment_left_width",
         "abutment_right_width",
         "abutment_left_top_elevation",
@@ -258,10 +264,68 @@ fn cross_section_blocked_obstructions_deserialize() {
         unit_system: UnitSystem::Metric,
         is_overbank: None,
         blocked_obstructions: None,
+        ineffective_flow_areas: None,
     }
     .to_metric()
     .compute_properties_at_elevation(2.0);
     assert!(row.area < open.area);
+}
+
+#[test]
+fn cross_section_ineffective_flow_areas_deserialize() {
+    let json = r#"{
+        "station": 100.0,
+        "x": [0.0, 0.0, 10.0, 10.0, 30.0, 30.0, 40.0, 40.0],
+        "y": [5.0, 0.0, 0.0, 5.0, 0.0, 5.0, 0.0, 5.0],
+        "n_stations": [0.0],
+        "n_values": [0.03],
+        "unit_system": "Metric",
+        "is_overbank": [false, false, false, false, true, true, true, true],
+        "ineffective_flow_areas": {
+            "left_blocks": [{ "station": 30.0, "elevation": 3.0 }],
+            "right_blocks": []
+        }
+    }"#;
+    let xs: CrossSection = serde_json::from_str(json).expect("ineffective on XS");
+    let areas = xs
+        .ineffective_flow_areas
+        .as_ref()
+        .expect("ineffective_flow_areas");
+    assert_eq!(areas.left_blocks.len(), 1);
+    assert!((areas.left_blocks[0].station - 30.0).abs() < 1e-9);
+}
+
+#[test]
+fn wasm_steady_bridge_bu_bd_v22_fixture() {
+    let json = include_str!("fixtures/wasm_steady_bridge_bu_bd_v22.json");
+    let inputs: SteadyInputs = serde_json::from_str(json).expect("v22 bridge fixture");
+    assert_eq!(
+        inputs
+            .bridge_upstream_cross_sections
+            .as_ref()
+            .map(|v| v.len()),
+        Some(1)
+    );
+    assert_eq!(
+        inputs
+            .bridge_internal_cross_sections
+            .as_ref()
+            .and_then(|v| v.first())
+            .map(|cuts| cuts.len()),
+        Some(1)
+    );
+    let internal = inputs
+        .bridge_internal_cross_sections
+        .as_ref()
+        .and_then(|v| v.first())
+        .and_then(|cuts| cuts.first())
+        .expect("internal cut");
+    assert!(internal.ineffective_flow_areas.is_some());
+
+    let result = solve_steady(&inputs);
+    assert_eq!(result.wsel.len(), inputs.cross_sections.len());
+    assert!((result.wsel[2] - 3.0).abs() < 1e-9);
+    assert!(result.wsel[1] > 3.0);
 }
 
 #[test]
@@ -362,6 +426,76 @@ fn bridge_abutment_per_side_unsteady_deserialize() {
     );
     let result = solve_unsteady(&inputs);
     assert_eq!(result.wsel.len(), 2);
+}
+
+#[test]
+fn bridge_bu_bd_v22_unsteady_deserialize() {
+    use streams1d::solvers::{solve_unsteady, UnsteadyInputs};
+
+    let json = r#"{
+        "cross_sections": [{
+            "station": 100.0,
+            "x": [0.0, 0.0, 10.0, 10.0],
+            "y": [5.0, 0.0, 0.0, 5.0],
+            "n_stations": [0.0],
+            "n_values": [0.03],
+            "unit_system": "Metric"
+        }, {
+            "station": 0.0,
+            "x": [0.0, 0.0, 10.0, 10.0],
+            "y": [5.0, 0.0, 0.0, 5.0],
+            "n_stations": [0.0],
+            "n_values": [0.03],
+            "unit_system": "Metric"
+        }],
+        "initial_wsel": [2.0, 1.5],
+        "initial_q": [15.0, 15.0],
+        "dt": 60.0,
+        "num_steps": 2,
+        "upstream_q_hydrograph": [15.0, 15.0],
+        "downstream_wsel_hydrograph": [1.5, 1.5],
+        "bridge_stations": [50.0],
+        "bridge_low_chords": [5.0],
+        "bridge_high_chords": [7.0],
+        "bridge_low_flow_methods": [1],
+        "bridge_opening_reach_station_origins": [0.0],
+        "bridge_upstream_cross_sections": [{
+            "station": 52.0,
+            "x": [0.0, 0.0, 10.0, 10.0],
+            "y": [10.05, 0.05, 0.05, 10.05],
+            "n_stations": [0.0],
+            "n_values": [0.03],
+            "unit_system": "Metric"
+        }],
+        "bridge_downstream_cross_sections": [{
+            "station": 48.0,
+            "x": [0.0, 0.0, 10.0, 10.0],
+            "y": [10.0, 0.0, 0.0, 10.0],
+            "n_stations": [0.0],
+            "n_values": [0.03],
+            "unit_system": "Metric"
+        }]
+    }"#;
+    let inputs: UnsteadyInputs = serde_json::from_str(json).expect("unsteady v22 BU/BD");
+    assert_eq!(
+        inputs
+            .bridge
+            .bridge_upstream_cross_sections
+            .as_ref()
+            .map(|v| v.len()),
+        Some(1)
+    );
+    assert_eq!(
+        inputs
+            .bridge
+            .bridge_opening_reach_station_origins
+            .as_ref()
+            .unwrap()[0],
+        0.0
+    );
+    let result = solve_unsteady(&inputs);
+    assert_eq!(result.wsel.len(), 2);
+    assert_eq!(result.wsel[0].len(), 2);
 }
 
 #[test]

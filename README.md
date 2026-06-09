@@ -36,8 +36,8 @@ The hosted product at [stream1d.com](https://stream1d.com) provides cross-sectio
 | **Main stem + tributary (steady)** | One tributary joining one main channel at a shared WSEL node — main stem above/below the junction plus tributary inflow (`tributary_cross_sections`, `tributary_flow_rate`, `junction_main_station`); subcritical only |
 | **Culverts (steady, main stem)** | Circular, box, arch, ConSpan, **pipe-arch**, **elliptical**, and **horseshoe**; FHWA-style inlet/outlet control with signed barrel slope (adverse grade supported). Explicit inlet types, invert elevations, roadway overtopping, composite bottom roughness, sediment blockage, control reporting (`inlet` / `outlet` / `overtopping`), extended diagnostics (inlet/outlet HW, barrel vs weir $Q$, barrel depth/velocity/Froude), `computeCulvertRatingCurve`, barrel **skew** (`culvert_skew_angles`), **active barrel count** (`culvert_active_barrels`), **per-barrel geometry** (`culvert_barrel_spans` / `culvert_barrel_rises`) with capacity-based flow split, and **supercritical culvert routing** (`regime` 1/2) via headwater inversion |
 | **Culverts (unsteady, single reach)** | Same culvert input fields as steady on `UnsteadyInputs`; **iterated post-step headwater coupling** (tolerance-based convergence, up to 5 passes per step); returns Tier 2a culvert diagnostics each time step |
-| **Bridges (steady, main stem)** | HEC-RAS **Class A/B/C** low-flow (`bridge_low_flow_methods`: Yarnell, momentum, energy, WSPRO); high-flow **pressure** (sluice-gate / submerged orifice) and **Bradley weir** overtopping with submergence fallback to energy; **piecewise deck profiles** (`bridge_deck_*`); **per-side abutments** (`bridge_abutment_left_*` / `bridge_abutment_right_*`, API v21); **skew** (`bridge_skew_angles`); **pier spacing** (`bridge_pier_stations`); HEC-RAS-style **ineffective flow** (`bridge_ineffective_*`); **supercritical tailwater coupling** (`regime` 1/2); `computeBridgeRatingCurve` |
-| **Bridges (unsteady, single reach)** | Same bridge input fields as steady on `UnsteadyInputs`; **iterated post-step headwater coupling** (up to 5 passes per step); returns per-step bridge flow regime, upstream/downstream WSEL, and head-loss diagnostics |
+| **Bridges (steady, main stem)** | HEC-RAS **Class A/B/C** low-flow (`bridge_low_flow_methods`: Yarnell, momentum, energy, WSPRO); high-flow **pressure** (sluice-gate / submerged orifice) and **Bradley weir** overtopping with submergence fallback to energy; **piecewise deck profiles** (`bridge_deck_*`); **per-side abutments** (`bridge_abutment_left_*` / `bridge_abutment_right_*`, API v21); **BU/BD interior cuts** (`bridge_upstream_cross_sections`, `bridge_downstream_cross_sections`, `bridge_internal_cross_sections`, `bridge_opening_reach_station_origins`, API v22); **skew** (`bridge_skew_angles`); **pier spacing** (`bridge_pier_stations`); HEC-RAS **ineffective flow** (`bridge_ineffective_*` and `ineffective_flow_areas` on BU/BD cuts); **supercritical tailwater coupling** (`regime` 1/2); `computeBridgeRatingCurve` |
+| **Bridges (unsteady, single reach)** | Same bridge input fields as steady on `UnsteadyInputs` (including BU/BD interior cuts, API v22); BU/BD reach layout densification; **iterated post-step headwater coupling** (up to 5 passes per step); returns per-step bridge flow regime, upstream/downstream WSEL, and head-loss diagnostics |
 | **Unsteady flow** | Preissmann Saint-Venant on a **single reach**; upstream $Q(t)$ and downstream WSEL($t$) hydrographs; optional **inline culverts** and **inline bridges** (see rows above) |
 | **Outputs** | WSEL, critical WSEL, velocity, area, top width, Froude number, energy grade slope (+ `tributary_wsel`, `tributary_velocity`, `tributary_froude` when a junction is modeled; + `culvert_control_types` and Tier 2a culvert arrays when culverts are modeled; + bridge flow regime and head-loss arrays on **`solve_steady`** and **`solve_unsteady`** when bridges are modeled) |
 
@@ -61,9 +61,9 @@ Compared to a full HEC-RAS installation, the engine does not model everything in
 | **Unsteady scope** | Networks, structures, storage areas, lateral inflows | **Single reach** with optional **inline culverts** and **inline bridges** (iterated explicit post-step headwater coupling + per-step diagnostics); **no** multi-reach networks in unsteady |
 | **Storage & diversions** | Ponds, reservoirs, split flow, lateral structures, pumps, gates | Not modeled |
 | **Inline weirs & dams** | Standalone weirs, inline structures, dam breach | Not modeled (bridge roadway overtopping only) |
-| **Bridge hydraulics** *(partial parity)* | Bridges on tributary reaches and arbitrary multi-reach unsteady networks; standalone inline weirs separate from bridge decks; implicit structure coupling inside the unsteady solver Jacobian | **Main-stem steady** and **single-reach unsteady**: Class A/B/C low-flow; Yarnell, momentum, energy, WSPRO; sluice-gate/submerged-orifice pressure; Bradley weir submergence; **piecewise deck profiles** (`bridge_deck_*`); **per-side abutments** (`bridge_abutment_left_*` / `bridge_abutment_right_*`, API v21); **skew** (`bridge_skew_angles`); **pier spacing** (`bridge_pier_stations`); ineffective flow; blocked obstructions on cross sections; supercritical tailwater coupling; `computeBridgeRatingCurve` — all via **explicit post-step coupling** |
+| **Bridge hydraulics** *(partial parity)* | Bridges on tributary reaches and arbitrary multi-reach unsteady networks; standalone inline weirs separate from bridge decks; implicit structure coupling inside the unsteady solver Jacobian; multi-segment friction through interior bridge cuts | **Main-stem steady** and **single-reach unsteady**: Class A/B/C low-flow; Yarnell, momentum, energy, WSPRO; sluice-gate/submerged-orifice pressure; Bradley weir submergence; **piecewise deck profiles** (`bridge_deck_*`); **per-side abutments** (API v21); **explicit BU/BD face cuts** with reach layout and **min(BU, BD)** opening weighting (API v22); **skew**; **pier spacing**; ineffective flow; blocked obstructions; supercritical tailwater coupling; `computeBridgeRatingCurve` — all via **explicit post-step coupling** (interior cuts affect reach layout/friction length; multi-segment hydraulics through interiors not yet routed) |
 | **Culvert hydraulics** *(partial parity)* | Full HEC-RAS culvert catalog (all standard shapes), culverts in multi-reach unsteady networks | FHWA nomograph (circular, box, arch, ConSpan, pipe-arch, elliptical, horseshoe) with explicit inlet types; multi-barrel capacity-based $Q$ split with optional per-barrel span/rise; skew angles and blocked-barrel count; invert offsets, roadway overtopping, Tier 2a diagnostics and rating-curve API; **supercritical culvert routing** in mixed-regime steady profiles; **inline culverts** in single-reach unsteady (iterated explicit coupling, not implicit in Preissmann Jacobian) |
-| **Ineffective flow** *(partial parity)* | Roadway embankment blocking, blocked obstructions, storage from ineffective areas | HEC-RAS-style ineffective blocks per bridge (`bridge_ineffective_*`); **blocked obstructions** on any cross section (`blocked_obstructions` polylines — permanent fill, removes flow and storage area); ineffective areas still pond storage until activation elevation |
+| **Ineffective flow** *(partial parity)* | Roadway embankment blocking, blocked obstructions, storage from ineffective areas | HEC-RAS-style ineffective blocks per bridge (`bridge_ineffective_*`); **`ineffective_flow_areas` on BU/BD `CrossSection` cuts** (independent of reach-face ineffective, API v22); **blocked obstructions** on any cross section; ineffective areas still pond storage until activation elevation |
 | **Terrain & mapping** | RAS Terrain, TIN/bathymetry authoring, RAS Map | **Not in the engine** — the companion **web app** may edit cross-sections and import HEC-RAS geometry; the solver only receives $(x,y)$ sections and stations |
 | **Sediment & morphology** | Mobile bed, sediment transport, scour | Not modeled (optional fixed culvert blockage depth only) |
 | **Water quality & ice** | Temperature, water quality, ice jams | Not modeled |
@@ -109,17 +109,20 @@ streams1d/
 │       ├── junction.rs         # Steady main-stem + tributary junction solver
 │       ├── bridge.rs           # Bridge pier, pressure, and weir hydraulics
 │       ├── bridge_abutment.rs  # Per-side abutment geometry (API v21)
+│       ├── bridge_interior.rs  # BU/BD face resolution, reach layout, friction length (API v22)
 │       ├── culvert.rs          # Culvert inlet/outlet control (FHWA-style)
 │       └── unsteady.rs         # Saint-Venant dynamic routing solver
 ├── python/                     # Python bindings, tests, and verification notebook
-│   ├── verification/           # HEC-RAS reference data (ConSpan, bridge abutment JSON)
+│   ├── verification/           # HEC-RAS reference data (ConSpan, bridge abutment/BU-BD JSON)
 │   └── test_hecras_culvert_verification.py
-├── docs/                       # WASM TypeScript contracts for host applications
-│   └── wasm_api.types.ts       # TypeScript definitions for WASM inputs/outputs
-├── examples/wasm/              # Worker reference + Node smoke test
+├── docs/                       # WASM TypeScript contracts and design notes
+│   ├── wasm_api.types.ts       # TypeScript definitions for WASM inputs/outputs
+│   └── BRIDGE_INTERIOR_SECTIONS_API.md  # BU/BD interior sections (API v22)
+├── examples/wasm/              # Worker reference, BU/BD JSON example, Node smoke tests
 ├── tests/
-│   ├── fixtures/               # WASM + culvert benchmark JSON payloads
+│   ├── fixtures/               # WASM steady culvert + bridge BU/BD JSON payloads
 │   ├── bridge_abutment_hecras_verification.rs  # Per-side abutment hand-calc / WSPRO
+│   ├── bridge_bu_bd_hecras_verification.rs     # BU/BD layout + HEC-RAS reference cases
 │   ├── culvert_hecras_verification.rs  # HEC-RAS ConSpan + point culvert tests
 │   └── wasm_json_contract.rs   # WASM JSON schema integration tests
 └── pkg/                        # Compiled WASM package generated by wasm-pack
@@ -214,7 +217,7 @@ Parallel arrays — index `i` matches `culvert_stations[i]`. Use on **`SteadyInp
 
 **Rating curve:** `computeCulvertRatingCurve({ q_values, ...culvert fields })` — same geometry/loss/skew/barrel fields as steady; `q` in culvert params is ignored.
 
-**API version history:** v3 — Tier 2a diagnostics + rating curve; v4 — `culvert_skew_angles`, `culvert_active_barrels`; v5 — `culvert_barrel_spans`, `culvert_barrel_rises`; v6 — culvert shape types 4–6 (pipe-arch, elliptical, horseshoe); v7 — culvert fields on `UnsteadyInputs` + supercritical culvert routing in steady mixed-regime sweeps; v8 — unsteady culvert Tier 2a diagnostics (`[step][culvert]`) + strengthened per-step culvert coupling; v9 — bridge fields on `UnsteadyInputs` + unsteady bridge post-step coupling and diagnostics; v10 — `structure_coupling_order` for combined culvert/bridge post-step ordering; v11 — WSPRO/energy low-flow methods + `bridge_lengths` / `bridge_wspro_coeffs`; v12 — HEC-RAS high-flow pressure/weir (sluice gate, submerged orifice, Bradley weir submergence, energy fallback) + `bridge_pressure_flow_coeffs_inlet` / `bridge_max_weir_submergence`; v13 — `bridge_deck_stations`, `bridge_deck_low_elevations`, `bridge_deck_high_elevations` for piecewise deck/roadway profiles; v14 — `bridge_ineffective_left_stations`, `bridge_ineffective_left_elevations`, `bridge_ineffective_right_stations`, `bridge_ineffective_right_elevations` for HEC-RAS ineffective flow at bridge sections; v15 — `bridge_skew_angles`, `bridge_pier_stations` for HEC-RAS bridge skew and explicit pier spacing; v16 — `computeBridgeRatingCurve` for standalone bridge headwater vs discharge at fixed tailwater; v17 — `bridge_high_flow_methods` for explicit HEC-RAS high-flow energy method (`energy` flow regime); v18 — separate upstream/downstream ineffective elevations (`bridge_ineffective_*_upstream` / `_downstream`); v19 — multiple ineffective blocks per bridge side (`bridge_ineffective_*` nested `[bridge][block]` arrays; rating curve `ineffective_*_stations` / `ineffective_*_elevations` vectors); v20 — `blocked_obstructions` on `CrossSection` (HEC-RAS permanent blockage polylines); v21 — per-side bridge abutment geometry (`bridge_abutment_left_*` / `bridge_abutment_right_*`; legacy `bridge_abutment_block_widths` splits symmetrically).
+**API version history:** v3 — Tier 2a diagnostics + rating curve; v4 — `culvert_skew_angles`, `culvert_active_barrels`; v5 — `culvert_barrel_spans`, `culvert_barrel_rises`; v6 — culvert shape types 4–6 (pipe-arch, elliptical, horseshoe); v7 — culvert fields on `UnsteadyInputs` + supercritical culvert routing in steady mixed-regime sweeps; v8 — unsteady culvert Tier 2a diagnostics (`[step][culvert]`) + strengthened per-step culvert coupling; v9 — bridge fields on `UnsteadyInputs` + unsteady bridge post-step coupling and diagnostics; v10 — `structure_coupling_order` for combined culvert/bridge post-step ordering; v11 — WSPRO/energy low-flow methods + `bridge_lengths` / `bridge_wspro_coeffs`; v12 — HEC-RAS high-flow pressure/weir (sluice gate, submerged orifice, Bradley weir submergence, energy fallback) + `bridge_pressure_flow_coeffs_inlet` / `bridge_max_weir_submergence`; v13 — `bridge_deck_stations`, `bridge_deck_low_elevations`, `bridge_deck_high_elevations` for piecewise deck/roadway profiles; v14 — `bridge_ineffective_left_stations`, `bridge_ineffective_left_elevations`, `bridge_ineffective_right_stations`, `bridge_ineffective_right_elevations` for HEC-RAS ineffective flow at bridge sections; v15 — `bridge_skew_angles`, `bridge_pier_stations` for HEC-RAS bridge skew and explicit pier spacing; v16 — `computeBridgeRatingCurve` for standalone bridge headwater vs discharge at fixed tailwater; v17 — `bridge_high_flow_methods` for explicit HEC-RAS high-flow energy method (`energy` flow regime); v18 — separate upstream/downstream ineffective elevations (`bridge_ineffective_*_upstream` / `_downstream`); v19 — multiple ineffective blocks per bridge side (`bridge_ineffective_*` nested `[bridge][block]` arrays; rating curve `ineffective_*_stations` / `ineffective_*_elevations` vectors); v20 — `blocked_obstructions` on `CrossSection` (HEC-RAS permanent blockage polylines); v21 — per-side bridge abutment geometry (`bridge_abutment_left_*` / `bridge_abutment_right_*`; legacy `bridge_abutment_block_widths` splits symmetrically); v22 — BU/BD bridge interior cross sections (`bridge_upstream_cross_sections`, `bridge_downstream_cross_sections`, `bridge_internal_cross_sections`, `bridge_opening_reach_station_origins`; `CrossSection.ineffective_flow_areas`; rating curve `opening_reach_station_origin`, `xs_internal`; BU→BD reach layout and friction length).
 
 #### B. Outlet Control (Energy losses)
 The outlet control upstream elevation is computed via energy headwater balance:
@@ -242,7 +245,7 @@ Before computing losses, the solver classifies low flow by comparing downstream 
 * **Class B** — passes through critical depth in the constriction ($M_{down} < M_{crit}$); solved with a momentum balance through the critical section and pier drag.
 * **Class C** — completely supercritical through the bridge (downstream Froude $\geq 1$ below the low chord); solved with supercritical momentum and pier drag.
 
-Set `bridge_low_flow_methods` per bridge: `0` = auto (classify A/B/C; Class A uses Yarnell when piers are present, WSPRO when abutments dominate, else energy), `1` = Yarnell, `2` = momentum, `3` = energy (standard step through the obstructed opening), `4` = WSPRO (FHWA contracted-opening energy with discharge coefficient `C` from `bridge_wspro_coeffs`, default 0.8). Optional `bridge_lengths` sets reach length through the bridge for friction; when omitted, the densified interval spacing is used. Class B falls back to energy/WSPRO when momentum fails or when methods 3/4 are selected.
+Set `bridge_low_flow_methods` per bridge: `0` = auto (classify A/B/C; Class A uses Yarnell when piers are present, WSPRO when abutments dominate, else energy), `1` = Yarnell, `2` = momentum, `3` = energy (standard step through the obstructed opening), `4` = WSPRO (FHWA contracted-opening energy with discharge coefficient `C` from `bridge_wspro_coeffs`, default 0.8). Friction reach length $L$ uses the **BU → BD** path: explicit face `CrossSection.station` values (summing interior cuts when provided), else the densified BU–BD interval spacing, else `bridge_lengths` when faces coincide (legacy). `bridge_lengths` no longer overrides a shorter explicit BU/BD spacing. Conveyance weighting uses average of BU and BD face conveyance at the respective WSELs; skew applies $L' = L/\cos\theta$. Class B falls back to energy/WSPRO when momentum fails or when methods 3/4 are selected.
 
 #### B. Low Flow Pier Loss (Yarnell Equation, Class A)
 For Class A low flow with piers and auto/Yarnell method selected, the water surface rise from the downstream section to the upstream section is computed with the HEC-RAS Yarnell equation:
@@ -331,6 +334,8 @@ Per-face station/elevation values override the legacy shared fields on that face
 
 Ineffective segments are excluded from **active area** and **conveyance** but still count toward total **storage area**. Bridge opening hydraulics and structure-adjacent Standard Step intervals use ineffective-aware geometry when the cross-section profile is available on the densified grid.
 
+**BU/BD cuts (API v22):** attach `ineffective_flow_areas` on `bridge_upstream_cross_sections` / `bridge_downstream_cross_sections` in reach lateral coordinates. Explicit BU/BD ineffective blocks apply only at that face and do not inherit from the adjacent reach cross section. When omitted on an explicit cut, `bridge_ineffective_*` opening-frame fields still apply (shifted by `bridge_opening_reach_station_origins`).
+
 #### H2. Blocked Obstructions (Cross Sections)
 HEC-RAS **blocked obstructions** are permanent fill on any cross section — distinct from ineffective flow (which ponds storage until an activation elevation).
 
@@ -348,11 +353,70 @@ Example — 2 m tall blockage across 12–18 m on a trapezoidal section:
 
 Blocked obstructions are baked into geometry lookup tables at user cross sections. Interpolated (densified) interior points do not inherit blockage unless defined on the parent section.
 
-#### I. Bridge Skew and Pier Spacing
+#### I. BU / BD interior cross sections (API v22)
+
+HEC-RAS uses dedicated **BU** (bridge upstream face) and **BD** (bridge downstream face) cuts. Optional explicit sections override reach interval geometry for bridge hydraulics:
+
+* `bridge_upstream_cross_sections` — BU cut per bridge (`[bridge]` → `CrossSection`)
+* `bridge_downstream_cross_sections` — BD cut per bridge
+* `bridge_internal_cross_sections` — optional interior cuts `[bridge][section]`, US → DS (stored; multi-segment routing in a future release)
+* `bridge_opening_reach_station_origins` — reach XS lateral `x` at bridge opening station 0 (left deck edge). Omit to infer from `min(BU.x)`.
+
+**Opening ↔ reach alignment:** deck, pier, and abutment stations use opening coordinates; `bridge_opening_reach_station_origins` maps `reach_x = origin + opening_s`.
+
+**Reach layout:** after `max_spacing` densification, the solver inserts densified nodes at resolved BU/BD (and internal) river stations. Bridge hydraulics run on the interval `BU → BD`, not the wider reach interval around `bridge_stations`. Legacy models with only `bridge_stations` (no explicit faces, zero `bridge_lengths`) keep the prior center-station interval match.
+
+**HEC-RAS weighting:** low/high-flow classification and losses use BU and BD properties — critical-depth control picks the more constricted face; pressure/WSPRO net opening uses **min(BU, BD)** obstructed area at the low chord; friction length follows the BU → internal → BD path when explicit faces differ (overrides `bridge_lengths`); ineffective flow on BU/BD cuts uses `CrossSection.ineffective_flow_areas` before bridge opening-frame ineffective and reach fallback. Full design: [`docs/BRIDGE_INTERIOR_SECTIONS_API.md`](docs/BRIDGE_INTERIOR_SECTIONS_API.md).
+
+Rating curve: `xs_up` / `xs_down` are BU/BD; optional `opening_reach_station_origin` and `xs_internal`.
+
+**Example (steady JSON, one bridge with BU + internal + BD):**
+
+```json
+{
+  "bridge_stations": [50.0],
+  "bridge_low_chords": [5.0],
+  "bridge_high_chords": [7.0],
+  "bridge_low_flow_methods": [1],
+  "bridge_opening_reach_station_origins": [0.0],
+  "bridge_upstream_cross_sections": [{
+    "station": 52.0,
+    "x": [0.0, 0.0, 10.0, 10.0],
+    "y": [10.05, 0.05, 0.05, 10.05],
+    "n_stations": [0.0],
+    "n_values": [0.03],
+    "unit_system": "Metric"
+  }],
+  "bridge_downstream_cross_sections": [{
+    "station": 48.0,
+    "x": [0.0, 0.0, 10.0, 10.0],
+    "y": [10.0, 0.0, 0.0, 10.0],
+    "n_stations": [0.0],
+    "n_values": [0.03],
+    "unit_system": "Metric",
+    "ineffective_flow_areas": {
+      "left_blocks": [{ "station": 2.0, "elevation": 3.0 }],
+      "right_blocks": []
+    }
+  }],
+  "bridge_internal_cross_sections": [[{
+    "station": 50.0,
+    "x": [0.0, 0.0, 10.0, 10.0],
+    "y": [10.025, 0.025, 0.025, 10.025],
+    "n_stations": [0.0],
+    "n_values": [0.03],
+    "unit_system": "Metric"
+  }]]
+}
+```
+
+Full working fixture: [`examples/wasm/steady_bridge_bu_bd_v22.json`](examples/wasm/steady_bridge_bu_bd_v22.json). TypeScript types: [`docs/wasm_api.types.ts`](docs/wasm_api.types.ts). Design notes: [`docs/BRIDGE_INTERIOR_SECTIONS_API.md`](docs/BRIDGE_INTERIOR_SECTIONS_API.md).
+
+#### J. Bridge Skew and Pier Spacing
 * `bridge_skew_angles` — skew from normal to flow, degrees per bridge (0–59°, same convention as `culvert_skew_angles`). Adjusts projected opening width ($W' = W\cos\theta$), weir length, deck profile segments, friction reach length ($L' = L/\cos\theta$), and flow-normal pier blockage ($W_{pier}' = W_{pier}/\cos\theta$).
 * `bridge_pier_stations` — pier centerline stations across the opening per bridge `[bridge][pier]` in the same horizontal frame as `bridge_deck_stations`. When omitted, piers are evenly spaced across the deck opening span. Pier count is taken from the station array length when provided.
 
-#### J. Bridge Rating Curve
+#### K. Bridge Rating Curve
 * **Rating curve:** `computeBridgeRatingCurve({ q_values, ...bridge fields })` samples upstream headwater vs discharge at fixed tailwater for a single bridge opening. Uses the same hydraulics as the steady bridge solver (`solve_bridge_coupled`) without a full reach profile.
 * **Input fields** (flattened, not `bridge_*` prefixed): `low_chord`, `high_chord`, `z_up`, `z_down`, `tw_wsel`, `units`, plus optional pier/deck/ineffective/skew/coupling fields (`pier_width`, `num_piers`, `deck_stations`, `skew_deg`, `pier_stations`, `ineffective_left_station` or `ineffective_left_stations` / `ineffective_left_elevations` vectors, etc.). **Abutments** use the same per-side keys as steady bridge fields but without the `bridge_` prefix: `abutment_block_width` (legacy total), `abutment_left_width`, `abutment_right_width`, `abutment_left_station`, `abutment_right_station`, `abutment_left_top_elevation`, `abutment_right_top_elevation`, and optional `abutment_left_top_profile_stations` / `_elevations` (and right pair). Defaults to rectangular approach/departure channels via `channel_width` (10 user units) when `xs_up` / `xs_down` are omitted.
 * **Outputs:** `q`, `wsel` (upstream headwater), `wsel_down`, `flow_regimes` (`low_a` / `low_b` / `low_c` / `pressure` / `weir`), `head_losses`. Discover field names via `getWasmApiMetadata().bridge_fields.rating_curve_inputs` and `rating_curve_outputs`.
@@ -395,7 +459,7 @@ This generates the WebAssembly module in the `./pkg` (browser) and `./pkg-node` 
 | `computeCulvertRatingCurve(inputs)` | Headwater vs $Q$ at fixed tailwater → `CulvertRatingCurveResult` |
 | `computeBridgeRatingCurve(inputs)` | Bridge upstream headwater vs $Q$ at fixed tailwater → `BridgeRatingCurveResult` |
 
-All payloads use **snake_case** field names (same schema as Python JSON). Check `getWasmApiMetadata().api_version` after each engine upgrade; **version 21** adds per-side bridge abutment fields; **version 20** adds `blocked_obstructions` on cross sections; version 19 adds multi-block ineffective areas per bridge side; version 18 adds separate US/DS ineffective elevations; version 17 adds `bridge_high_flow_methods`; version 16 adds `computeBridgeRatingCurve`; version 10 adds `structure_coupling_order`; version 9 adds unsteady bridge coupling and diagnostics; version 8 adds unsteady culvert Tier 2a output arrays; version 7 adds culvert fields on `UnsteadyInputs`; version 6 adds culvert shape types 4–6; version 5 adds per-barrel geometry; version 4 adds skew and active-barrel fields.
+All payloads use **snake_case** field names (same schema as Python JSON). Check `getWasmApiMetadata().api_version` after each engine upgrade; **version 22** adds BU/BD bridge interior cross sections; **version 21** adds per-side bridge abutment fields; **version 20** adds `blocked_obstructions` on cross sections; version 19 adds multi-block ineffective areas per bridge side; version 18 adds separate US/DS ineffective elevations; version 17 adds `bridge_high_flow_methods`; version 16 adds `computeBridgeRatingCurve`; version 10 adds `structure_coupling_order`; version 9 adds unsteady bridge coupling and diagnostics; version 8 adds unsteady culvert Tier 2a output arrays; version 7 adds culvert fields on `UnsteadyInputs`; version 6 adds culvert shape types 4–6; version 5 adds per-barrel geometry; version 4 adds skew and active-barrel fields.
 
 ### 2. Python Target
 To compile and install the native Python extension locally:
@@ -423,12 +487,17 @@ All profile stations (10 per event) are checked within **±0.04 ft** vs HEC-RAS 
 | Yarnell Class A pier loss | `src/solvers/bridge.rs` (`test_yarnell_pier_head_loss_hec_ras`) | Closed-form HEC-RAS formula ($H_{3-2} \approx 0.00247\text{ m}$ on 10 m channel, $Q=15\text{ cms}$, two 0.5 m piers) |
 | Per-side abutment geometry | `src/solvers/bridge_abutment.rs`, `bridge.rs` | Hand-calc submerged area (asymmetric, one-sided) |
 | WSPRO headwater with abutments | `tests/bridge_abutment_hecras_verification.rs` | [`python/verification/bridge_abutment_hecras.json`](python/verification/bridge_abutment_hecras.json) — ±2 mm on HW |
-| WASM / JSON contract | `tests/wasm_json_contract.rs` | Steady, unsteady, and rating-curve per-side abutment fields; `api_version` 21 metadata |
+| Explicit BU/BD faces (v22) | `tests/bridge_bu_bd_hecras_verification.rs` | [`python/verification/bridge_bu_bd_hecras.json`](python/verification/bridge_bu_bd_hecras.json) — legacy Yarnell ±2 mm; explicit BU/BD + WSPRO golden HW |
+| 3-section vs 2-face reach layout | `tests/bridge_bu_bd_hecras_verification.rs` (`three_section_bridge_reach_matches_two_face_baseline`) | BU+internal+BD inserts extra node; BU/BD headwater and friction path match 2-face baseline |
+| WASM / JSON contract | `tests/wasm_json_contract.rs` | Steady BU/BD v22 fixture, unsteady BU/BD deserialize, `ineffective_flow_areas` on `CrossSection`; `api_version` 22 metadata |
+| Node WASM smoke | `examples/wasm/bridge_smoke_test.mjs`, `node_smoke_test.mjs` | Culvert Tier 1 + bridge BU/BD steady solve after `build_wasm.sh` |
 
 ```bash
 cargo test --test bridge_abutment_hecras_verification
+cargo test --test bridge_bu_bd_hecras_verification
 cargo test bridge_abutment --lib
 cargo test --test wasm_json_contract
+node examples/wasm/bridge_smoke_test.mjs   # requires pkg-node from build_wasm.sh
 ```
 
 ### 3. Culvert verification
@@ -451,7 +520,7 @@ Culvert hydraulics are covered by **76** automated tests (unit, integration, and
 | HEC-RAS ConSpan | 5/25/50 yr profiles — 10 stations each, ±0.04 ft (`hecras_conspan_profiles.json`) |
 | Point culvert benchmarks | Circular inlet/outlet, box inlet, multi-barrel, adverse grade (`tests/fixtures/culvert_point_benchmarks.json`) |
 
-WASM JSON contract tests and Python pytest cases provide additional coverage. Example steady fixture: [`tests/fixtures/wasm_steady_culvert_tier1.json`](tests/fixtures/wasm_steady_culvert_tier1.json).
+WASM JSON contract tests and Python pytest cases provide additional coverage. Example fixtures: [`tests/fixtures/wasm_steady_culvert_tier1.json`](tests/fixtures/wasm_steady_culvert_tier1.json) (culvert Tier 1), [`tests/fixtures/wasm_steady_bridge_bu_bd_v22.json`](tests/fixtures/wasm_steady_bridge_bu_bd_v22.json) (bridge BU/BD + internal cut).
 
 CI uploads coverage to [Codecov](https://codecov.io) on every push/PR (`.github/workflows/ci.yml`).
 
@@ -467,9 +536,10 @@ CI uploads coverage to [Codecov](https://codecov.io) on every push/PR (`.github/
   cargo test
   cargo test --test wasm_json_contract
   cargo test --test bridge_abutment_hecras_verification
+  cargo test --test bridge_bu_bd_hecras_verification
   cargo test --test culvert_hecras_verification
   ```
-* **WASM build + smoke test:**
+* **WASM build + smoke tests** (culvert + bridge BU/BD):
   ```bash
   bash build_wasm.sh
   ```
@@ -877,7 +947,8 @@ curve = st.compute_bridge_rating_curve({
 | [`tech_spec.md`](tech_spec.md) | Host-app architecture |
 | [`docs/wasm_api.types.ts`](docs/wasm_api.types.ts) | TypeScript types for WASM integrators (API v21) |
 | [`python/verification/bridge_abutment_hecras.json`](python/verification/bridge_abutment_hecras.json) | Per-side abutment hand-calc / WSPRO reference cases |
-| [`examples/wasm/`](examples/wasm/) | Worker reference and Node smoke test |
+| [`python/verification/bridge_bu_bd_hecras.json`](python/verification/bridge_bu_bd_hecras.json) | Legacy Yarnell + explicit BU/BD + narrow-opening WSPRO reference cases |
+| [`examples/wasm/`](examples/wasm/) | Worker reference, `steady_bridge_bu_bd_v22.json`, culvert + bridge smoke tests |
 | [`python/verification/hecras_conspan_profiles.json`](python/verification/hecras_conspan_profiles.json) | HEC-RAS WSEL reference (ConSpan 5/25/50 yr) |
 | [`tests/fixtures/culvert_point_benchmarks.json`](tests/fixtures/culvert_point_benchmarks.json) | Point culvert regression cases |
 

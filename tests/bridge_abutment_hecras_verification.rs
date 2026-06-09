@@ -47,6 +47,7 @@ fn rectangular_table(width: f64, z_bed: f64, num_slices: usize) -> GeometryTable
         unit_system: UnitSystem::Metric,
         is_overbank: None,
         blocked_obstructions: None,
+    ineffective_flow_areas: None,
     };
     xs.generate_lookup_table(num_slices)
 }

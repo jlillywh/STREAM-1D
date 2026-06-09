@@ -1,0 +1,59 @@
+{
+  "tolerance_m": 0.002,
+  "cases": [
+    {
+      "name": "legacy_center_yarnell_hecras",
+      "notes": "HEC-RAS Yarnell Class A (README §6 / test_steady_integrated_bridge): bridge at center station 50 m on 0–100 m reach interval, no explicit BU/BD cuts. Q=15 m³/s, TW=3.0 m, two 0.5 m square piers.",
+      "use_explicit_faces": false,
+      "flow_rate_cms": 15.0,
+      "downstream_wsel_m": 3.0,
+      "bridge_center_station_m": 50.0,
+      "bu_station_m": 52.0,
+      "bd_station_m": 48.0,
+      "channel_width_m": 10.0,
+      "low_chord_m": 5.0,
+      "high_chord_m": 7.0,
+      "low_flow_method": 1,
+      "pier_width_m": 0.5,
+      "num_piers": 2,
+      "expected_wsel_upstream_m": 3.00247
+    },
+    {
+      "name": "yarnell_explicit_bu_bd",
+      "notes": "Same hydraulics as legacy case but explicit BU @ 52 m and BD @ 48 m (4 m friction reach). Engine golden reference for v22 face layout.",
+      "use_explicit_faces": true,
+      "flow_rate_cms": 15.0,
+      "downstream_wsel_m": 3.0,
+      "bridge_center_station_m": 50.0,
+      "bu_station_m": 52.0,
+      "bd_station_m": 48.0,
+      "channel_width_m": 10.0,
+      "low_chord_m": 5.0,
+      "high_chord_m": 7.0,
+      "low_flow_method": 1,
+      "pier_width_m": 0.5,
+      "num_piers": 2,
+      "expected_wsel_upstream_m": 3.011803692288574,
+      "expected_friction_length_m": 4.0
+    },
+    {
+      "name": "wspro_narrow_opening_bu_bd",
+      "notes": "5 m opening at BU/BD faces (vs 10 m approach), WSPRO low-flow method. Q=15 m³/s, TW=3.0 m, BU @ 52 m, BD @ 48 m.",
+      "use_explicit_faces": true,
+      "flow_rate_cms": 15.0,
+      "downstream_wsel_m": 3.0,
+      "bridge_center_station_m": 50.0,
+      "bu_station_m": 52.0,
+      "bd_station_m": 48.0,
+      "channel_width_m": 10.0,
+      "opening_width_m": 5.0,
+      "low_chord_m": 5.0,
+      "high_chord_m": 7.0,
+      "low_flow_method": 4,
+      "pier_width_m": 0.0,
+      "num_piers": 0,
+      "expected_wsel_upstream_m": 3.0409120373535156,
+      "expected_friction_length_m": 4.0
+    }
+  ]
+}
