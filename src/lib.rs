@@ -58,6 +58,16 @@ pub fn compute_culvert_rating_curve_wasm(inputs_val: JsValue) -> Result<JsValue,
         .map_err(|e| JsValue::from_str(&format!("Failed to serialize CulvertRatingCurveResult: {}", e)))
 }
 
+/// Compute bridge upstream headwater vs discharge at fixed tailwater (rating curve).
+#[wasm_bindgen(js_name = computeBridgeRatingCurve)]
+pub fn compute_bridge_rating_curve_wasm(inputs_val: JsValue) -> Result<JsValue, JsValue> {
+    let inputs: solvers::BridgeRatingCurveInputs = serde_wasm_bindgen::from_value(inputs_val)
+        .map_err(|e| JsValue::from_str(&format!("Failed to parse BridgeRatingCurveInputs: {}", e)))?;
+    let result = solvers::compute_bridge_rating_curve(&inputs);
+    serde_wasm_bindgen::to_value(&result)
+        .map_err(|e| JsValue::from_str(&format!("Failed to serialize BridgeRatingCurveResult: {}", e)))
+}
+
 /// WebAssembly entrypoint to run an unsteady-state hydraulic routing simulation.
 /// Receives a serialized `UnsteadyInputs` JS object and returns an `UnsteadyResult` JS object.
 #[wasm_bindgen(js_name = solveUnsteady)]
@@ -104,6 +114,17 @@ pub fn compute_culvert_rating_curve_json_py(inputs_json: &str) -> PyResult<Strin
 
 #[cfg(feature = "python")]
 #[pyfunction]
+#[pyo3(name = "compute_bridge_rating_curve_json")]
+pub fn compute_bridge_rating_curve_json_py(inputs_json: &str) -> PyResult<String> {
+    let inputs: solvers::BridgeRatingCurveInputs = serde_json::from_str(inputs_json)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("Failed to parse BridgeRatingCurveInputs JSON: {}", e)))?;
+    let result = solvers::compute_bridge_rating_curve(&inputs);
+    serde_json::to_string(&result)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("Failed to serialize BridgeRatingCurveResult: {}", e)))
+}
+
+#[cfg(feature = "python")]
+#[pyfunction]
 #[pyo3(name = "solve_unsteady_json")]
 pub fn solve_unsteady_json_py(inputs_json: &str) -> PyResult<String> {
     let inputs: solvers::UnsteadyInputs = serde_json::from_str(inputs_json)
@@ -119,6 +140,7 @@ pub fn solve_unsteady_json_py(inputs_json: &str) -> PyResult<String> {
 fn _streams1d(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(solve_steady_json_py, m)?)?;
     m.add_function(wrap_pyfunction!(compute_culvert_rating_curve_json_py, m)?)?;
+    m.add_function(wrap_pyfunction!(compute_bridge_rating_curve_json_py, m)?)?;
     m.add_function(wrap_pyfunction!(solve_unsteady_json_py, m)?)?;
     Ok(())
 }

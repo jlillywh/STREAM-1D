@@ -2,8 +2,13 @@ pub mod steady;
 pub mod unsteady;
 pub mod culvert;
 pub mod bridge;
+pub mod bridge_abutment;
 pub mod junction;
 
+pub use bridge::{
+    compute_bridge_rating_curve, solve_bridge_from_params, BridgeRatingCurveInputs,
+    BridgeRatingCurveResult, BridgeSolveParams,
+};
 pub use culvert::{
     compute_culvert_rating_curve, CulvertRatingCurveInputs, CulvertRatingCurveResult,
     CulvertSolveParams,

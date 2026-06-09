@@ -1,5 +1,8 @@
 import json
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Union
+
+# Flat [s0, s1] = one block per bridge; nested [[s0, s1], [s2]] = multi-block per bridge.
+BridgeIneffectiveBlocks = Union[List[float], List[List[float]]]
 
 # Culvert shape codes (match Rust/WASM `culvert_shape_types`)
 CULVERT_SHAPE_CIRCULAR = 0
@@ -26,7 +29,8 @@ class CrossSection:
         n_stations: List[float],
         n_values: List[float],
         unit_system: str = "Metric",
-        is_overbank: Optional[List[bool]] = None
+        is_overbank: Optional[List[bool]] = None,
+        blocked_obstructions: Optional[List[Dict[str, List[float]]]] = None,
     ):
         self.station = station
         self.x = x
@@ -35,6 +39,7 @@ class CrossSection:
         self.n_values = n_values
         self.unit_system = unit_system
         self.is_overbank = is_overbank
+        self.blocked_obstructions = blocked_obstructions
 
     def to_dict(self) -> dict:
         res = {
@@ -47,6 +52,8 @@ class CrossSection:
         }
         if self.is_overbank is not None:
             res['is_overbank'] = self.is_overbank
+        if self.blocked_obstructions is not None:
+            res['blocked_obstructions'] = self.blocked_obstructions
         return res
 
 class SteadyInputs:
@@ -93,6 +100,40 @@ class SteadyInputs:
         bridge_pier_shapes: Optional[List[int]] = None,
         bridge_weir_coeffs: Optional[List[float]] = None,
         bridge_orifice_coeffs: Optional[List[float]] = None,
+        bridge_abutment_block_widths: Optional[List[float]] = None,
+        bridge_abutment_left_widths: Optional[List[float]] = None,
+        bridge_abutment_right_widths: Optional[List[float]] = None,
+        bridge_abutment_left_stations: Optional[List[float]] = None,
+        bridge_abutment_right_stations: Optional[List[float]] = None,
+        bridge_abutment_left_top_elevations: Optional[List[float]] = None,
+        bridge_abutment_right_top_elevations: Optional[List[float]] = None,
+        bridge_abutment_left_top_profile_stations: Optional[List[List[float]]] = None,
+        bridge_abutment_left_top_profile_elevations: Optional[List[List[float]]] = None,
+        bridge_abutment_right_top_profile_stations: Optional[List[List[float]]] = None,
+        bridge_abutment_right_top_profile_elevations: Optional[List[List[float]]] = None,
+        bridge_low_flow_methods: Optional[List[int]] = None,
+        bridge_high_flow_methods: Optional[List[int]] = None,
+        bridge_lengths: Optional[List[float]] = None,
+        bridge_wspro_coeffs: Optional[List[float]] = None,
+        bridge_pressure_flow_coeffs_inlet: Optional[List[float]] = None,
+        bridge_max_weir_submergence: Optional[List[float]] = None,
+        bridge_deck_stations: Optional[List[List[float]]] = None,
+        bridge_deck_low_elevations: Optional[List[List[float]]] = None,
+        bridge_deck_high_elevations: Optional[List[List[float]]] = None,
+        bridge_ineffective_left_stations: Optional[BridgeIneffectiveBlocks] = None,
+        bridge_ineffective_left_elevations: Optional[BridgeIneffectiveBlocks] = None,
+        bridge_ineffective_right_stations: Optional[BridgeIneffectiveBlocks] = None,
+        bridge_ineffective_right_elevations: Optional[BridgeIneffectiveBlocks] = None,
+        bridge_ineffective_left_stations_upstream: Optional[BridgeIneffectiveBlocks] = None,
+        bridge_ineffective_left_elevations_upstream: Optional[BridgeIneffectiveBlocks] = None,
+        bridge_ineffective_right_stations_upstream: Optional[BridgeIneffectiveBlocks] = None,
+        bridge_ineffective_right_elevations_upstream: Optional[BridgeIneffectiveBlocks] = None,
+        bridge_ineffective_left_stations_downstream: Optional[BridgeIneffectiveBlocks] = None,
+        bridge_ineffective_left_elevations_downstream: Optional[BridgeIneffectiveBlocks] = None,
+        bridge_ineffective_right_stations_downstream: Optional[BridgeIneffectiveBlocks] = None,
+        bridge_ineffective_right_elevations_downstream: Optional[BridgeIneffectiveBlocks] = None,
+        bridge_skew_angles: Optional[List[float]] = None,
+        bridge_pier_stations: Optional[List[List[float]]] = None,
         # Boundary conditions
         downstream_bc_type: Optional[int] = None,
         downstream_bc_slope: Optional[float] = None,
@@ -146,6 +187,40 @@ class SteadyInputs:
         self.bridge_pier_shapes = bridge_pier_shapes or []
         self.bridge_weir_coeffs = bridge_weir_coeffs or []
         self.bridge_orifice_coeffs = bridge_orifice_coeffs or []
+        self.bridge_abutment_block_widths = bridge_abutment_block_widths or []
+        self.bridge_abutment_left_widths = bridge_abutment_left_widths or []
+        self.bridge_abutment_right_widths = bridge_abutment_right_widths or []
+        self.bridge_abutment_left_stations = bridge_abutment_left_stations or []
+        self.bridge_abutment_right_stations = bridge_abutment_right_stations or []
+        self.bridge_abutment_left_top_elevations = bridge_abutment_left_top_elevations or []
+        self.bridge_abutment_right_top_elevations = bridge_abutment_right_top_elevations or []
+        self.bridge_abutment_left_top_profile_stations = bridge_abutment_left_top_profile_stations or []
+        self.bridge_abutment_left_top_profile_elevations = bridge_abutment_left_top_profile_elevations or []
+        self.bridge_abutment_right_top_profile_stations = bridge_abutment_right_top_profile_stations or []
+        self.bridge_abutment_right_top_profile_elevations = bridge_abutment_right_top_profile_elevations or []
+        self.bridge_low_flow_methods = bridge_low_flow_methods or []
+        self.bridge_high_flow_methods = bridge_high_flow_methods or []
+        self.bridge_lengths = bridge_lengths or []
+        self.bridge_wspro_coeffs = bridge_wspro_coeffs or []
+        self.bridge_pressure_flow_coeffs_inlet = bridge_pressure_flow_coeffs_inlet or []
+        self.bridge_max_weir_submergence = bridge_max_weir_submergence or []
+        self.bridge_deck_stations = bridge_deck_stations or []
+        self.bridge_deck_low_elevations = bridge_deck_low_elevations or []
+        self.bridge_deck_high_elevations = bridge_deck_high_elevations or []
+        self.bridge_ineffective_left_stations = bridge_ineffective_left_stations or []
+        self.bridge_ineffective_left_elevations = bridge_ineffective_left_elevations or []
+        self.bridge_ineffective_right_stations = bridge_ineffective_right_stations or []
+        self.bridge_ineffective_right_elevations = bridge_ineffective_right_elevations or []
+        self.bridge_ineffective_left_stations_upstream = bridge_ineffective_left_stations_upstream or []
+        self.bridge_ineffective_left_elevations_upstream = bridge_ineffective_left_elevations_upstream or []
+        self.bridge_ineffective_right_stations_upstream = bridge_ineffective_right_stations_upstream or []
+        self.bridge_ineffective_right_elevations_upstream = bridge_ineffective_right_elevations_upstream or []
+        self.bridge_ineffective_left_stations_downstream = bridge_ineffective_left_stations_downstream or []
+        self.bridge_ineffective_left_elevations_downstream = bridge_ineffective_left_elevations_downstream or []
+        self.bridge_ineffective_right_stations_downstream = bridge_ineffective_right_stations_downstream or []
+        self.bridge_ineffective_right_elevations_downstream = bridge_ineffective_right_elevations_downstream or []
+        self.bridge_skew_angles = bridge_skew_angles or []
+        self.bridge_pier_stations = bridge_pier_stations or []
         self.downstream_bc_type = downstream_bc_type
         self.downstream_bc_slope = downstream_bc_slope
         self.downstream_bc_rating_q = downstream_bc_rating_q
@@ -199,6 +274,40 @@ class SteadyInputs:
             'bridge_pier_shapes': self.bridge_pier_shapes,
             'bridge_weir_coeffs': self.bridge_weir_coeffs,
             'bridge_orifice_coeffs': self.bridge_orifice_coeffs,
+            'bridge_abutment_block_widths': self.bridge_abutment_block_widths,
+            'bridge_abutment_left_widths': self.bridge_abutment_left_widths,
+            'bridge_abutment_right_widths': self.bridge_abutment_right_widths,
+            'bridge_abutment_left_stations': self.bridge_abutment_left_stations,
+            'bridge_abutment_right_stations': self.bridge_abutment_right_stations,
+            'bridge_abutment_left_top_elevations': self.bridge_abutment_left_top_elevations,
+            'bridge_abutment_right_top_elevations': self.bridge_abutment_right_top_elevations,
+            'bridge_abutment_left_top_profile_stations': self.bridge_abutment_left_top_profile_stations,
+            'bridge_abutment_left_top_profile_elevations': self.bridge_abutment_left_top_profile_elevations,
+            'bridge_abutment_right_top_profile_stations': self.bridge_abutment_right_top_profile_stations,
+            'bridge_abutment_right_top_profile_elevations': self.bridge_abutment_right_top_profile_elevations,
+            'bridge_low_flow_methods': self.bridge_low_flow_methods,
+            'bridge_high_flow_methods': self.bridge_high_flow_methods,
+            'bridge_lengths': self.bridge_lengths,
+            'bridge_wspro_coeffs': self.bridge_wspro_coeffs,
+            'bridge_pressure_flow_coeffs_inlet': self.bridge_pressure_flow_coeffs_inlet,
+            'bridge_max_weir_submergence': self.bridge_max_weir_submergence,
+            'bridge_deck_stations': self.bridge_deck_stations,
+            'bridge_deck_low_elevations': self.bridge_deck_low_elevations,
+            'bridge_deck_high_elevations': self.bridge_deck_high_elevations,
+            'bridge_ineffective_left_stations': self.bridge_ineffective_left_stations,
+            'bridge_ineffective_left_elevations': self.bridge_ineffective_left_elevations,
+            'bridge_ineffective_right_stations': self.bridge_ineffective_right_stations,
+            'bridge_ineffective_right_elevations': self.bridge_ineffective_right_elevations,
+            'bridge_ineffective_left_stations_upstream': self.bridge_ineffective_left_stations_upstream,
+            'bridge_ineffective_left_elevations_upstream': self.bridge_ineffective_left_elevations_upstream,
+            'bridge_ineffective_right_stations_upstream': self.bridge_ineffective_right_stations_upstream,
+            'bridge_ineffective_right_elevations_upstream': self.bridge_ineffective_right_elevations_upstream,
+            'bridge_ineffective_left_stations_downstream': self.bridge_ineffective_left_stations_downstream,
+            'bridge_ineffective_left_elevations_downstream': self.bridge_ineffective_left_elevations_downstream,
+            'bridge_ineffective_right_stations_downstream': self.bridge_ineffective_right_stations_downstream,
+            'bridge_ineffective_right_elevations_downstream': self.bridge_ineffective_right_elevations_downstream,
+            'bridge_skew_angles': self.bridge_skew_angles,
+            'bridge_pier_stations': self.bridge_pier_stations,
         }
         if self.downstream_bc_type is not None:
             res['downstream_bc_type'] = self.downstream_bc_type
@@ -261,6 +370,49 @@ class UnsteadyInputs:
         culvert_active_barrels: Optional[List[int]] = None,
         culvert_barrel_spans: Optional[List[List[float]]] = None,
         culvert_barrel_rises: Optional[List[List[float]]] = None,
+        bridge_stations: Optional[List[float]] = None,
+        bridge_low_chords: Optional[List[float]] = None,
+        bridge_high_chords: Optional[List[float]] = None,
+        bridge_pier_widths: Optional[List[float]] = None,
+        bridge_num_piers: Optional[List[int]] = None,
+        bridge_pier_shapes: Optional[List[int]] = None,
+        bridge_weir_coeffs: Optional[List[float]] = None,
+        bridge_orifice_coeffs: Optional[List[float]] = None,
+        bridge_abutment_block_widths: Optional[List[float]] = None,
+        bridge_abutment_left_widths: Optional[List[float]] = None,
+        bridge_abutment_right_widths: Optional[List[float]] = None,
+        bridge_abutment_left_stations: Optional[List[float]] = None,
+        bridge_abutment_right_stations: Optional[List[float]] = None,
+        bridge_abutment_left_top_elevations: Optional[List[float]] = None,
+        bridge_abutment_right_top_elevations: Optional[List[float]] = None,
+        bridge_abutment_left_top_profile_stations: Optional[List[List[float]]] = None,
+        bridge_abutment_left_top_profile_elevations: Optional[List[List[float]]] = None,
+        bridge_abutment_right_top_profile_stations: Optional[List[List[float]]] = None,
+        bridge_abutment_right_top_profile_elevations: Optional[List[List[float]]] = None,
+        bridge_low_flow_methods: Optional[List[int]] = None,
+        bridge_high_flow_methods: Optional[List[int]] = None,
+        bridge_lengths: Optional[List[float]] = None,
+        bridge_wspro_coeffs: Optional[List[float]] = None,
+        bridge_pressure_flow_coeffs_inlet: Optional[List[float]] = None,
+        bridge_max_weir_submergence: Optional[List[float]] = None,
+        bridge_deck_stations: Optional[List[List[float]]] = None,
+        bridge_deck_low_elevations: Optional[List[List[float]]] = None,
+        bridge_deck_high_elevations: Optional[List[List[float]]] = None,
+        bridge_ineffective_left_stations: Optional[BridgeIneffectiveBlocks] = None,
+        bridge_ineffective_left_elevations: Optional[BridgeIneffectiveBlocks] = None,
+        bridge_ineffective_right_stations: Optional[BridgeIneffectiveBlocks] = None,
+        bridge_ineffective_right_elevations: Optional[BridgeIneffectiveBlocks] = None,
+        bridge_ineffective_left_stations_upstream: Optional[BridgeIneffectiveBlocks] = None,
+        bridge_ineffective_left_elevations_upstream: Optional[BridgeIneffectiveBlocks] = None,
+        bridge_ineffective_right_stations_upstream: Optional[BridgeIneffectiveBlocks] = None,
+        bridge_ineffective_right_elevations_upstream: Optional[BridgeIneffectiveBlocks] = None,
+        bridge_ineffective_left_stations_downstream: Optional[BridgeIneffectiveBlocks] = None,
+        bridge_ineffective_left_elevations_downstream: Optional[BridgeIneffectiveBlocks] = None,
+        bridge_ineffective_right_stations_downstream: Optional[BridgeIneffectiveBlocks] = None,
+        bridge_ineffective_right_elevations_downstream: Optional[BridgeIneffectiveBlocks] = None,
+        bridge_skew_angles: Optional[List[float]] = None,
+        bridge_pier_stations: Optional[List[List[float]]] = None,
+        structure_coupling_order: Optional[int] = None,
     ):
         self.cross_sections = cross_sections
         self.initial_wsel = initial_wsel
@@ -296,9 +448,52 @@ class UnsteadyInputs:
         self.culvert_active_barrels = culvert_active_barrels or []
         self.culvert_barrel_spans = culvert_barrel_spans or []
         self.culvert_barrel_rises = culvert_barrel_rises or []
+        self.bridge_stations = bridge_stations or []
+        self.bridge_low_chords = bridge_low_chords or []
+        self.bridge_high_chords = bridge_high_chords or []
+        self.bridge_pier_widths = bridge_pier_widths or []
+        self.bridge_num_piers = bridge_num_piers or []
+        self.bridge_pier_shapes = bridge_pier_shapes or []
+        self.bridge_weir_coeffs = bridge_weir_coeffs or []
+        self.bridge_orifice_coeffs = bridge_orifice_coeffs or []
+        self.bridge_abutment_block_widths = bridge_abutment_block_widths or []
+        self.bridge_abutment_left_widths = bridge_abutment_left_widths or []
+        self.bridge_abutment_right_widths = bridge_abutment_right_widths or []
+        self.bridge_abutment_left_stations = bridge_abutment_left_stations or []
+        self.bridge_abutment_right_stations = bridge_abutment_right_stations or []
+        self.bridge_abutment_left_top_elevations = bridge_abutment_left_top_elevations or []
+        self.bridge_abutment_right_top_elevations = bridge_abutment_right_top_elevations or []
+        self.bridge_abutment_left_top_profile_stations = bridge_abutment_left_top_profile_stations or []
+        self.bridge_abutment_left_top_profile_elevations = bridge_abutment_left_top_profile_elevations or []
+        self.bridge_abutment_right_top_profile_stations = bridge_abutment_right_top_profile_stations or []
+        self.bridge_abutment_right_top_profile_elevations = bridge_abutment_right_top_profile_elevations or []
+        self.bridge_low_flow_methods = bridge_low_flow_methods or []
+        self.bridge_high_flow_methods = bridge_high_flow_methods or []
+        self.bridge_lengths = bridge_lengths or []
+        self.bridge_wspro_coeffs = bridge_wspro_coeffs or []
+        self.bridge_pressure_flow_coeffs_inlet = bridge_pressure_flow_coeffs_inlet or []
+        self.bridge_max_weir_submergence = bridge_max_weir_submergence or []
+        self.bridge_deck_stations = bridge_deck_stations or []
+        self.bridge_deck_low_elevations = bridge_deck_low_elevations or []
+        self.bridge_deck_high_elevations = bridge_deck_high_elevations or []
+        self.bridge_ineffective_left_stations = bridge_ineffective_left_stations or []
+        self.bridge_ineffective_left_elevations = bridge_ineffective_left_elevations or []
+        self.bridge_ineffective_right_stations = bridge_ineffective_right_stations or []
+        self.bridge_ineffective_right_elevations = bridge_ineffective_right_elevations or []
+        self.bridge_ineffective_left_stations_upstream = bridge_ineffective_left_stations_upstream or []
+        self.bridge_ineffective_left_elevations_upstream = bridge_ineffective_left_elevations_upstream or []
+        self.bridge_ineffective_right_stations_upstream = bridge_ineffective_right_stations_upstream or []
+        self.bridge_ineffective_right_elevations_upstream = bridge_ineffective_right_elevations_upstream or []
+        self.bridge_ineffective_left_stations_downstream = bridge_ineffective_left_stations_downstream or []
+        self.bridge_ineffective_left_elevations_downstream = bridge_ineffective_left_elevations_downstream or []
+        self.bridge_ineffective_right_stations_downstream = bridge_ineffective_right_stations_downstream or []
+        self.bridge_ineffective_right_elevations_downstream = bridge_ineffective_right_elevations_downstream or []
+        self.bridge_skew_angles = bridge_skew_angles or []
+        self.bridge_pier_stations = bridge_pier_stations or []
+        self.structure_coupling_order = structure_coupling_order
 
     def to_dict(self) -> dict:
-        return {
+        res = {
             'cross_sections': [xs.to_dict() for xs in self.cross_sections],
             'initial_wsel': self.initial_wsel,
             'initial_q': self.initial_q,
@@ -333,7 +528,52 @@ class UnsteadyInputs:
             'culvert_active_barrels': self.culvert_active_barrels,
             'culvert_barrel_spans': self.culvert_barrel_spans,
             'culvert_barrel_rises': self.culvert_barrel_rises,
+            'bridge_stations': self.bridge_stations,
+            'bridge_low_chords': self.bridge_low_chords,
+            'bridge_high_chords': self.bridge_high_chords,
+            'bridge_pier_widths': self.bridge_pier_widths,
+            'bridge_num_piers': self.bridge_num_piers,
+            'bridge_pier_shapes': self.bridge_pier_shapes,
+            'bridge_weir_coeffs': self.bridge_weir_coeffs,
+            'bridge_orifice_coeffs': self.bridge_orifice_coeffs,
+            'bridge_abutment_block_widths': self.bridge_abutment_block_widths,
+            'bridge_abutment_left_widths': self.bridge_abutment_left_widths,
+            'bridge_abutment_right_widths': self.bridge_abutment_right_widths,
+            'bridge_abutment_left_stations': self.bridge_abutment_left_stations,
+            'bridge_abutment_right_stations': self.bridge_abutment_right_stations,
+            'bridge_abutment_left_top_elevations': self.bridge_abutment_left_top_elevations,
+            'bridge_abutment_right_top_elevations': self.bridge_abutment_right_top_elevations,
+            'bridge_abutment_left_top_profile_stations': self.bridge_abutment_left_top_profile_stations,
+            'bridge_abutment_left_top_profile_elevations': self.bridge_abutment_left_top_profile_elevations,
+            'bridge_abutment_right_top_profile_stations': self.bridge_abutment_right_top_profile_stations,
+            'bridge_abutment_right_top_profile_elevations': self.bridge_abutment_right_top_profile_elevations,
+            'bridge_low_flow_methods': self.bridge_low_flow_methods,
+            'bridge_high_flow_methods': self.bridge_high_flow_methods,
+            'bridge_lengths': self.bridge_lengths,
+            'bridge_wspro_coeffs': self.bridge_wspro_coeffs,
+            'bridge_pressure_flow_coeffs_inlet': self.bridge_pressure_flow_coeffs_inlet,
+            'bridge_max_weir_submergence': self.bridge_max_weir_submergence,
+            'bridge_deck_stations': self.bridge_deck_stations,
+            'bridge_deck_low_elevations': self.bridge_deck_low_elevations,
+            'bridge_deck_high_elevations': self.bridge_deck_high_elevations,
+            'bridge_ineffective_left_stations': self.bridge_ineffective_left_stations,
+            'bridge_ineffective_left_elevations': self.bridge_ineffective_left_elevations,
+            'bridge_ineffective_right_stations': self.bridge_ineffective_right_stations,
+            'bridge_ineffective_right_elevations': self.bridge_ineffective_right_elevations,
+            'bridge_ineffective_left_stations_upstream': self.bridge_ineffective_left_stations_upstream,
+            'bridge_ineffective_left_elevations_upstream': self.bridge_ineffective_left_elevations_upstream,
+            'bridge_ineffective_right_stations_upstream': self.bridge_ineffective_right_stations_upstream,
+            'bridge_ineffective_right_elevations_upstream': self.bridge_ineffective_right_elevations_upstream,
+            'bridge_ineffective_left_stations_downstream': self.bridge_ineffective_left_stations_downstream,
+            'bridge_ineffective_left_elevations_downstream': self.bridge_ineffective_left_elevations_downstream,
+            'bridge_ineffective_right_stations_downstream': self.bridge_ineffective_right_stations_downstream,
+            'bridge_ineffective_right_elevations_downstream': self.bridge_ineffective_right_elevations_downstream,
+            'bridge_skew_angles': self.bridge_skew_angles,
+            'bridge_pier_stations': self.bridge_pier_stations,
         }
+        if self.structure_coupling_order is not None:
+            res['structure_coupling_order'] = self.structure_coupling_order
+        return res
 
 def solve_steady(inputs: Any) -> dict:
     """
@@ -357,6 +597,19 @@ def compute_culvert_rating_curve(payload: Any) -> dict:
     if not isinstance(payload, dict):
         raise TypeError("compute_culvert_rating_curve expects a dict payload")
     json_out = _streams1d.compute_culvert_rating_curve_json(json.dumps(payload))
+    return json.loads(json_out)
+
+def compute_bridge_rating_curve(payload: Any) -> dict:
+    """
+    Upstream headwater vs discharge at fixed tailwater for one bridge opening.
+    Pass a dict with `q_values` plus bridge geometry fields (`low_chord`, `high_chord`, `tw_wsel`, etc.).
+    Per-side abutments use flattened keys: `abutment_left_width`, `abutment_right_width`,
+    `abutment_left_top_elevation`, `abutment_right_top_elevation`, optional profile arrays, or legacy
+    `abutment_block_width` for symmetric split.
+    """
+    if not isinstance(payload, dict):
+        raise TypeError("compute_bridge_rating_curve expects a dict payload")
+    json_out = _streams1d.compute_bridge_rating_curve_json(json.dumps(payload))
     return json.loads(json_out)
 
 def solve_unsteady(inputs: Any) -> dict:

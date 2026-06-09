@@ -3,7 +3,7 @@
 use serde::Serialize;
 
 /// API contract version — increment when SteadyInputs / SteadyResult fields change.
-pub const API_VERSION: u32 = 8;
+pub const API_VERSION: u32 = 21;
 
 /// Engine package version (keep in sync with `Cargo.toml`).
 pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -27,6 +27,8 @@ pub struct WasmApiMetadata {
     pub culvert_tier1_fields: CulvertTier1Fields,
     pub culvert_tier2a_fields: CulvertTier2aFields,
     pub culvert_geometry_fields: CulvertGeometryFields,
+    pub bridge_fields: BridgeFields,
+    pub structure_coupling_orders: Vec<EnumEntry>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -47,6 +49,17 @@ pub struct CulvertGeometryFields {
     pub inputs: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct BridgeFields {
+    pub inputs: Vec<String>,
+    pub unsteady_outputs: Vec<String>,
+    pub flow_regimes: Vec<String>,
+    pub rating_curve_entry_point: String,
+    /// Flattened `BridgeSolveParams` keys accepted by `computeBridgeRatingCurve` (not `bridge_*` prefixed).
+    pub rating_curve_inputs: Vec<String>,
+    pub rating_curve_outputs: Vec<String>,
+}
+
 pub fn build_api_metadata() -> WasmApiMetadata {
     WasmApiMetadata {
         engine_version: ENGINE_VERSION.to_string(),
@@ -59,6 +72,7 @@ pub fn build_api_metadata() -> WasmApiMetadata {
             "getWasmApiMetadata".to_string(),
             "validateSteadyInputs".to_string(),
             "computeCulvertRatingCurve".to_string(),
+            "computeBridgeRatingCurve".to_string(),
         ],
         field_naming: "snake_case (match Rust/Python JSON)".to_string(),
         culvert_shape_types: vec![
@@ -196,6 +210,138 @@ pub fn build_api_metadata() -> WasmApiMetadata {
                 "culvert_barrel_rises".to_string(),
             ],
         },
+        bridge_fields: BridgeFields {
+            inputs: vec![
+                "bridge_stations".to_string(),
+                "bridge_low_chords".to_string(),
+                "bridge_high_chords".to_string(),
+                "bridge_pier_widths".to_string(),
+                "bridge_num_piers".to_string(),
+                "bridge_pier_shapes".to_string(),
+                "bridge_weir_coeffs".to_string(),
+                "bridge_orifice_coeffs".to_string(),
+                "bridge_abutment_block_widths".to_string(),
+                "bridge_abutment_left_widths".to_string(),
+                "bridge_abutment_right_widths".to_string(),
+                "bridge_abutment_left_stations".to_string(),
+                "bridge_abutment_right_stations".to_string(),
+                "bridge_abutment_left_top_elevations".to_string(),
+                "bridge_abutment_right_top_elevations".to_string(),
+                "bridge_abutment_left_top_profile_stations".to_string(),
+                "bridge_abutment_left_top_profile_elevations".to_string(),
+                "bridge_abutment_right_top_profile_stations".to_string(),
+                "bridge_abutment_right_top_profile_elevations".to_string(),
+                "bridge_low_flow_methods".to_string(),
+                "bridge_high_flow_methods".to_string(),
+                "bridge_lengths".to_string(),
+                "bridge_wspro_coeffs".to_string(),
+                "bridge_pressure_flow_coeffs_inlet".to_string(),
+                "bridge_max_weir_submergence".to_string(),
+                "bridge_deck_stations".to_string(),
+                "bridge_deck_low_elevations".to_string(),
+                "bridge_deck_high_elevations".to_string(),
+                "bridge_ineffective_left_stations".to_string(),
+                "bridge_ineffective_left_elevations".to_string(),
+                "bridge_ineffective_right_stations".to_string(),
+                "bridge_ineffective_right_elevations".to_string(),
+                "bridge_ineffective_left_stations_upstream".to_string(),
+                "bridge_ineffective_left_elevations_upstream".to_string(),
+                "bridge_ineffective_right_stations_upstream".to_string(),
+                "bridge_ineffective_right_elevations_upstream".to_string(),
+                "bridge_ineffective_left_stations_downstream".to_string(),
+                "bridge_ineffective_left_elevations_downstream".to_string(),
+                "bridge_ineffective_right_stations_downstream".to_string(),
+                "bridge_ineffective_right_elevations_downstream".to_string(),
+                "bridge_skew_angles".to_string(),
+                "bridge_pier_stations".to_string(),
+            ],
+            unsteady_outputs: vec![
+                "bridge_flow_regimes".to_string(),
+                "bridge_wsel_upstream".to_string(),
+                "bridge_wsel_downstream".to_string(),
+                "bridge_head_losses".to_string(),
+            ],
+            flow_regimes: vec![
+                "low_a".to_string(),
+                "low_b".to_string(),
+                "low_c".to_string(),
+                "pressure".to_string(),
+                "weir".to_string(),
+                "energy".to_string(),
+            ],
+            rating_curve_entry_point: "computeBridgeRatingCurve".to_string(),
+            rating_curve_inputs: vec![
+                "q_values".to_string(),
+                "low_chord".to_string(),
+                "high_chord".to_string(),
+                "z_up".to_string(),
+                "z_down".to_string(),
+                "tw_wsel".to_string(),
+                "units".to_string(),
+                "pier_width".to_string(),
+                "num_piers".to_string(),
+                "pier_shape_type".to_string(),
+                "weir_coeff".to_string(),
+                "orifice_coeff".to_string(),
+                "abutment_block_width".to_string(),
+                "abutment_left_width".to_string(),
+                "abutment_right_width".to_string(),
+                "abutment_left_station".to_string(),
+                "abutment_right_station".to_string(),
+                "abutment_left_top_elevation".to_string(),
+                "abutment_right_top_elevation".to_string(),
+                "abutment_left_top_profile_stations".to_string(),
+                "abutment_left_top_profile_elevations".to_string(),
+                "abutment_right_top_profile_stations".to_string(),
+                "abutment_right_top_profile_elevations".to_string(),
+                "low_flow_method".to_string(),
+                "high_flow_method".to_string(),
+                "length".to_string(),
+                "wspro_coeff".to_string(),
+                "coeff_contraction".to_string(),
+                "coeff_expansion".to_string(),
+                "pressure_coeff_inlet".to_string(),
+                "max_weir_submergence".to_string(),
+                "skew_deg".to_string(),
+                "pier_stations".to_string(),
+                "deck_stations".to_string(),
+                "deck_low_elevations".to_string(),
+                "deck_high_elevations".to_string(),
+                "ineffective_left_stations".to_string(),
+                "ineffective_left_elevations".to_string(),
+                "ineffective_right_stations".to_string(),
+                "ineffective_right_elevations".to_string(),
+                "channel_width".to_string(),
+                "manning_n".to_string(),
+                "num_slices".to_string(),
+                "xs_up".to_string(),
+                "xs_down".to_string(),
+            ],
+            rating_curve_outputs: vec![
+                "q".to_string(),
+                "wsel".to_string(),
+                "wsel_down".to_string(),
+                "flow_regimes".to_string(),
+                "head_losses".to_string(),
+            ],
+        },
+        structure_coupling_orders: vec![
+            EnumEntry {
+                code: 0,
+                name: "CombinedDownstream".to_string(),
+                description: "Merge culverts and bridges; couple downstream structures first".to_string(),
+            },
+            EnumEntry {
+                code: 1,
+                name: "CulvertsFirst".to_string(),
+                description: "All culverts (downstream-first), then all bridges (downstream-first)".to_string(),
+            },
+            EnumEntry {
+                code: 2,
+                name: "BridgesFirst".to_string(),
+                description: "All bridges (downstream-first), then all culverts (downstream-first)".to_string(),
+            },
+        ],
     }
 }
 
@@ -208,7 +354,8 @@ mod tests {
     fn test_api_metadata_serializes() {
         let json = serde_json::to_string(&build_api_metadata()).unwrap();
         assert!(json.contains("culvert_inlet_types"));
-        assert!(json.contains("\"api_version\":8"));
+        assert!(json.contains("\"api_version\":21"));
+        assert!(json.contains("structure_coupling_orders"));
     }
 
     #[test]

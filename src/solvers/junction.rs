@@ -304,6 +304,7 @@ mod tests {
             n_values: vec![n],
             unit_system: UnitSystem::Metric,
             is_overbank: None,
+            blocked_obstructions: None,
         }
     }
 
@@ -333,6 +334,7 @@ mod tests {
             n_values: vec![n],
             unit_system: UnitSystem::USCustomary,
             is_overbank: None,
+            blocked_obstructions: None,
         }
     }
 

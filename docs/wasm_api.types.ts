@@ -5,9 +5,17 @@
  * Field names use snake_case to match Rust/Python JSON and `solveSteady()` payloads.
  *
  * Check `api_version` from `getWasmApiMetadata()` after each engine upgrade.
+ * **API v21** — per-side bridge abutment fields (`bridge_abutment_left_*` / `bridge_abutment_right_*`;
+ * rating curve uses flattened `abutment_*` keys on `BridgeRatingCurveInputs`).
  */
 
 export type UnitSystem = 'USCustomary' | 'Metric';
+
+/** One blocked-obstruction polyline (monotonic `stations`, paired `elevations`). */
+export interface BlockedObstruction {
+  stations: number[];
+  elevations: number[];
+}
 
 export interface CrossSection {
   station: number;
@@ -17,6 +25,11 @@ export interface CrossSection {
   n_values: number[];
   unit_system: UnitSystem;
   is_overbank?: boolean[];
+  /**
+   * HEC-RAS blocked obstructions — permanent fill that removes area from flow and storage.
+   * Multiple polylines may be provided per section.
+   */
+  blocked_obstructions?: BlockedObstruction[];
 }
 
 /** Culvert shape codes passed in `culvert_shape_types`. */
@@ -97,6 +110,65 @@ export interface BridgeArrays {
   bridge_pier_shapes?: number[];
   bridge_weir_coeffs?: number[];
   bridge_orifice_coeffs?: number[];
+  /** Total horizontal width blocked by left + right abutments (per bridge). */
+  bridge_abutment_block_widths?: number[];
+  /** Left abutment width per bridge (perpendicular to flow). With right widths, overrides legacy total. */
+  bridge_abutment_left_widths?: number[];
+  bridge_abutment_right_widths?: number[];
+  /** Outer-face station in opening coordinates (default: opening left/right edge). */
+  bridge_abutment_left_stations?: number[];
+  bridge_abutment_right_stations?: number[];
+  /** Constant top elevation per bridge (omit for full-height abutment). */
+  bridge_abutment_left_top_elevations?: number[];
+  bridge_abutment_right_top_elevations?: number[];
+  /** Piecewise top profile per bridge `[bridge][point]` (≥ 2 points). */
+  bridge_abutment_left_top_profile_stations?: number[][];
+  bridge_abutment_left_top_profile_elevations?: number[][];
+  bridge_abutment_right_top_profile_stations?: number[][];
+  bridge_abutment_right_top_profile_elevations?: number[][];
+  /** Low-flow method: 0 = auto, 1 = Yarnell, 2 = momentum, 3 = energy, 4 = WSPRO. */
+  bridge_low_flow_methods?: number[];
+  /** High-flow method: 0 = pressure/weir, 1 = energy. */
+  bridge_high_flow_methods?: number[];
+  /** Reach length through each bridge for friction (user units). 0 uses interval spacing. */
+  bridge_lengths?: number[];
+  /** WSPRO contracted-opening discharge coefficient C per bridge (typical 0.7–0.9). */
+  bridge_wspro_coeffs?: number[];
+  /** Sluice-gate pressure coefficient when only upstream is submerged. 0 = auto (HEC-RAS Y3/Z). */
+  bridge_pressure_flow_coeffs_inlet?: number[];
+  /** Max weir submergence ratio before switching to energy method (default 0.98). */
+  bridge_max_weir_submergence?: number[];
+  /** Deck profile stations across opening per bridge `[bridge][point]`. */
+  bridge_deck_stations?: number[][];
+  /** Low chord elevation at each deck station `[bridge][point]`. */
+  bridge_deck_low_elevations?: number[][];
+  /** High chord elevation at each deck station `[bridge][point]`. */
+  bridge_deck_high_elevations?: number[][];
+  /**
+   * Left ineffective-flow stations per bridge `[bridge][block]`.
+   * Flat `number[]` = one block per bridge (backward compatible).
+   */
+  bridge_ineffective_left_stations?: number[] | number[][];
+  /** Activation elevations for left ineffective blocks per bridge `[bridge][block]`. */
+  bridge_ineffective_left_elevations?: number[] | number[][];
+  /** Right ineffective-flow stations per bridge `[bridge][block]`. */
+  bridge_ineffective_right_stations?: number[] | number[][];
+  /** Activation elevations for right ineffective blocks per bridge `[bridge][block]`. */
+  bridge_ineffective_right_elevations?: number[] | number[][];
+  /** Upstream-face ineffective blocks (fall back to legacy shared fields). */
+  bridge_ineffective_left_stations_upstream?: number[] | number[][];
+  bridge_ineffective_left_elevations_upstream?: number[] | number[][];
+  bridge_ineffective_right_stations_upstream?: number[] | number[][];
+  bridge_ineffective_right_elevations_upstream?: number[] | number[][];
+  /** Downstream-face ineffective blocks (fall back to legacy shared fields). */
+  bridge_ineffective_left_stations_downstream?: number[] | number[][];
+  bridge_ineffective_left_elevations_downstream?: number[] | number[][];
+  bridge_ineffective_right_stations_downstream?: number[] | number[][];
+  bridge_ineffective_right_elevations_downstream?: number[] | number[][];
+  /** Skew from normal to flow, degrees per bridge (0–59°). */
+  bridge_skew_angles?: number[];
+  /** Pier centerline stations across opening per bridge `[bridge][pier]`. */
+  bridge_pier_stations?: number[][];
 }
 
 export interface SteadyInputs extends CulvertArrays, BridgeArrays {
@@ -190,6 +262,87 @@ export interface CulvertRatingCurveResult {
   barrel_froude: number[];
 }
 
+/** Inputs for `computeBridgeRatingCurve` — `q` is ignored; fields mirror standalone bridge solve params. */
+export interface BridgeRatingCurveInputs {
+  q_values: number[];
+  q?: number;
+  low_chord: number;
+  high_chord: number;
+  z_down: number;
+  z_up: number;
+  tw_wsel: number;
+  units: UnitSystem;
+  pier_width?: number;
+  num_piers?: number;
+  pier_shape_type?: number;
+  weir_coeff?: number;
+  orifice_coeff?: number;
+  abutment_block_width?: number;
+  abutment_left_width?: number;
+  abutment_right_width?: number;
+  abutment_left_station?: number;
+  abutment_right_station?: number;
+  abutment_left_top_elevation?: number;
+  abutment_right_top_elevation?: number;
+  abutment_left_top_profile_stations?: number[];
+  abutment_left_top_profile_elevations?: number[];
+  abutment_right_top_profile_stations?: number[];
+  abutment_right_top_profile_elevations?: number[];
+  low_flow_method?: number;
+  /** High-flow method: 0 = pressure/weir, 1 = energy. */
+  high_flow_method?: number;
+  length?: number;
+  wspro_coeff?: number;
+  coeff_contraction?: number;
+  coeff_expansion?: number;
+  pressure_coeff_inlet?: number;
+  max_weir_submergence?: number;
+  skew_deg?: number;
+  pier_stations?: number[];
+  deck_stations?: number[];
+  deck_low_elevations?: number[];
+  deck_high_elevations?: number[];
+  ineffective_left_station?: number;
+  ineffective_left_elevation?: number;
+  ineffective_right_station?: number;
+  ineffective_right_elevation?: number;
+  /** Multi-block left ineffective stations (falls back to scalar `ineffective_left_station`). */
+  ineffective_left_stations?: number[];
+  ineffective_left_elevations?: number[];
+  ineffective_right_stations?: number[];
+  ineffective_right_elevations?: number[];
+  ineffective_left_station_upstream?: number;
+  ineffective_left_elevation_upstream?: number;
+  ineffective_right_station_upstream?: number;
+  ineffective_right_elevation_upstream?: number;
+  ineffective_left_stations_upstream?: number[];
+  ineffective_left_elevations_upstream?: number[];
+  ineffective_right_stations_upstream?: number[];
+  ineffective_right_elevations_upstream?: number[];
+  ineffective_left_station_downstream?: number;
+  ineffective_left_elevation_downstream?: number;
+  ineffective_right_station_downstream?: number;
+  ineffective_right_elevation_downstream?: number;
+  ineffective_left_stations_downstream?: number[];
+  ineffective_left_elevations_downstream?: number[];
+  ineffective_right_stations_downstream?: number[];
+  ineffective_right_elevations_downstream?: number[];
+  channel_width?: number;
+  manning_n?: number;
+  num_slices?: number;
+  xs_up?: CrossSection;
+  xs_down?: CrossSection;
+}
+
+export interface BridgeRatingCurveResult {
+  q: number[];
+  /** Upstream headwater (same role as culvert rating `wsel`). */
+  wsel: number[];
+  wsel_down: number[];
+  flow_regimes: BridgeFlowRegime[];
+  head_losses: number[];
+}
+
 /** Culvert fields accepted by `solveUnsteady` (same keys as `SteadyInputs`, API v7+). */
 export type UnsteadyCulvertInputs = Partial<
   Pick<
@@ -219,7 +372,7 @@ export type UnsteadyCulvertInputs = Partial<
   >
 >;
 
-export interface UnsteadyInputs extends UnsteadyCulvertInputs {
+export interface UnsteadyInputs extends UnsteadyCulvertInputs, BridgeArrays {
   cross_sections: CrossSection[];
   initial_wsel: number[];
   initial_q: number[];
@@ -232,6 +385,11 @@ export interface UnsteadyInputs extends UnsteadyCulvertInputs {
   max_spacing?: number;
   coeff_contraction?: number;
   coeff_expansion?: number;
+  /**
+   * Inline structure post-step coupling order when culverts and bridges are both present:
+   * 0 = combined downstream-first (default), 1 = culverts then bridges, 2 = bridges then culverts.
+   */
+  structure_coupling_order?: number;
 }
 
 export interface UnsteadyResult {
@@ -249,7 +407,14 @@ export interface UnsteadyResult {
   culvert_barrel_depths?: number[][];
   culvert_barrel_velocities?: number[][];
   culvert_barrel_froude?: number[][];
+  /** Present when bridges are modeled — [time_step][bridge_index] */
+  bridge_flow_regimes?: BridgeFlowRegime[][];
+  bridge_wsel_upstream?: number[][];
+  bridge_wsel_downstream?: number[][];
+  bridge_head_losses?: number[][];
 }
+
+export type BridgeFlowRegime = 'low_a' | 'low_b' | 'low_c' | 'pressure' | 'weir' | 'energy';
 
 export interface WasmEnumEntry {
   code: number;
@@ -277,6 +442,16 @@ export interface WasmApiMetadata {
   culvert_geometry_fields: {
     inputs: string[];
   };
+  bridge_fields: {
+    inputs: string[];
+    unsteady_outputs: string[];
+    flow_regimes: BridgeFlowRegime[];
+    rating_curve_entry_point: string;
+    /** Flattened keys for `computeBridgeRatingCurve` (not `bridge_*` prefixed). */
+    rating_curve_inputs: string[];
+    rating_curve_outputs: string[];
+  };
+  structure_coupling_orders: WasmEnumEntry[];
 }
 
 /** Module exports from `pkg/streams1d.js` after `wasm-pack build --target web` */
@@ -288,4 +463,5 @@ export interface Streams1dWasmModule {
   solveSteady: (inputs: SteadyInputs) => SteadyResult;
   solveUnsteady: (inputs: UnsteadyInputs) => UnsteadyResult;
   computeCulvertRatingCurve: (inputs: CulvertRatingCurveInputs) => CulvertRatingCurveResult;
+  computeBridgeRatingCurve: (inputs: BridgeRatingCurveInputs) => BridgeRatingCurveResult;
 }

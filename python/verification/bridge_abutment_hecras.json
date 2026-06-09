@@ -1,0 +1,55 @@
+{
+  "tolerance_m": 0.002,
+  "cases": [
+    {
+      "name": "asymmetric_per_side_wspro",
+      "notes": "10 m rectangular channel, Q=15 m³/s, TW=2.5 m. Left abut 1 m (full height); right 4 m with top @ 2.5 m. Hand: A_eff@TW = 25 - 2.5 = 22.5 m²; WSPRO Class A headwater from energy balance.",
+      "channel_width_m": 10.0,
+      "q_cms": 15.0,
+      "tw_m": 2.5,
+      "low_chord_m": 5.0,
+      "high_chord_m": 7.0,
+      "low_flow_method": 4,
+      "bridge_length_m": 50.0,
+      "abutment_left_width_m": 1.0,
+      "abutment_right_width_m": 4.0,
+      "abutment_left_top_elevation_m": 0.0,
+      "abutment_right_top_elevation_m": 2.5,
+      "expected_a_eff_tw_m2": 22.5,
+      "expected_wsel_up_m": 2.511630058288574
+    },
+    {
+      "name": "one_sided_left_wspro",
+      "notes": "Left abutment only: 3 m full height. Hand: A_eff@TW = 25 - 7.5 = 17.5 m².",
+      "channel_width_m": 10.0,
+      "q_cms": 15.0,
+      "tw_m": 2.5,
+      "low_chord_m": 5.0,
+      "high_chord_m": 7.0,
+      "low_flow_method": 4,
+      "bridge_length_m": 50.0,
+      "abutment_left_width_m": 3.0,
+      "abutment_right_width_m": 0.0,
+      "abutment_left_top_elevation_m": 0.0,
+      "expected_a_eff_tw_m2": 17.5,
+      "expected_wsel_up_m": 2.519601583480835
+    },
+    {
+      "name": "symmetric_full_height_wspro_reference",
+      "notes": "Symmetric 2.5 m per side, full height — regression reference for same total width as asymmetric case.",
+      "channel_width_m": 10.0,
+      "q_cms": 15.0,
+      "tw_m": 2.5,
+      "low_chord_m": 5.0,
+      "high_chord_m": 7.0,
+      "low_flow_method": 4,
+      "bridge_length_m": 50.0,
+      "abutment_left_width_m": 2.5,
+      "abutment_right_width_m": 2.5,
+      "abutment_left_top_elevation_m": 0.0,
+      "abutment_right_top_elevation_m": 0.0,
+      "expected_a_eff_tw_m2": 12.5,
+      "expected_wsel_up_m": 2.5394749641418457
+    }
+  ]
+}

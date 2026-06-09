@@ -332,3 +332,92 @@ def test_compute_culvert_rating_curve():
     assert curve['wsel'][2] > curve['wsel'][0]
     assert curve['q_barrel'][0] == pytest.approx(50.0)
 
+def test_compute_bridge_rating_curve():
+    curve = st.compute_bridge_rating_curve({
+        'q_values': [10.0, 20.0, 30.0],
+        'low_chord': 5.0,
+        'high_chord': 7.0,
+        'z_down': 0.0,
+        'z_up': 0.0,
+        'tw_wsel': 2.5,
+        'units': 'Metric',
+        'low_flow_method': 3,
+        'channel_width': 10.0,
+        'manning_n': 0.03,
+    })
+    assert len(curve['q']) == 3
+    assert curve['wsel'][2] > curve['wsel'][0]
+    assert len(curve['flow_regimes']) == 3
+    assert curve['wsel_down'][0] == pytest.approx(2.5)
+
+def test_steady_inputs_bridge_abutment_per_side_serialization():
+    xs = st.CrossSection(100.0, [0.0, 0.0, 10.0, 10.0], [5.0, 0.0, 0.0, 5.0], [0.0], [0.03], 'Metric')
+    inputs = st.SteadyInputs(
+        cross_sections=[xs, st.CrossSection(0.0, [0.0, 0.0, 10.0, 10.0], [5.0, 0.0, 0.0, 5.0], [0.0], [0.03], 'Metric')],
+        flow_rate=15.0,
+        downstream_wsel=1.5,
+        bridge_stations=[50.0],
+        bridge_low_chords=[5.0],
+        bridge_high_chords=[7.0],
+        bridge_low_flow_methods=[4],
+        bridge_abutment_left_widths=[1.0],
+        bridge_abutment_right_widths=[4.0],
+        bridge_abutment_right_top_elevations=[2.5],
+        bridge_abutment_left_top_profile_stations=[[0.0, 1.0]],
+        bridge_abutment_left_top_profile_elevations=[[0.0, 0.0]],
+    )
+    d = inputs.to_dict()
+    assert d['bridge_abutment_left_widths'] == [1.0]
+    assert d['bridge_abutment_right_widths'] == [4.0]
+    assert d['bridge_abutment_right_top_elevations'] == [2.5]
+    assert d['bridge_abutment_left_top_profile_stations'] == [[0.0, 1.0]]
+
+def test_unsteady_inputs_bridge_abutment_per_side_serialization():
+    xs = st.CrossSection(100.0, [0.0, 0.0, 10.0, 10.0], [5.0, 0.0, 0.0, 5.0], [0.0], [0.03], 'Metric')
+    inputs = st.UnsteadyInputs(
+        cross_sections=[xs, st.CrossSection(0.0, [0.0, 0.0, 10.0, 10.0], [5.0, 0.0, 0.0, 5.0], [0.0], [0.03], 'Metric')],
+        initial_wsel=[2.0, 1.5],
+        initial_q=[15.0, 15.0],
+        dt=60.0,
+        num_steps=2,
+        upstream_q_hydrograph=[15.0, 15.0],
+        downstream_wsel_hydrograph=[1.5, 1.5],
+        bridge_stations=[50.0],
+        bridge_low_chords=[5.0],
+        bridge_high_chords=[7.0],
+        bridge_abutment_left_widths=[3.0],
+    )
+    d = inputs.to_dict()
+    assert d['bridge_abutment_left_widths'] == [3.0]
+
+def test_compute_bridge_rating_curve_per_side_abutments():
+    asymmetric = st.compute_bridge_rating_curve({
+        'q_values': [15.0, 20.0],
+        'low_chord': 5.0,
+        'high_chord': 7.0,
+        'z_down': 0.0,
+        'z_up': 0.0,
+        'tw_wsel': 2.5,
+        'units': 'Metric',
+        'low_flow_method': 4,
+        'channel_width': 10.0,
+        'manning_n': 0.03,
+        'abutment_left_width': 1.0,
+        'abutment_right_width': 4.0,
+        'abutment_right_top_elevation': 2.5,
+    })
+    symmetric = st.compute_bridge_rating_curve({
+        'q_values': [15.0, 20.0],
+        'low_chord': 5.0,
+        'high_chord': 7.0,
+        'z_down': 0.0,
+        'z_up': 0.0,
+        'tw_wsel': 2.5,
+        'units': 'Metric',
+        'low_flow_method': 4,
+        'abutment_block_width': 5.0,
+        'channel_width': 10.0,
+        'manning_n': 0.03,
+    })
+    assert abs(asymmetric['wsel'][0] - symmetric['wsel'][0]) > 0.01
+

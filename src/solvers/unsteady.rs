@@ -1,5 +1,5 @@
 use crate::utils::{G_METRIC, UnitSystem, FT_TO_M, Mat2, Vec2, solve_block_tridiagonal, structure_in_reach_interval};
-use crate::geometry::{CrossSection, GeometryTable};
+use crate::geometry::{CrossSection, GeometryTable, IneffectiveFlowAreas};
 
 /// Culvert model fields for unsteady routing (flattened into JSON; same keys as steady).
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -50,6 +50,287 @@ pub struct UnsteadyCulvertInputs {
     pub culvert_barrel_rises: Option<Vec<Vec<f64>>>,
 }
 
+/// Bridge model fields for unsteady routing (flattened into JSON; same keys as steady).
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct UnsteadyBridgeInputs {
+    #[serde(default)]
+    pub bridge_stations: Option<Vec<f64>>,
+    #[serde(default)]
+    pub bridge_low_chords: Option<Vec<f64>>,
+    #[serde(default)]
+    pub bridge_high_chords: Option<Vec<f64>>,
+    #[serde(default)]
+    pub bridge_pier_widths: Option<Vec<f64>>,
+    #[serde(default)]
+    pub bridge_num_piers: Option<Vec<i32>>,
+    #[serde(default)]
+    pub bridge_pier_shapes: Option<Vec<i32>>,
+    #[serde(default)]
+    pub bridge_weir_coeffs: Option<Vec<f64>>,
+    #[serde(default)]
+    pub bridge_orifice_coeffs: Option<Vec<f64>>,
+    #[serde(default)]
+    pub bridge_abutment_block_widths: Option<Vec<f64>>,
+    #[serde(default)]
+    pub bridge_abutment_left_widths: Option<Vec<f64>>,
+    #[serde(default)]
+    pub bridge_abutment_right_widths: Option<Vec<f64>>,
+    #[serde(default)]
+    pub bridge_abutment_left_stations: Option<Vec<f64>>,
+    #[serde(default)]
+    pub bridge_abutment_right_stations: Option<Vec<f64>>,
+    #[serde(default)]
+    pub bridge_abutment_left_top_elevations: Option<Vec<f64>>,
+    #[serde(default)]
+    pub bridge_abutment_right_top_elevations: Option<Vec<f64>>,
+    #[serde(default)]
+    pub bridge_abutment_left_top_profile_stations: Option<Vec<Vec<f64>>>,
+    #[serde(default)]
+    pub bridge_abutment_left_top_profile_elevations: Option<Vec<Vec<f64>>>,
+    #[serde(default)]
+    pub bridge_abutment_right_top_profile_stations: Option<Vec<Vec<f64>>>,
+    #[serde(default)]
+    pub bridge_abutment_right_top_profile_elevations: Option<Vec<Vec<f64>>>,
+    #[serde(default)]
+    pub bridge_low_flow_methods: Option<Vec<i32>>,
+    #[serde(default)]
+    pub bridge_high_flow_methods: Option<Vec<i32>>,
+    #[serde(default)]
+    pub bridge_lengths: Option<Vec<f64>>,
+    #[serde(default)]
+    pub bridge_wspro_coeffs: Option<Vec<f64>>,
+    #[serde(default)]
+    pub bridge_pressure_flow_coeffs_inlet: Option<Vec<f64>>,
+    #[serde(default)]
+    pub bridge_max_weir_submergence: Option<Vec<f64>>,
+    #[serde(default)]
+    pub bridge_deck_stations: Option<Vec<Vec<f64>>>,
+    #[serde(default)]
+    pub bridge_deck_low_elevations: Option<Vec<Vec<f64>>>,
+    #[serde(default)]
+    pub bridge_deck_high_elevations: Option<Vec<Vec<f64>>>,
+    #[serde(default, deserialize_with = "crate::geometry::ineffective_serde::deserialize_bridge_block_arrays", serialize_with = "crate::geometry::ineffective_serde::serialize_bridge_block_arrays")]
+    pub bridge_ineffective_left_stations: Option<Vec<Vec<f64>>>,
+    #[serde(default, deserialize_with = "crate::geometry::ineffective_serde::deserialize_bridge_block_arrays", serialize_with = "crate::geometry::ineffective_serde::serialize_bridge_block_arrays")]
+    pub bridge_ineffective_left_elevations: Option<Vec<Vec<f64>>>,
+    #[serde(default, deserialize_with = "crate::geometry::ineffective_serde::deserialize_bridge_block_arrays", serialize_with = "crate::geometry::ineffective_serde::serialize_bridge_block_arrays")]
+    pub bridge_ineffective_right_stations: Option<Vec<Vec<f64>>>,
+    #[serde(default, deserialize_with = "crate::geometry::ineffective_serde::deserialize_bridge_block_arrays", serialize_with = "crate::geometry::ineffective_serde::serialize_bridge_block_arrays")]
+    pub bridge_ineffective_right_elevations: Option<Vec<Vec<f64>>>,
+    #[serde(default, deserialize_with = "crate::geometry::ineffective_serde::deserialize_bridge_block_arrays", serialize_with = "crate::geometry::ineffective_serde::serialize_bridge_block_arrays")]
+    pub bridge_ineffective_left_stations_upstream: Option<Vec<Vec<f64>>>,
+    #[serde(default, deserialize_with = "crate::geometry::ineffective_serde::deserialize_bridge_block_arrays", serialize_with = "crate::geometry::ineffective_serde::serialize_bridge_block_arrays")]
+    pub bridge_ineffective_left_elevations_upstream: Option<Vec<Vec<f64>>>,
+    #[serde(default, deserialize_with = "crate::geometry::ineffective_serde::deserialize_bridge_block_arrays", serialize_with = "crate::geometry::ineffective_serde::serialize_bridge_block_arrays")]
+    pub bridge_ineffective_right_stations_upstream: Option<Vec<Vec<f64>>>,
+    #[serde(default, deserialize_with = "crate::geometry::ineffective_serde::deserialize_bridge_block_arrays", serialize_with = "crate::geometry::ineffective_serde::serialize_bridge_block_arrays")]
+    pub bridge_ineffective_right_elevations_upstream: Option<Vec<Vec<f64>>>,
+    #[serde(default, deserialize_with = "crate::geometry::ineffective_serde::deserialize_bridge_block_arrays", serialize_with = "crate::geometry::ineffective_serde::serialize_bridge_block_arrays")]
+    pub bridge_ineffective_left_stations_downstream: Option<Vec<Vec<f64>>>,
+    #[serde(default, deserialize_with = "crate::geometry::ineffective_serde::deserialize_bridge_block_arrays", serialize_with = "crate::geometry::ineffective_serde::serialize_bridge_block_arrays")]
+    pub bridge_ineffective_left_elevations_downstream: Option<Vec<Vec<f64>>>,
+    #[serde(default, deserialize_with = "crate::geometry::ineffective_serde::deserialize_bridge_block_arrays", serialize_with = "crate::geometry::ineffective_serde::serialize_bridge_block_arrays")]
+    pub bridge_ineffective_right_stations_downstream: Option<Vec<Vec<f64>>>,
+    #[serde(default, deserialize_with = "crate::geometry::ineffective_serde::deserialize_bridge_block_arrays", serialize_with = "crate::geometry::ineffective_serde::serialize_bridge_block_arrays")]
+    pub bridge_ineffective_right_elevations_downstream: Option<Vec<Vec<f64>>>,
+    #[serde(default)]
+    pub bridge_skew_angles: Option<Vec<f64>>,
+    #[serde(default)]
+    pub bridge_pier_stations: Option<Vec<Vec<f64>>>,
+}
+
+fn bridge_face_blocks(
+    face_stations: Option<&Vec<Vec<f64>>>,
+    face_elevations: Option<&Vec<Vec<f64>>>,
+    legacy_stations: Option<&Vec<Vec<f64>>>,
+    legacy_elevations: Option<&Vec<Vec<f64>>>,
+    b_idx: usize,
+) -> (Vec<f64>, Vec<f64>) {
+    let stations = face_stations
+        .and_then(|v| v.get(b_idx))
+        .filter(|blocks| !blocks.is_empty())
+        .cloned()
+        .or_else(|| legacy_stations.and_then(|v| v.get(b_idx)).cloned())
+        .unwrap_or_default();
+    let elevations = face_elevations
+        .and_then(|v| v.get(b_idx))
+        .filter(|blocks| !blocks.is_empty())
+        .cloned()
+        .or_else(|| legacy_elevations.and_then(|v| v.get(b_idx)).cloned())
+        .unwrap_or_default();
+    (stations, elevations)
+}
+
+fn bridge_ineffective_upstream_for(inputs: &UnsteadyInputs, b_idx: usize) -> Option<IneffectiveFlowAreas> {
+    let b = &inputs.bridge;
+    let (left_s, left_e) = bridge_face_blocks(
+        b.bridge_ineffective_left_stations_upstream.as_ref(),
+        b.bridge_ineffective_left_elevations_upstream.as_ref(),
+        b.bridge_ineffective_left_stations.as_ref(),
+        b.bridge_ineffective_left_elevations.as_ref(),
+        b_idx,
+    );
+    let (right_s, right_e) = bridge_face_blocks(
+        b.bridge_ineffective_right_stations_upstream.as_ref(),
+        b.bridge_ineffective_right_elevations_upstream.as_ref(),
+        b.bridge_ineffective_right_stations.as_ref(),
+        b.bridge_ineffective_right_elevations.as_ref(),
+        b_idx,
+    );
+    IneffectiveFlowAreas::from_block_pairs(&left_s, &left_e, &right_s, &right_e)
+}
+
+fn bridge_ineffective_downstream_for(inputs: &UnsteadyInputs, b_idx: usize) -> Option<IneffectiveFlowAreas> {
+    let b = &inputs.bridge;
+    let (left_s, left_e) = bridge_face_blocks(
+        b.bridge_ineffective_left_stations_downstream.as_ref(),
+        b.bridge_ineffective_left_elevations_downstream.as_ref(),
+        b.bridge_ineffective_left_stations.as_ref(),
+        b.bridge_ineffective_left_elevations.as_ref(),
+        b_idx,
+    );
+    let (right_s, right_e) = bridge_face_blocks(
+        b.bridge_ineffective_right_stations_downstream.as_ref(),
+        b.bridge_ineffective_right_elevations_downstream.as_ref(),
+        b.bridge_ineffective_right_stations.as_ref(),
+        b.bridge_ineffective_right_elevations.as_ref(),
+        b_idx,
+    );
+    IneffectiveFlowAreas::from_block_pairs(&left_s, &left_e, &right_s, &right_e)
+}
+
+fn bridge_sections_context_for(
+    inputs: &UnsteadyInputs,
+    b_idx: usize,
+    xs_up: &CrossSection,
+    xs_down: &CrossSection,
+) -> crate::solvers::bridge::BridgeSectionContext {
+    let b = &inputs.bridge;
+    crate::solvers::bridge::BridgeSectionContext {
+        ineffective_up: bridge_ineffective_upstream_for(inputs, b_idx),
+        ineffective_down: bridge_ineffective_downstream_for(inputs, b_idx),
+        xs_up: Some(xs_up.clone()),
+        xs_down: Some(xs_down.clone()),
+        skew_deg: b
+            .bridge_skew_angles
+            .as_ref()
+            .and_then(|v| v.get(b_idx))
+            .copied()
+            .unwrap_or(0.0),
+        pier_stations: b
+            .bridge_pier_stations
+            .as_ref()
+            .and_then(|v| v.get(b_idx))
+            .cloned(),
+    }
+}
+
+fn bridge_deck_profile_for(
+    inputs: &UnsteadyInputs,
+    b_idx: usize,
+    raw_units: UnitSystem,
+) -> Option<crate::solvers::bridge::BridgeDeckProfile> {
+    let b = &inputs.bridge;
+    let low_chord = b
+        .bridge_low_chords
+        .as_ref()
+        .and_then(|v| v.get(b_idx))
+        .copied()
+        .unwrap_or(0.0);
+    let high_chord = b
+        .bridge_high_chords
+        .as_ref()
+        .and_then(|v| v.get(b_idx))
+        .copied()
+        .unwrap_or(0.0);
+    crate::solvers::bridge::build_bridge_deck_profile(
+        low_chord,
+        high_chord,
+        b.bridge_deck_stations
+            .as_ref()
+            .and_then(|v| v.get(b_idx))
+            .map(|s| s.as_slice()),
+        b.bridge_deck_low_elevations
+            .as_ref()
+            .and_then(|v| v.get(b_idx))
+            .map(|s| s.as_slice()),
+        b.bridge_deck_high_elevations
+            .as_ref()
+            .and_then(|v| v.get(b_idx))
+            .map(|s| s.as_slice()),
+        raw_units,
+    )
+}
+
+fn bridge_coupling_for(inputs: &UnsteadyInputs, b_idx: usize) -> crate::solvers::bridge::BridgeCouplingParams {
+    let b = &inputs.bridge;
+    let abutment = crate::solvers::bridge_abutment::abutment_user_input_from_steady(
+        b.bridge_abutment_block_widths
+            .as_ref()
+            .and_then(|v| v.get(b_idx))
+            .copied(),
+        b.bridge_abutment_left_widths.as_ref(),
+        b.bridge_abutment_right_widths.as_ref(),
+        b.bridge_abutment_left_stations.as_ref(),
+        b.bridge_abutment_right_stations.as_ref(),
+        b.bridge_abutment_left_top_elevations.as_ref(),
+        b.bridge_abutment_right_top_elevations.as_ref(),
+        b.bridge_abutment_left_top_profile_stations.as_ref(),
+        b.bridge_abutment_left_top_profile_elevations.as_ref(),
+        b.bridge_abutment_right_top_profile_stations.as_ref(),
+        b.bridge_abutment_right_top_profile_elevations.as_ref(),
+        b_idx,
+    );
+    crate::solvers::bridge::BridgeCouplingParams {
+        abutment,
+        low_flow_method: inputs
+            .bridge
+            .bridge_low_flow_methods
+            .as_ref()
+            .and_then(|v| v.get(b_idx))
+            .copied()
+            .unwrap_or(0),
+        high_flow_method: inputs
+            .bridge
+            .bridge_high_flow_methods
+            .as_ref()
+            .and_then(|v| v.get(b_idx))
+            .copied()
+            .unwrap_or(0),
+        length: inputs
+            .bridge
+            .bridge_lengths
+            .as_ref()
+            .and_then(|v| v.get(b_idx))
+            .copied()
+            .unwrap_or(0.0),
+        wspro_coeff: inputs
+            .bridge
+            .bridge_wspro_coeffs
+            .as_ref()
+            .and_then(|v| v.get(b_idx))
+            .copied()
+            .unwrap_or(0.8),
+        coeff_contraction: inputs.coeff_contraction.unwrap_or(0.1),
+        coeff_expansion: inputs.coeff_expansion.unwrap_or(0.3),
+        pressure_coeff_inlet: inputs
+            .bridge
+            .bridge_pressure_flow_coeffs_inlet
+            .as_ref()
+            .and_then(|v| v.get(b_idx))
+            .copied()
+            .unwrap_or(0.0),
+        pressure_coeff_submerged: 0.8,
+        max_weir_submergence: inputs
+            .bridge
+            .bridge_max_weir_submergence
+            .as_ref()
+            .and_then(|v| v.get(b_idx))
+            .copied()
+            .unwrap_or(0.98),
+    }
+}
+
 /// Input parameters for the unsteady-state solver.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct UnsteadyInputs {
@@ -82,6 +363,17 @@ pub struct UnsteadyInputs {
     #[serde(default)]
     #[serde(flatten)]
     pub culvert: UnsteadyCulvertInputs,
+
+    /// Bridge model inputs (same JSON keys as steady `SteadyInputs`).
+    #[serde(default)]
+    #[serde(flatten)]
+    pub bridge: UnsteadyBridgeInputs,
+
+    /// How inline culverts and bridges are coupled each post-step pass:
+    /// `0` = combined downstream-first (default), `1` = all culverts then all bridges,
+    /// `2` = all bridges then all culverts.
+    #[serde(default)]
+    pub structure_coupling_order: Option<i32>,
 }
 
 /// Output results from the unsteady-state solver.
@@ -115,30 +407,130 @@ pub struct UnsteadyResult {
     pub culvert_barrel_velocities: Option<Vec<Vec<f64>>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub culvert_barrel_froude: Option<Vec<Vec<f64>>>,
+    /// Per-bridge flow regime each time step (`low_a` | `low_b` | `low_c` | `pressure` | `weir`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bridge_flow_regimes: Option<Vec<Vec<String>>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bridge_wsel_upstream: Option<Vec<Vec<f64>>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bridge_wsel_downstream: Option<Vec<Vec<f64>>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bridge_head_losses: Option<Vec<Vec<f64>>>,
 }
 
 const CULVERT_HW_MAX_ITER: usize = 12;
+const BRIDGE_HW_MAX_ITER: usize = 8;
 const CULVERT_HW_TOL_FT: f64 = 0.001;
 const CULVERT_HW_TOL_M: f64 = 0.0003;
 const CULVERT_STEP_MAX_PASSES: usize = 5;
 const CULVERT_STEP_TOL_FT: f64 = 0.01;
 const CULVERT_STEP_TOL_M: f64 = 0.003;
 
-fn find_culvert_intervals(
-    culvert_stations: &[f64],
+/// Post-step coupling order when both culverts and bridges are present.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+enum StructureCouplingOrder {
+    /// Merge culverts and bridges; process by reach interval downstream-first.
+    CombinedDownstream = 0,
+    /// Legacy: all culverts (downstream-first), then all bridges (downstream-first).
+    CulvertsFirst = 1,
+    /// All bridges (downstream-first), then all culverts (downstream-first).
+    BridgesFirst = 2,
+}
+
+impl StructureCouplingOrder {
+    fn from_i32(val: i32) -> Self {
+        match val {
+            1 => StructureCouplingOrder::CulvertsFirst,
+            2 => StructureCouplingOrder::BridgesFirst,
+            _ => StructureCouplingOrder::CombinedDownstream,
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+enum StructureKind {
+    Culvert,
+    Bridge,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+struct CoupledStructure {
+    interval_i: usize,
+    kind: StructureKind,
+    idx: usize,
+}
+
+struct StructureCouplingStepResults {
+    culvert: Option<Vec<crate::solvers::culvert::CulvertSolveResult>>,
+    bridge: Option<Vec<crate::solvers::bridge::BridgeSolveResult>>,
+}
+
+fn build_coupled_structure_order(
+    culvert_intervals: &[(usize, usize)],
+    bridge_intervals: &[(usize, usize)],
+    order: StructureCouplingOrder,
+) -> Vec<CoupledStructure> {
+    let mut culverts: Vec<CoupledStructure> = culvert_intervals
+        .iter()
+        .map(|&(i, idx)| CoupledStructure {
+            interval_i: i,
+            kind: StructureKind::Culvert,
+            idx,
+        })
+        .collect();
+    let mut bridges: Vec<CoupledStructure> = bridge_intervals
+        .iter()
+        .map(|&(i, idx)| CoupledStructure {
+            interval_i: i,
+            kind: StructureKind::Bridge,
+            idx,
+        })
+        .collect();
+
+    match order {
+        StructureCouplingOrder::CombinedDownstream => {
+            culverts.append(&mut bridges);
+            culverts.sort_by(|a, b| {
+                b.interval_i
+                    .cmp(&a.interval_i)
+                    .then_with(|| match (a.kind, b.kind) {
+                        (StructureKind::Culvert, StructureKind::Bridge) => std::cmp::Ordering::Less,
+                        (StructureKind::Bridge, StructureKind::Culvert) => std::cmp::Ordering::Greater,
+                        _ => std::cmp::Ordering::Equal,
+                    })
+            });
+            culverts
+        }
+        StructureCouplingOrder::CulvertsFirst => {
+            culverts.sort_by(|a, b| b.interval_i.cmp(&a.interval_i));
+            bridges.sort_by(|a, b| b.interval_i.cmp(&a.interval_i));
+            culverts.append(&mut bridges);
+            culverts
+        }
+        StructureCouplingOrder::BridgesFirst => {
+            bridges.sort_by(|a, b| b.interval_i.cmp(&a.interval_i));
+            culverts.sort_by(|a, b| b.interval_i.cmp(&a.interval_i));
+            bridges.append(&mut culverts);
+            bridges
+        }
+    }
+}
+
+fn find_structure_intervals(
+    structure_stations: &[f64],
     densified_stations: &[f64],
     raw_units: UnitSystem,
 ) -> Vec<(usize, usize)> {
     let mut out = Vec::new();
-    for (c_idx, &c_st) in culvert_stations.iter().enumerate() {
-        let c_st_metric = if raw_units == UnitSystem::USCustomary {
-            c_st * FT_TO_M
+    for (s_idx, &s_st) in structure_stations.iter().enumerate() {
+        let s_st_metric = if raw_units == UnitSystem::USCustomary {
+            s_st * FT_TO_M
         } else {
-            c_st
+            s_st
         };
         for i in 0..densified_stations.len().saturating_sub(1) {
-            if structure_in_reach_interval(c_st_metric, &densified_stations, i) {
-                out.push((i, c_idx));
+            if structure_in_reach_interval(s_st_metric, &densified_stations, i) {
+                out.push((i, s_idx));
                 break;
             }
         }
@@ -313,22 +705,8 @@ fn converge_culvert_headwater(
     result
 }
 
-fn apply_culvert_internal_boundaries(
-    inputs: &UnsteadyInputs,
-    raw_units: UnitSystem,
-    densified_tables: &[GeometryTable],
-    densified_z_mins: &[f64],
-    y_metric: &mut [f64],
-    q_metric: &[f64],
-    culvert_intervals: &[(usize, usize)],
-) -> Option<Vec<crate::solvers::culvert::CulvertSolveResult>> {
-    let num_culverts = inputs.culvert.culvert_stations.as_ref().map(|s| s.len()).unwrap_or(0);
-    if num_culverts == 0 || culvert_intervals.is_empty() {
-        return None;
-    }
-
-    let step_tol = culvert_step_tolerance(raw_units);
-    let mut step_results = vec![
+fn empty_culvert_step_results(num_culverts: usize) -> Vec<crate::solvers::culvert::CulvertSolveResult> {
+    vec![
         crate::solvers::culvert::CulvertSolveResult {
             wsel: 0.0,
             control_type: String::new(),
@@ -341,15 +719,62 @@ fn apply_culvert_internal_boundaries(
             barrel_froude: 0.0,
         };
         num_culverts
-    ];
+    ]
+}
 
-    let mut ordered = culvert_intervals.to_vec();
-    ordered.sort_by(|a, b| b.0.cmp(&a.0));
+fn empty_bridge_step_results(num_bridges: usize) -> Vec<crate::solvers::bridge::BridgeSolveResult> {
+    vec![
+        crate::solvers::bridge::BridgeSolveResult {
+            wsel_up: 0.0,
+            wsel_down: 0.0,
+            head_loss: 0.0,
+            flow_regime: String::new(),
+        };
+        num_bridges
+    ]
+}
+
+fn apply_structure_internal_boundaries(
+    inputs: &UnsteadyInputs,
+    raw_units: UnitSystem,
+    densified_tables: &[GeometryTable],
+    densified_xs: &[CrossSection],
+    densified_z_mins: &[f64],
+    densified_stations: &[f64],
+    y_metric: &mut [f64],
+    q_metric: &[f64],
+    culvert_intervals: &[(usize, usize)],
+    bridge_intervals: &[(usize, usize)],
+) -> StructureCouplingStepResults {
+    let num_culverts = inputs.culvert.culvert_stations.as_ref().map(|s| s.len()).unwrap_or(0);
+    let num_bridges = inputs.bridge.bridge_stations.as_ref().map(|s| s.len()).unwrap_or(0);
+    let order = StructureCouplingOrder::from_i32(inputs.structure_coupling_order.unwrap_or(0));
+    let coupled = build_coupled_structure_order(culvert_intervals, bridge_intervals, order);
+
+    if coupled.is_empty() {
+        return StructureCouplingStepResults {
+            culvert: None,
+            bridge: None,
+        };
+    }
+
+    let step_tol = culvert_step_tolerance(raw_units);
+    let mut culvert_results = if num_culverts > 0 {
+        empty_culvert_step_results(num_culverts)
+    } else {
+        Vec::new()
+    };
+    let mut bridge_results = if num_bridges > 0 {
+        empty_bridge_step_results(num_bridges)
+    } else {
+        Vec::new()
+    };
 
     for _pass in 0..CULVERT_STEP_MAX_PASSES {
         let mut max_delta = 0.0_f64;
 
-        for &(i, c_idx) in &ordered {
+        for structure in &coupled {
+            let i = structure.interval_i;
             let tw_wsel_user = if raw_units == UnitSystem::USCustomary {
                 y_metric[i + 1] / FT_TO_M
             } else {
@@ -361,26 +786,52 @@ fn apply_culvert_internal_boundaries(
                 y_metric[i]
             };
 
-            let result = converge_culvert_headwater(
-                inputs,
-                c_idx,
-                i,
-                raw_units,
-                densified_tables,
-                densified_z_mins,
-                y_metric,
-                q_metric,
-                tw_wsel_user,
-                prev_hw_user,
-            );
-            max_delta = max_delta.max((result.wsel - prev_hw_user).abs());
-
-            y_metric[i] = if raw_units == UnitSystem::USCustomary {
-                result.wsel * FT_TO_M
-            } else {
-                result.wsel
-            };
-            step_results[c_idx] = result;
+            match structure.kind {
+                StructureKind::Culvert => {
+                    let result = converge_culvert_headwater(
+                        inputs,
+                        structure.idx,
+                        i,
+                        raw_units,
+                        densified_tables,
+                        densified_z_mins,
+                        y_metric,
+                        q_metric,
+                        tw_wsel_user,
+                        prev_hw_user,
+                    );
+                    max_delta = max_delta.max((result.wsel - prev_hw_user).abs());
+                    y_metric[i] = if raw_units == UnitSystem::USCustomary {
+                        result.wsel * FT_TO_M
+                    } else {
+                        result.wsel
+                    };
+                    culvert_results[structure.idx] = result;
+                }
+                StructureKind::Bridge => {
+                    let interval_length_m = densified_stations[i] - densified_stations[i + 1];
+                    let result = converge_bridge_headwater(
+                        inputs,
+                        structure.idx,
+                        i,
+                        raw_units,
+                        densified_tables,
+                        densified_xs,
+                        densified_z_mins,
+                        q_metric,
+                        tw_wsel_user,
+                        prev_hw_user,
+                        interval_length_m,
+                    );
+                    max_delta = max_delta.max((result.wsel_up - prev_hw_user).abs());
+                    y_metric[i] = if raw_units == UnitSystem::USCustomary {
+                        result.wsel_up * FT_TO_M
+                    } else {
+                        result.wsel_up
+                    };
+                    bridge_results[structure.idx] = result;
+                }
+            }
         }
 
         if max_delta <= step_tol {
@@ -388,7 +839,136 @@ fn apply_culvert_internal_boundaries(
         }
     }
 
-    Some(step_results)
+    StructureCouplingStepResults {
+        culvert: if num_culverts > 0 && !culvert_intervals.is_empty() {
+            Some(culvert_results)
+        } else {
+            None
+        },
+        bridge: if num_bridges > 0 && !bridge_intervals.is_empty() {
+            Some(bridge_results)
+        } else {
+            None
+        },
+    }
+}
+
+fn bridge_hw_tolerance(raw_units: UnitSystem) -> f64 {
+    culvert_hw_tolerance(raw_units)
+}
+
+fn converge_bridge_headwater(
+    inputs: &UnsteadyInputs,
+    b_idx: usize,
+    i: usize,
+    raw_units: UnitSystem,
+    densified_tables: &[GeometryTable],
+    densified_xs: &[CrossSection],
+    densified_z_mins: &[f64],
+    q_metric: &[f64],
+    tw_wsel_user: f64,
+    initial_hw: f64,
+    interval_length_m: f64,
+) -> crate::solvers::bridge::BridgeSolveResult {
+    let b = &inputs.bridge;
+    let low_chord = b.bridge_low_chords.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0.0);
+    let high_chord = b.bridge_high_chords.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0.0);
+    let pier_width = b.bridge_pier_widths.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0.0);
+    let num_piers = b.bridge_num_piers.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0);
+    let pier_shape = b.bridge_pier_shapes.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0);
+    let weir_coeff = b
+        .bridge_weir_coeffs
+        .as_ref()
+        .and_then(|v| v.get(b_idx))
+        .copied()
+        .unwrap_or(if raw_units == UnitSystem::USCustomary {
+            2.6
+        } else {
+            1.44
+        });
+    let orifice_coeff = b
+        .bridge_orifice_coeffs
+        .as_ref()
+        .and_then(|v| v.get(b_idx))
+        .copied()
+        .unwrap_or(0.5);
+    let coupling = bridge_coupling_for(inputs, b_idx);
+    let deck = bridge_deck_profile_for(inputs, b_idx, raw_units);
+    let deck_ref = deck.as_ref();
+    let sections = bridge_sections_context_for(
+        inputs,
+        b_idx,
+        &densified_xs[i],
+        &densified_xs[i + 1],
+    );
+
+    let bed_z_down = if raw_units == UnitSystem::USCustomary {
+        densified_z_mins[i + 1] / FT_TO_M
+    } else {
+        densified_z_mins[i + 1]
+    };
+    let bed_z_up = if raw_units == UnitSystem::USCustomary {
+        densified_z_mins[i] / FT_TO_M
+    } else {
+        densified_z_mins[i]
+    };
+
+    let q_user = if raw_units == UnitSystem::USCustomary {
+        q_metric[i] / crate::utils::CFS_TO_CMS
+    } else {
+        q_metric[i]
+    };
+
+    let tol = bridge_hw_tolerance(raw_units);
+    let mut wsel_up_user = initial_hw;
+    let mut result = crate::solvers::bridge::solve_bridge_coupled(
+        q_user,
+        low_chord,
+        high_chord,
+        pier_width,
+        num_piers,
+        pier_shape,
+        weir_coeff,
+        orifice_coeff,
+        bed_z_down,
+        bed_z_up,
+        tw_wsel_user,
+        raw_units,
+        &densified_tables[i],
+        &densified_tables[i + 1],
+        &coupling,
+        interval_length_m,
+        deck_ref,
+        Some(&sections),
+    );
+
+    for _ in 0..BRIDGE_HW_MAX_ITER {
+        result = crate::solvers::bridge::solve_bridge_coupled(
+            q_user,
+            low_chord,
+            high_chord,
+            pier_width,
+            num_piers,
+            pier_shape,
+            weir_coeff,
+            orifice_coeff,
+            bed_z_down,
+            bed_z_up,
+            tw_wsel_user,
+            raw_units,
+            &densified_tables[i],
+            &densified_tables[i + 1],
+            &coupling,
+            interval_length_m,
+            deck_ref,
+            Some(&sections),
+        );
+        if (result.wsel_up - wsel_up_user).abs() <= tol {
+            break;
+        }
+        wsel_up_user = result.wsel_up;
+    }
+    result
 }
 
 /// Helper to compute numerical derivative of conveyance K with respect to elevation y.
@@ -659,14 +1239,93 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
             culvert_active_barrels: inputs.culvert.culvert_active_barrels.clone(),
             culvert_barrel_spans: inputs.culvert.culvert_barrel_spans.clone(),
             culvert_barrel_rises: inputs.culvert.culvert_barrel_rises.clone(),
-            bridge_stations: None,
-            bridge_low_chords: None,
-            bridge_high_chords: None,
-            bridge_pier_widths: None,
-            bridge_num_piers: None,
-            bridge_pier_shapes: None,
-            bridge_weir_coeffs: None,
-            bridge_orifice_coeffs: None,
+            bridge_stations: inputs.bridge.bridge_stations.clone(),
+            bridge_low_chords: inputs.bridge.bridge_low_chords.clone(),
+            bridge_high_chords: inputs.bridge.bridge_high_chords.clone(),
+            bridge_pier_widths: inputs.bridge.bridge_pier_widths.clone(),
+            bridge_num_piers: inputs.bridge.bridge_num_piers.clone(),
+            bridge_pier_shapes: inputs.bridge.bridge_pier_shapes.clone(),
+            bridge_weir_coeffs: inputs.bridge.bridge_weir_coeffs.clone(),
+            bridge_orifice_coeffs: inputs.bridge.bridge_orifice_coeffs.clone(),
+            bridge_abutment_block_widths: inputs.bridge.bridge_abutment_block_widths.clone(),
+            bridge_abutment_left_widths: inputs.bridge.bridge_abutment_left_widths.clone(),
+            bridge_abutment_right_widths: inputs.bridge.bridge_abutment_right_widths.clone(),
+            bridge_abutment_left_stations: inputs.bridge.bridge_abutment_left_stations.clone(),
+            bridge_abutment_right_stations: inputs.bridge.bridge_abutment_right_stations.clone(),
+            bridge_abutment_left_top_elevations: inputs
+                .bridge
+                .bridge_abutment_left_top_elevations
+                .clone(),
+            bridge_abutment_right_top_elevations: inputs
+                .bridge
+                .bridge_abutment_right_top_elevations
+                .clone(),
+            bridge_abutment_left_top_profile_stations: inputs
+                .bridge
+                .bridge_abutment_left_top_profile_stations
+                .clone(),
+            bridge_abutment_left_top_profile_elevations: inputs
+                .bridge
+                .bridge_abutment_left_top_profile_elevations
+                .clone(),
+            bridge_abutment_right_top_profile_stations: inputs
+                .bridge
+                .bridge_abutment_right_top_profile_stations
+                .clone(),
+            bridge_abutment_right_top_profile_elevations: inputs
+                .bridge
+                .bridge_abutment_right_top_profile_elevations
+                .clone(),
+            bridge_low_flow_methods: inputs.bridge.bridge_low_flow_methods.clone(),
+            bridge_high_flow_methods: inputs.bridge.bridge_high_flow_methods.clone(),
+            bridge_lengths: inputs.bridge.bridge_lengths.clone(),
+            bridge_wspro_coeffs: inputs.bridge.bridge_wspro_coeffs.clone(),
+            bridge_pressure_flow_coeffs_inlet: inputs
+                .bridge
+                .bridge_pressure_flow_coeffs_inlet
+                .clone(),
+            bridge_max_weir_submergence: inputs.bridge.bridge_max_weir_submergence.clone(),
+            bridge_deck_stations: inputs.bridge.bridge_deck_stations.clone(),
+            bridge_deck_low_elevations: inputs.bridge.bridge_deck_low_elevations.clone(),
+            bridge_deck_high_elevations: inputs.bridge.bridge_deck_high_elevations.clone(),
+            bridge_ineffective_left_stations: inputs.bridge.bridge_ineffective_left_stations.clone(),
+            bridge_ineffective_left_elevations: inputs.bridge.bridge_ineffective_left_elevations.clone(),
+            bridge_ineffective_right_stations: inputs.bridge.bridge_ineffective_right_stations.clone(),
+            bridge_ineffective_right_elevations: inputs.bridge.bridge_ineffective_right_elevations.clone(),
+            bridge_ineffective_left_stations_upstream: inputs
+                .bridge
+                .bridge_ineffective_left_stations_upstream
+                .clone(),
+            bridge_ineffective_left_elevations_upstream: inputs
+                .bridge
+                .bridge_ineffective_left_elevations_upstream
+                .clone(),
+            bridge_ineffective_right_stations_upstream: inputs
+                .bridge
+                .bridge_ineffective_right_stations_upstream
+                .clone(),
+            bridge_ineffective_right_elevations_upstream: inputs
+                .bridge
+                .bridge_ineffective_right_elevations_upstream
+                .clone(),
+            bridge_ineffective_left_stations_downstream: inputs
+                .bridge
+                .bridge_ineffective_left_stations_downstream
+                .clone(),
+            bridge_ineffective_left_elevations_downstream: inputs
+                .bridge
+                .bridge_ineffective_left_elevations_downstream
+                .clone(),
+            bridge_ineffective_right_stations_downstream: inputs
+                .bridge
+                .bridge_ineffective_right_stations_downstream
+                .clone(),
+            bridge_ineffective_right_elevations_downstream: inputs
+                .bridge
+                .bridge_ineffective_right_elevations_downstream
+                .clone(),
+            bridge_skew_angles: inputs.bridge.bridge_skew_angles.clone(),
+            bridge_pier_stations: inputs.bridge.bridge_pier_stations.clone(),
             ..Default::default()
         };
         let steady_res = crate::solvers::steady::solve_steady(&steady_inputs);
@@ -756,20 +1415,32 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
         .culvert
         .culvert_stations
         .as_ref()
-        .map(|stations| find_culvert_intervals(stations, &densified_stations, raw_units))
+        .map(|stations| find_structure_intervals(stations, &densified_stations, raw_units))
+        .unwrap_or_default();
+
+    let bridge_intervals = inputs
+        .bridge
+        .bridge_stations
+        .as_ref()
+        .map(|stations| find_structure_intervals(stations, &densified_stations, raw_units))
         .unwrap_or_default();
 
     let track_culvert_diagnostics = !culvert_intervals.is_empty();
+    let track_bridge_diagnostics = !bridge_intervals.is_empty();
+    let has_structures = track_culvert_diagnostics || track_bridge_diagnostics;
 
-    if track_culvert_diagnostics {
-        apply_culvert_internal_boundaries(
+    if has_structures {
+        apply_structure_internal_boundaries(
             inputs,
             raw_units,
             &densified_tables,
+            &densified_xs,
             &densified_z_mins,
+            &densified_stations,
             &mut densified_y_current,
             &densified_q_current,
             &culvert_intervals,
+            &bridge_intervals,
         );
     }
 
@@ -873,6 +1544,14 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
         track_culvert_diagnostics.then(|| Vec::with_capacity(inputs.num_steps));
     let mut history_culvert_barrel_froude: Option<Vec<Vec<f64>>> =
         track_culvert_diagnostics.then(|| Vec::with_capacity(inputs.num_steps));
+    let mut history_bridge_flow_regimes: Option<Vec<Vec<String>>> =
+        track_bridge_diagnostics.then(|| Vec::with_capacity(inputs.num_steps));
+    let mut history_bridge_wsel_upstream: Option<Vec<Vec<f64>>> =
+        track_bridge_diagnostics.then(|| Vec::with_capacity(inputs.num_steps));
+    let mut history_bridge_wsel_downstream: Option<Vec<Vec<f64>>> =
+        track_bridge_diagnostics.then(|| Vec::with_capacity(inputs.num_steps));
+    let mut history_bridge_head_losses: Option<Vec<Vec<f64>>> =
+        track_bridge_diagnostics.then(|| Vec::with_capacity(inputs.num_steps));
 
     // Loop through time steps
     for step in 0..inputs.num_steps {
@@ -902,19 +1581,23 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
             densified_y_current = y_next;
             densified_q_current = q_next;
 
-            let culvert_step_results = apply_culvert_internal_boundaries(
+             let structure_step_results = apply_structure_internal_boundaries(
                 inputs,
                 raw_units,
                 &densified_tables,
+                &densified_xs,
                 &densified_z_mins,
+                &densified_stations,
                 &mut densified_y_current,
                 &densified_q_current,
                 &culvert_intervals,
+                &bridge_intervals,
             );
 
-            if let (Some(step_results), Some(ctrl)) =
-                (culvert_step_results.as_ref(), history_culvert_control_types.as_mut())
-            {
+            if let (Some(step_results), Some(ctrl)) = (
+                structure_step_results.culvert.as_ref(),
+                history_culvert_control_types.as_mut(),
+            ) {
                 ctrl.push(step_results.iter().map(|r| r.control_type.clone()).collect());
                 history_culvert_wsel_inlet
                     .as_mut()
@@ -944,6 +1627,25 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
                     .as_mut()
                     .unwrap()
                     .push(step_results.iter().map(|r| r.barrel_froude).collect());
+            }
+
+            if let (Some(step_results), Some(regimes)) = (
+                structure_step_results.bridge.as_ref(),
+                history_bridge_flow_regimes.as_mut(),
+            ) {
+                regimes.push(step_results.iter().map(|r| r.flow_regime.clone()).collect());
+                history_bridge_wsel_upstream
+                    .as_mut()
+                    .unwrap()
+                    .push(step_results.iter().map(|r| r.wsel_up).collect());
+                history_bridge_wsel_downstream
+                    .as_mut()
+                    .unwrap()
+                    .push(step_results.iter().map(|r| r.wsel_down).collect());
+                history_bridge_head_losses
+                    .as_mut()
+                    .unwrap()
+                    .push(step_results.iter().map(|r| r.head_loss).collect());
             }
 
             // Clamp solved WSEL to prevent dry nodes/negative depth, and limit velocity
@@ -1017,6 +1719,10 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
         culvert_barrel_depths: history_culvert_barrel_depths,
         culvert_barrel_velocities: history_culvert_barrel_velocities,
         culvert_barrel_froude: history_culvert_barrel_froude,
+        bridge_flow_regimes: history_bridge_flow_regimes,
+        bridge_wsel_upstream: history_bridge_wsel_upstream,
+        bridge_wsel_downstream: history_bridge_wsel_downstream,
+        bridge_head_losses: history_bridge_head_losses,
     }
 }
 
@@ -1038,6 +1744,7 @@ mod tests {
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
             is_overbank: None,
+            blocked_obstructions: None,
         };
         let xs500 = CrossSection {
             station: 500.0,
@@ -1047,6 +1754,7 @@ mod tests {
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
             is_overbank: None,
+            blocked_obstructions: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -1056,6 +1764,7 @@ mod tests {
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
             is_overbank: None,
+            blocked_obstructions: None,
         };
 
         // Run a simulation keeping inputs constant at 14.0 cms (uniform flow equilibrium depth = 1.0m) and WSEL = 1.0m downstream
@@ -1073,6 +1782,8 @@ mod tests {
             coeff_contraction: None,
             coeff_expansion: None,
             culvert: UnsteadyCulvertInputs::default(),
+            bridge: UnsteadyBridgeInputs::default(),
+            structure_coupling_order: None,
         };
 
         let result = solve_unsteady(&inputs);
@@ -1103,6 +1814,7 @@ mod tests {
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
             is_overbank: None,
+            blocked_obstructions: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -1112,6 +1824,7 @@ mod tests {
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
             is_overbank: None,
+            blocked_obstructions: None,
         };
 
         // Run with a max spacing of 100.0m (which should create 9 intermediate cross sections, total 11 sections internally)
@@ -1129,6 +1842,8 @@ mod tests {
             coeff_contraction: None,
             coeff_expansion: None,
             culvert: UnsteadyCulvertInputs::default(),
+            bridge: UnsteadyBridgeInputs::default(),
+            structure_coupling_order: None,
         };
 
         let result = solve_unsteady(&inputs);
@@ -1159,6 +1874,7 @@ mod tests {
             n_values: vec![0.025],
             unit_system: UnitSystem::USCustomary,
             is_overbank: None,
+            blocked_obstructions: None,
         };
         let xs750 = CrossSection {
             station: 750.0,
@@ -1168,6 +1884,7 @@ mod tests {
             n_values: vec![0.025; 5],
             unit_system: UnitSystem::USCustomary,
             is_overbank: None,
+            blocked_obstructions: None,
         };
         let xs500 = CrossSection {
             station: 500.0,
@@ -1177,6 +1894,7 @@ mod tests {
             n_values: vec![0.025],
             unit_system: UnitSystem::USCustomary,
             is_overbank: None,
+            blocked_obstructions: None,
         };
         let xs250 = CrossSection {
             station: 250.0,
@@ -1186,6 +1904,7 @@ mod tests {
             n_values: vec![0.025],
             unit_system: UnitSystem::USCustomary,
             is_overbank: None,
+            blocked_obstructions: None,
         };
         let xs150 = CrossSection {
             station: 150.0,
@@ -1195,6 +1914,7 @@ mod tests {
             n_values: vec![0.025],
             unit_system: UnitSystem::USCustomary,
             is_overbank: None,
+            blocked_obstructions: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -1204,6 +1924,7 @@ mod tests {
             n_values: vec![0.025],
             unit_system: UnitSystem::USCustomary,
             is_overbank: None,
+            blocked_obstructions: None,
         };
 
         let mut upstream_q = vec![35.0; 100];
@@ -1228,6 +1949,8 @@ mod tests {
             coeff_contraction: None,
             coeff_expansion: None,
             culvert: UnsteadyCulvertInputs::default(),
+            bridge: UnsteadyBridgeInputs::default(),
+            structure_coupling_order: None,
         };
 
         let result = solve_unsteady(&inputs);
@@ -1248,6 +1971,7 @@ mod tests {
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
             is_overbank: None,
+            blocked_obstructions: None,
         };
         let xs500 = CrossSection {
             station: 500.0,
@@ -1257,6 +1981,7 @@ mod tests {
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
             is_overbank: None,
+            blocked_obstructions: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -1266,6 +1991,7 @@ mod tests {
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
             is_overbank: None,
+            blocked_obstructions: None,
         };
 
         let without = UnsteadyInputs {
@@ -1282,6 +2008,8 @@ mod tests {
             coeff_contraction: None,
             coeff_expansion: None,
             culvert: UnsteadyCulvertInputs::default(),
+            bridge: UnsteadyBridgeInputs::default(),
+            structure_coupling_order: None,
         };
 
         let with_culvert = UnsteadyInputs {
@@ -1330,6 +2058,7 @@ mod tests {
             n_values: vec![0.02],
             unit_system: UnitSystem::USCustomary,
             is_overbank: None,
+            blocked_obstructions: None,
         };
         let xs500 = CrossSection {
             station: 500.0,
@@ -1339,6 +2068,7 @@ mod tests {
             n_values: vec![0.02],
             unit_system: UnitSystem::USCustomary,
             is_overbank: None,
+            blocked_obstructions: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -1348,6 +2078,7 @@ mod tests {
             n_values: vec![0.02],
             unit_system: UnitSystem::USCustomary,
             is_overbank: None,
+            blocked_obstructions: None,
         };
 
         let inputs = UnsteadyInputs {
@@ -1378,12 +2109,253 @@ mod tests {
                 culvert_z_downs: Some(vec![5.0]),
                 ..Default::default()
             },
+            bridge: UnsteadyBridgeInputs::default(),
+            structure_coupling_order: None,
         };
 
         let result = solve_unsteady(&inputs);
         assert_eq!(result.wsel.len(), 3);
         assert!(result.wsel[2].iter().all(|w| w.is_finite()));
         assert!(result.q[2].iter().all(|q| q.is_finite()));
+    }
+
+    #[test]
+    fn test_unsteady_inline_bridge() {
+        let xs1000 = CrossSection {
+            station: 1000.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![6.0, 1.0, 1.0, 6.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+        };
+        let xs500 = CrossSection {
+            station: 500.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![5.5, 0.5, 0.5, 5.5],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+        };
+        let xs0 = CrossSection {
+            station: 0.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![5.0, 0.0, 0.0, 5.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+        };
+
+        let without = UnsteadyInputs {
+            cross_sections: vec![xs1000.clone(), xs500.clone(), xs0.clone()],
+            initial_wsel: vec![2.5, 2.0, 1.5],
+            initial_q: vec![15.0, 15.0, 15.0],
+            dt: 60.0,
+            num_steps: 3,
+            upstream_q_hydrograph: vec![15.0; 3],
+            downstream_wsel_hydrograph: vec![1.5; 3],
+            theta: Some(0.6),
+            num_slices: Some(50),
+            max_spacing: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            culvert: UnsteadyCulvertInputs::default(),
+            bridge: UnsteadyBridgeInputs::default(),
+            structure_coupling_order: None,
+        };
+
+        let with_bridge = UnsteadyInputs {
+            bridge: UnsteadyBridgeInputs {
+                bridge_stations: Some(vec![250.0]),
+                bridge_low_chords: Some(vec![5.0]),
+                bridge_high_chords: Some(vec![7.0]),
+                bridge_pier_widths: Some(vec![0.5]),
+                bridge_num_piers: Some(vec![2]),
+                bridge_pier_shapes: Some(vec![0]),
+                bridge_weir_coeffs: Some(vec![1.44]),
+                bridge_orifice_coeffs: Some(vec![0.5]),
+                ..Default::default()
+            },
+            ..without.clone()
+        };
+
+        let res_bridge = solve_unsteady(&with_bridge);
+
+        assert_eq!(res_bridge.wsel.len(), 3);
+        assert!(res_bridge.wsel[2].iter().all(|w| w.is_finite()));
+
+        let regimes = res_bridge
+            .bridge_flow_regimes
+            .as_ref()
+            .expect("bridge diagnostics on unsteady run");
+        let hw = res_bridge
+            .bridge_wsel_upstream
+            .as_ref()
+            .expect("bridge upstream WSEL history")[2][0];
+        let tw = res_bridge
+            .bridge_wsel_downstream
+            .as_ref()
+            .expect("bridge downstream WSEL history")[2][0];
+        let hl = res_bridge
+            .bridge_head_losses
+            .as_ref()
+            .expect("bridge head loss history")[2][0];
+
+        assert_eq!(regimes.len(), 3);
+        assert_eq!(regimes[0].len(), 1);
+        assert_eq!(regimes[2][0], "low_a");
+        assert!(hl > 0.0, "expected positive pier head loss, got {hl}");
+        assert!(hw > tw, "upstream bridge WSEL {hw} should exceed tailwater {tw}");
+        assert!((hw - tw - hl).abs() < 1e-4);
+    }
+
+    #[test]
+    fn test_build_coupled_structure_order_modes() {
+        let culvert_intervals = vec![(2, 0), (5, 1)];
+        let bridge_intervals = vec![(4, 0), (7, 1)];
+
+        let combined = build_coupled_structure_order(
+            &culvert_intervals,
+            &bridge_intervals,
+            StructureCouplingOrder::CombinedDownstream,
+        );
+        assert_eq!(combined.len(), 4);
+        assert_eq!(combined[0].interval_i, 7);
+        assert_eq!(combined[0].kind, StructureKind::Bridge);
+        assert_eq!(combined[1].interval_i, 5);
+        assert_eq!(combined[1].kind, StructureKind::Culvert);
+        assert_eq!(combined[2].interval_i, 4);
+        assert_eq!(combined[2].kind, StructureKind::Bridge);
+        assert_eq!(combined[3].interval_i, 2);
+        assert_eq!(combined[3].kind, StructureKind::Culvert);
+
+        let culverts_first = build_coupled_structure_order(
+            &culvert_intervals,
+            &bridge_intervals,
+            StructureCouplingOrder::CulvertsFirst,
+        );
+        assert_eq!(culverts_first[0].kind, StructureKind::Culvert);
+        assert_eq!(culverts_first[1].kind, StructureKind::Culvert);
+        assert_eq!(culverts_first[2].kind, StructureKind::Bridge);
+        assert_eq!(culverts_first[3].kind, StructureKind::Bridge);
+
+        let bridges_first = build_coupled_structure_order(
+            &culvert_intervals,
+            &bridge_intervals,
+            StructureCouplingOrder::BridgesFirst,
+        );
+        assert_eq!(bridges_first[0].kind, StructureKind::Bridge);
+        assert_eq!(bridges_first[2].kind, StructureKind::Culvert);
+    }
+
+    #[test]
+    fn test_structure_coupling_order_mixed_reach() {
+        let xs1000 = CrossSection {
+            station: 1000.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![6.0, 1.0, 1.0, 6.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+        };
+        let xs500 = CrossSection {
+            station: 500.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![5.5, 0.5, 0.5, 5.5],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+        };
+        let xs0 = CrossSection {
+            station: 0.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![5.0, 0.0, 0.0, 5.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+        };
+
+        let base = UnsteadyInputs {
+            cross_sections: vec![xs1000, xs500, xs0],
+            initial_wsel: vec![2.5, 2.0, 1.5],
+            initial_q: vec![20.0, 20.0, 20.0],
+            dt: 60.0,
+            num_steps: 3,
+            upstream_q_hydrograph: vec![20.0; 3],
+            downstream_wsel_hydrograph: vec![1.5; 3],
+            theta: Some(0.6),
+            num_slices: Some(50),
+            max_spacing: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            culvert: UnsteadyCulvertInputs {
+                culvert_stations: Some(vec![750.0]),
+                culvert_shape_types: Some(vec![0]),
+                culvert_spans: Some(vec![2.0]),
+                culvert_rises: Some(vec![2.0]),
+                culvert_roughness_ns: Some(vec![0.013]),
+                culvert_lengths: Some(vec![30.0]),
+                culvert_entrance_loss_coeffs: Some(vec![0.5]),
+                culvert_exit_loss_coeffs: Some(vec![1.0]),
+                culvert_barrels: Some(vec![1]),
+                culvert_inlet_types: Some(vec![1]),
+                ..Default::default()
+            },
+            bridge: UnsteadyBridgeInputs {
+                bridge_stations: Some(vec![250.0]),
+                bridge_low_chords: Some(vec![5.0]),
+                bridge_high_chords: Some(vec![7.0]),
+                bridge_pier_widths: Some(vec![0.5]),
+                bridge_num_piers: Some(vec![2]),
+                bridge_pier_shapes: Some(vec![0]),
+                bridge_weir_coeffs: Some(vec![1.44]),
+                bridge_orifice_coeffs: Some(vec![0.5]),
+                ..Default::default()
+            },
+            structure_coupling_order: None,
+        };
+
+        let combined = solve_unsteady(&base);
+        let mut culverts_first_inputs = base.clone();
+        culverts_first_inputs.structure_coupling_order = Some(1);
+        let culverts_first = solve_unsteady(&culverts_first_inputs);
+        let mut bridges_first_inputs = base.clone();
+        bridges_first_inputs.structure_coupling_order = Some(2);
+        let bridges_first = solve_unsteady(&bridges_first_inputs);
+
+        for res in [&combined, &culverts_first, &bridges_first] {
+            assert!(res.wsel[2].iter().all(|w| w.is_finite()));
+            assert!(
+                res.bridge_flow_regimes.is_some(),
+                "bridge diagnostics should be present"
+            );
+            assert!(
+                res.culvert_control_types.is_some(),
+                "culvert diagnostics should be present"
+            );
+        }
+
+        // Post-step coupling iterates to the same fixed point regardless of pass order.
+        assert_eq!(
+            combined.wsel[2], culverts_first.wsel[2],
+            "converged coupling should be order-independent (combined vs culverts-first)"
+        );
+        assert_eq!(
+            combined.wsel[2], bridges_first.wsel[2],
+            "converged coupling should be order-independent (combined vs bridges-first)"
+        );
     }
 }
 

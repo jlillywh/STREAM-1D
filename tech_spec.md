@@ -44,11 +44,12 @@ Transforms arbitrary $(x, y)$ cross-section polylines into vertical lookup table
 * Area, wetted perimeter, top width, conveyance
 * Horton–Einstein composite Manning's $n$ when $n$ varies by station
 * Optional channel / overbank subdivision via `is_overbank` → `channel_area` for structure-adjacent calculations
+* HEC-RAS ineffective flow areas (multi-block per side) and blocked obstructions on cross sections
 
-### Module B: Steady-State Solver (`src/solvers/steady.rs`, `junction.rs`, `bridge.rs`, `culvert.rs`)
+### Module B: Steady-State Solver (`src/solvers/steady.rs`, `junction.rs`, `bridge.rs`, `bridge_abutment.rs`, `culvert.rs`)
 
 * Standard Step backwater / drawdown (subcritical, supercritical, mixed regime)
-* Inline culverts (FHWA-style inlet/outlet control) and bridges (Yarnell pier loss, pressure orifice, weir overtopping)
+* Inline culverts (FHWA-style inlet/outlet control) and bridges (HEC-RAS Class A/B/C low flow; Yarnell, momentum, energy, and WSPRO; sluice-gate and submerged-orifice pressure flow; Bradley submerged-weir reduction; piecewise deck profiles; **per-side abutment geometry** via `bridge_abutment.rs`, API v21; supercritical tailwater coupling)
 * **One** main-stem + **one** tributary junction (`solve_steady` with junction fields) — **steady, subcritical only**
 
 ### Module C: Unsteady Solver (`src/solvers/unsteady.rs`)
@@ -66,7 +67,7 @@ See the full **[Limitations (read before comparing to HEC-RAS)](README.md#limita
 | Feature | Steady | Unsteady |
 |---------|--------|----------|
 | Single reach | Yes | Yes |
-| Culverts / bridges on main stem | Yes | **No** (structures not in unsteady sweep) |
+| Culverts / bridges on main stem | Yes | **Yes** — inline culverts and bridges via explicit post-step coupling (not implicit in Preissmann Jacobian) |
 | One tributary junction | Yes (subcritical) | **No** |
 | Multiple tributaries / networks | **No** | **No** |
 | 2D floodplain, sediment, water quality | **No** | **No** |
@@ -87,10 +88,16 @@ Entry points (see `src/lib.rs`):
 | `validateSteadyInputs(inputs)` | Parse-check payload without solving |
 | `solveSteady(inputs)` | Steady GVF + structures → `SteadyResult` |
 | `solveUnsteady(inputs)` | Unsteady routing → `UnsteadyResult` |
+| `computeCulvertRatingCurve(inputs)` | Culvert headwater vs $Q$ at fixed tailwater |
+| `computeBridgeRatingCurve(inputs)` | Bridge upstream headwater vs $Q$ at fixed tailwater |
 
 Inputs and outputs are plain JavaScript objects using **snake_case** field names (same schema as Python JSON). Steady junction runs additionally return `tributary_wsel`, `tributary_velocity`, and `tributary_froude` when tributary fields are set.
 
+Check `getWasmApiMetadata().api_version` on each engine upgrade (**21** = per-side bridge abutment fields; **20** = `blocked_obstructions` on cross sections).
+
 **Culvert Tier 1 (API version 2):** optional inputs `culvert_inlet_types`, `culvert_z_ups`, `culvert_z_downs`, `culvert_crest_elevs`, `culvert_weir_coeffs`, `culvert_weir_lengths`; output `culvert_control_types` (`"inlet"` \| `"outlet"` \| `"overtopping"`).
+
+**Bridge abutments (API version 21):** `bridge_abutment_left_*` / `bridge_abutment_right_*` on steady and unsteady inputs; flattened `abutment_*` keys on `computeBridgeRatingCurve`. Legacy `bridge_abutment_block_widths` splits symmetrically when per-side widths are omitted.
 
 **Web app integrators:** see [`docs/wasm_api.types.ts`](docs/wasm_api.types.ts) and [`examples/wasm/`](../examples/wasm/).
 
@@ -128,8 +135,10 @@ Python users supply `cross_sections` arrays directly; there is no HEC-RAS import
 
 Automated checks ship with the repository:
 
-* `cargo test` — Rust unit and integration tests (geometry, culvert, bridge Yarnell, junction, steady/unsteady)
-* `python/test_streams1d.py`, `python/test_python_bindings.py` — Python binding and HEC-RAS ConSpan benchmark
+* `cargo test` — Rust unit and integration tests (geometry, culvert, bridge Yarnell/abutments, junction, steady/unsteady)
+* `tests/bridge_abutment_hecras_verification.rs` — per-side abutment hand-calc / WSPRO benchmarks (`python/verification/bridge_abutment_hecras.json`)
+* `tests/wasm_json_contract.rs` — JSON schema contract (including API v21 abutment fields)
+* `python/test_streams1d.py`, `python/test_python_bindings.py` — Python binding and HEC-RAS ConSpan benchmark (run `maturin develop --features python` after engine changes)
 * [`python/streams1d_verification.ipynb`](python/streams1d_verification.ipynb) — interactive Binder notebook with HEC-RAS WSEL overlay
 
 ConSpan steady benchmark tolerance: **±0.04 ft** WSEL vs HEC-RAS at key stations (see README verification table).
