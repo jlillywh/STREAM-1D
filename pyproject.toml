@@ -21,3 +21,7 @@ classifiers = [
 features = ["python"]
 python-source = "python"
 module-name = "streams1d._streams1d"
+
+[tool.maturin.generate-ci.github]
+trusted-publishing = true
+publishing-environment = "pypi"
