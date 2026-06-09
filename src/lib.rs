@@ -22,12 +22,15 @@ pub fn get_wasm_api_metadata_wasm() -> Result<JsValue, JsValue> {
 
 /// Validates a `SteadyInputs` object without running the solver.
 ///
-/// Use in the web app before dispatching to a Worker to surface JSON/schema errors early.
+/// Returns `{ warnings: string[] }` for non-fatal issues (e.g. bridge opening wider than parent XS).
+/// Throws on JSON/schema parse errors.
 #[wasm_bindgen(js_name = validateSteadyInputs)]
-pub fn validate_steady_inputs_wasm(inputs_val: JsValue) -> Result<(), JsValue> {
-    let _: solvers::SteadyInputs = serde_wasm_bindgen::from_value(inputs_val)
+pub fn validate_steady_inputs_wasm(inputs_val: JsValue) -> Result<JsValue, JsValue> {
+    let inputs: solvers::SteadyInputs = serde_wasm_bindgen::from_value(inputs_val)
         .map_err(|e| JsValue::from_str(&format!("Invalid SteadyInputs: {}", e)))?;
-    Ok(())
+    let result = solvers::validate_steady_inputs(&inputs);
+    serde_wasm_bindgen::to_value(&result)
+        .map_err(|e| JsValue::from_str(&format!("Failed to serialize validation result: {}", e)))
 }
 
 /// WebAssembly entrypoint to run a steady-state hydraulic profile simulation.

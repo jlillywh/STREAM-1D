@@ -216,6 +216,30 @@ pub struct SteadyInputs {
     /// Reach XS lateral `x` at bridge opening station 0 per bridge.
     #[serde(default)]
     pub bridge_opening_reach_station_origins: Option<Vec<f64>>,
+    /// Opening ↔ reach anchor mode per bridge: 0 = BU left `x`, 1 = reach river station, 2 = explicit lateral `x`.
+    #[serde(default)]
+    pub bridge_opening_anchor_modes: Option<Vec<i32>>,
+    /// Longitudinal reach river station (user units) for anchor mode 1 per bridge.
+    #[serde(default)]
+    pub bridge_opening_anchor_reach_stations: Option<Vec<f64>>,
+    /// Explicit approach (upstream) cross section per bridge — HEC-RAS section 4 equivalent.
+    #[serde(default)]
+    pub bridge_approach_cross_sections: Option<Vec<crate::geometry::CrossSection>>,
+    /// Explicit departure (downstream exit) cross section per bridge.
+    #[serde(default)]
+    pub bridge_departure_cross_sections: Option<Vec<crate::geometry::CrossSection>>,
+    /// Reach river station of approach cut when `bridge_approach_cross_sections` is omitted.
+    #[serde(default)]
+    pub bridge_approach_reach_stations: Option<Vec<f64>>,
+    /// Reach river station of departure cut when `bridge_departure_cross_sections` is omitted.
+    #[serde(default)]
+    pub bridge_departure_reach_stations: Option<Vec<f64>>,
+    /// Guide banks on approach cut (reach lateral `x`); used when not on `CrossSection.guide_banks`.
+    #[serde(default)]
+    pub bridge_approach_guide_banks: Option<Vec<crate::geometry::GuideBanks>>,
+    /// Guide banks on departure cut (reach lateral `x`).
+    #[serde(default)]
+    pub bridge_departure_guide_banks: Option<Vec<crate::geometry::GuideBanks>>,
 
     /// Downstream boundary condition type (0 = Known WSEL, 1 = Critical Depth, 2 = Normal Depth, 3 = Rating Curve)
     #[serde(default)]
@@ -470,7 +494,7 @@ fn interpolate_step_row(
 ) -> GeometryRow {
     if ineffective.filter(|i| i.is_configured()).is_some() {
         if let Some(xs) = xs {
-            return row_at_elevation(table, xs, elev, ineffective);
+            return row_at_elevation(table, xs, elev, ineffective, None);
         }
     }
     let row = table.interpolate(elev);
@@ -715,6 +739,7 @@ fn bridge_face_geometry_for(
     i: usize,
     raw_units: UnitSystem,
     num_slices: usize,
+    densified_stations: &[f64],
     densified_tables: &[GeometryTable],
     densified_xs: &[Option<CrossSection>],
     densified_z_mins: &[f64],
@@ -731,8 +756,27 @@ fn bridge_face_geometry_for(
         densified_z_mins[i + 1]
     };
     let interior = crate::solvers::bridge_interior::interior_from_steady(inputs, b_idx);
+    let anchor_reach_xs = interior
+        .opening_anchor_reach_station
+        .and_then(|st| {
+            crate::solvers::bridge_interior::cross_section_at_reach_station(
+                densified_stations,
+                densified_xs,
+                st,
+                raw_units,
+            )
+        });
+    let (approach_xs, departure_xs, guide_banks_approach, guide_banks_departure) =
+        crate::solvers::bridge_interior::resolve_approach_departure_sections(
+            &interior,
+            i,
+            densified_stations,
+            densified_xs,
+            raw_units,
+        );
     crate::solvers::bridge_interior::resolve_bridge_face_solve_geometry(
         &interior,
+        anchor_reach_xs.as_ref(),
         densified_xs[i].as_ref(),
         densified_xs[i + 1].as_ref(),
         &densified_tables[i],
@@ -761,6 +805,10 @@ fn bridge_face_geometry_for(
             .and_then(|v| v.get(b_idx))
             .copied()
             .unwrap_or(0.0),
+        approach_xs,
+        departure_xs,
+        guide_banks_approach,
+        guide_banks_departure,
     )
 }
 
@@ -1085,6 +1133,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                     i,
                     raw_units,
                     num_slices,
+                    &densified_stations,
                     &densified_tables,
                     &densified_xs,
                     &densified_z_mins,
@@ -1497,6 +1546,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                     i,
                     raw_units,
                     num_slices,
+                    &densified_stations,
                     &densified_tables,
                     &densified_xs,
                     &densified_z_mins,
@@ -1684,6 +1734,7 @@ mod tests {
             is_overbank: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
+        guide_banks: None,
         };
 
         let table = xs.generate_lookup_table(10);
@@ -1708,6 +1759,7 @@ mod tests {
             is_overbank: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
+        guide_banks: None,
         };
         let xs100 = CrossSection {
             station: 100.0,
@@ -1719,6 +1771,7 @@ mod tests {
             is_overbank: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
+        guide_banks: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -1730,6 +1783,7 @@ mod tests {
             is_overbank: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
+        guide_banks: None,
         };
 
         let inputs = SteadyInputs {
@@ -1788,6 +1842,7 @@ mod tests {
             is_overbank: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
+        guide_banks: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -1799,6 +1854,7 @@ mod tests {
             is_overbank: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
+        guide_banks: None,
         };
 
         // Run with a max spacing of 100.0m (which should create 9 intermediate cross sections, total 11 sections internally)
@@ -1849,6 +1905,7 @@ mod tests {
             is_overbank: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
+        guide_banks: None,
         };
         let xs100 = CrossSection {
             station: 100.0,
@@ -1860,6 +1917,7 @@ mod tests {
             is_overbank: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
+        guide_banks: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -1871,6 +1929,7 @@ mod tests {
             is_overbank: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
+        guide_banks: None,
         };
 
         let inputs = SteadyInputs {
@@ -1932,6 +1991,7 @@ mod tests {
             is_overbank: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
+        guide_banks: None,
         };
         let xs100 = CrossSection {
             station: 100.0,
@@ -1943,6 +2003,7 @@ mod tests {
             is_overbank: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
+        guide_banks: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -1954,6 +2015,7 @@ mod tests {
             is_overbank: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
+        guide_banks: None,
         };
 
         let mut on_xs = SteadyInputs {
@@ -2004,6 +2066,7 @@ mod tests {
                 is_overbank: None,
                 blocked_obstructions: None,
             ineffective_flow_areas: None,
+            guide_banks: None,
             },
             CrossSection {
                 station: 100.0,
@@ -2015,6 +2078,7 @@ mod tests {
                 is_overbank: None,
                 blocked_obstructions: None,
             ineffective_flow_areas: None,
+            guide_banks: None,
             },
             CrossSection {
                 station: 0.0,
@@ -2026,6 +2090,7 @@ mod tests {
                 is_overbank: None,
                 blocked_obstructions: None,
             ineffective_flow_areas: None,
+            guide_banks: None,
             },
         ]
     }
@@ -2152,6 +2217,7 @@ mod tests {
             is_overbank: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
+        guide_banks: None,
         };
         let xs100 = CrossSection {
             station: 100.0,
@@ -2163,6 +2229,7 @@ mod tests {
             is_overbank: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
+        guide_banks: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -2174,6 +2241,7 @@ mod tests {
             is_overbank: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
+        guide_banks: None,
         };
 
         let mut inputs = SteadyInputs {
@@ -2237,6 +2305,7 @@ mod tests {
                 is_overbank: None,
                 blocked_obstructions: None,
             ineffective_flow_areas: None,
+            guide_banks: None,
             },
             CrossSection {
                 station: 30.0,
@@ -2248,6 +2317,7 @@ mod tests {
                 is_overbank: None,
                 blocked_obstructions: None,
             ineffective_flow_areas: None,
+            guide_banks: None,
             },
             CrossSection {
                 station: 0.0,
@@ -2259,6 +2329,7 @@ mod tests {
                 is_overbank: None,
                 blocked_obstructions: None,
             ineffective_flow_areas: None,
+            guide_banks: None,
             },
         ]
     }
@@ -2345,6 +2416,7 @@ mod tests {
             is_overbank: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
+        guide_banks: None,
         };
         let xs100 = CrossSection {
             station: 100.0,
@@ -2356,6 +2428,7 @@ mod tests {
             is_overbank: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
+        guide_banks: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -2367,6 +2440,7 @@ mod tests {
             is_overbank: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
+        guide_banks: None,
         };
 
         let inputs = SteadyInputs {
@@ -2415,6 +2489,7 @@ mod tests {
             is_overbank: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
+        guide_banks: None,
         };
         let bu = CrossSection {
             station: 52.0,
@@ -2426,6 +2501,7 @@ mod tests {
             is_overbank: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
+        guide_banks: None,
         };
         let bd = CrossSection {
             station: 48.0,
@@ -2437,6 +2513,7 @@ mod tests {
             is_overbank: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
+        guide_banks: None,
         };
         let inputs = SteadyInputs {
             cross_sections: vec![channel(200.0, 0.2), channel(100.0, 0.1), channel(0.0, 0.0)],
@@ -2474,6 +2551,7 @@ mod tests {
             is_overbank: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
+        guide_banks: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -2485,6 +2563,7 @@ mod tests {
             is_overbank: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
+        guide_banks: None,
         };
 
         let inputs = SteadyInputs {
@@ -2515,6 +2594,7 @@ mod tests {
             is_overbank: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
+        guide_banks: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -2526,6 +2606,7 @@ mod tests {
             is_overbank: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
+        guide_banks: None,
         };
 
         let inputs = SteadyInputs {

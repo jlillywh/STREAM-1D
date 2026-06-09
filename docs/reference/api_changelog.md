@@ -1,9 +1,11 @@
 # API changelog
 
-JSON/Python input schema version (`api_version` in WASM metadata). Current version: **22**.
+JSON/Python input schema version (`api_version` in WASM metadata). Current version: **24**.
 
 | Version | Change |
 |---------|--------|
+| 24 | Guide banks on approach/departure cuts (`CrossSection.guide_banks`, `bridge_approach_*` / `bridge_departure_*` fields); resolved on `BridgeSectionContext`; guided active area in WSPRO/energy when guide banks configured |
+| 23 | Bridge opening anchor modes (`bridge_opening_anchor_modes`, `bridge_opening_anchor_reach_stations`); reach river station ↔ opening origin resolution; `validateSteadyInputs` returns `{ warnings }` (bridge opening vs parent XS width) |
 | 3 | Culvert extended diagnostics; culvert rating curve |
 | 4 | Culvert skew angles; active barrel count |
 | 5 | Per-barrel span and rise arrays |

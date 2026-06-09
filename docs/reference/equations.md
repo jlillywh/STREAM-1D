@@ -132,6 +132,8 @@ where:
 #### C. Energy and WSPRO Low Flow (Class A and Class B fallback)
 **Energy** (`3`) balances upstream and downstream energy through the bridge reach: friction loss from conveyance, plus contraction/expansion losses using the reach `coeff_contraction` / `coeff_expansion` inputs on velocity-head differences. **WSPRO** (`4`) uses the FHWA contracted-opening formulation with user coefficient `C` (`bridge_wspro_coeffs`) on the ratio of upstream to contracted opening areas. Both methods account for pier and abutment obstruction in effective area and conveyance.
 
+**Guide banks (v24):** When configured on the approach cut, $A_1$ uses guided active area; otherwise BU obstructed area. $K_c$ / $C$ unchanged. See [`BRIDGE_INTERIOR_SECTIONS_API.md`](../BRIDGE_INTERIOR_SECTIONS_API.md).
+
 #### D. Abutment Blocking (API v21)
 Pass `bridge_abutment_block_widths` (legacy total horizontal width encroached by left + right abutments, perpendicular to flow), or per-side fields:
 
@@ -231,9 +233,11 @@ HEC-RAS uses dedicated **BU** (bridge upstream face) and **BD** (bridge downstre
 * `bridge_upstream_cross_sections` — BU cut per bridge (`[bridge]` → `CrossSection`)
 * `bridge_downstream_cross_sections` — BD cut per bridge
 * `bridge_internal_cross_sections` — optional interior cuts `[bridge][section]`, US → DS (stored; multi-segment routing in a future release)
-* `bridge_opening_reach_station_origins` — reach XS lateral `x` at bridge opening station 0 (left deck edge). Omit to infer from `min(BU.x)`.
+* `bridge_opening_reach_station_origins` — explicit reach XS lateral `x` at opening station 0 (overrides anchor mode when set).
+* `bridge_opening_anchor_modes` — `0` = BU left `min(x)`, `1` = reach river station, `2` = explicit lateral `x`.
+* `bridge_opening_anchor_reach_stations` — longitudinal reach station for mode `1` (densified grid lookup).
 
-**Opening ↔ reach alignment:** deck, pier, and abutment stations use opening coordinates; `bridge_opening_reach_station_origins` maps `reach_x = origin + opening_s`.
+**Opening ↔ reach alignment:** Hosts pass deck, pier, abutment, and bridge ineffective stations in opening coordinates (station 0 = left deck edge). When `opening_origin` is resolved, the preprocessor maps them to reach lateral `x` via `reach_x = origin + opening_s` before bridge hydraulics. Plan-view and longitudinal diagrams: [`docs/BRIDGE_INTERIOR_SECTIONS_API.md` § Coordinate convention diagram](../BRIDGE_INTERIOR_SECTIONS_API.md#coordinate-convention-diagram-13).
 
 **Reach layout:** after `max_spacing` densification, the solver inserts densified nodes at resolved BU/BD (and internal) river stations. Bridge hydraulics run on the interval `BU → BD`, not the wider reach interval around `bridge_stations`. Legacy models with only `bridge_stations` (no explicit faces, zero `bridge_lengths`) keep the prior center-station interval match.
 

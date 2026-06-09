@@ -60,6 +60,7 @@ fn channel_xs(station: f64, bed: f64, width: f64) -> CrossSection {
         is_overbank: None,
         blocked_obstructions: None,
         ineffective_flow_areas: None,
+    guide_banks: None,
     }
 }
 
@@ -74,6 +75,7 @@ fn face_xs(station: f64, bed: f64, width: f64) -> CrossSection {
         is_overbank: None,
         blocked_obstructions: None,
         ineffective_flow_areas: None,
+    guide_banks: None,
     }
 }
 
@@ -209,6 +211,7 @@ fn three_section_bridge_reach_matches_two_face_baseline() {
         &interior_two,
         None,
         None,
+        None,
         &table_up,
         &table_down,
         0.05,
@@ -221,11 +224,16 @@ fn three_section_bridge_reach_matches_two_face_baseline() {
         None,
         4.0,
         0.0,
+        None,
+        None,
+        None,
+        None,
     );
     let geo_three = resolve_bridge_face_solve_geometry(
         &interior_three,
         None,
         None,
+        None,
         &table_up,
         &table_down,
         0.05,
@@ -238,6 +246,10 @@ fn three_section_bridge_reach_matches_two_face_baseline() {
         None,
         4.0,
         0.0,
+        None,
+        None,
+        None,
+        None,
     );
     let hw_two = solve_bridge_wsel(
         15.0,

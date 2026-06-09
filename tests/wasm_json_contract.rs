@@ -101,10 +101,60 @@ fn wasm_bridge_rating_curve_contract() {
 }
 
 #[test]
+fn steady_validation_bridge_opening_width_warning() {
+    use stream1d::solvers::{validate_steady_inputs, SteadyInputs};
+    use stream1d::geometry::CrossSection;
+    use stream1d::utils::UnitSystem;
+
+    let parent = CrossSection {
+        station: 50.0,
+        x: vec![100.0, 100.0, 130.0, 130.0],
+        y: vec![10.0, 0.0, 0.0, 10.0],
+        n_stations: vec![0.0],
+        n_values: vec![0.03],
+        unit_system: UnitSystem::Metric,
+        is_overbank: None,
+        blocked_obstructions: None,
+        ineffective_flow_areas: None,
+    guide_banks: None,
+    };
+    let inputs = SteadyInputs {
+        cross_sections: vec![
+            parent.clone(),
+            CrossSection {
+                station: 0.0,
+                x: vec![0.0, 0.0, 200.0, 200.0],
+                y: vec![10.0, 0.0, 0.0, 10.0],
+                n_stations: vec![0.0],
+                n_values: vec![0.03],
+                unit_system: UnitSystem::Metric,
+                is_overbank: None,
+                blocked_obstructions: None,
+                ineffective_flow_areas: None,
+            guide_banks: None,
+            },
+        ],
+        flow_rate: 10.0,
+        bridge_stations: Some(vec![50.0]),
+        bridge_low_chords: Some(vec![5.0]),
+        bridge_high_chords: Some(vec![7.0]),
+        bridge_deck_stations: Some(vec![vec![0.0, 35.0]]),
+        bridge_deck_low_elevations: Some(vec![vec![5.0, 5.0]]),
+        bridge_deck_high_elevations: Some(vec![vec![7.0, 7.0]]),
+        bridge_opening_reach_station_origins: Some(vec![100.0]),
+        bridge_upstream_cross_sections: Some(vec![parent]),
+        ..Default::default()
+    };
+    let result = validate_steady_inputs(&inputs);
+    assert_eq!(result.warnings.len(), 1);
+    assert!(result.warnings[0].contains("exceeds parent"));
+}
+
+#[test]
 fn wasm_api_metadata_version() {
     let meta = build_api_metadata();
     assert_eq!(meta.api_version, API_VERSION);
-    assert_eq!(API_VERSION, 22);
+    assert_eq!(API_VERSION, 24);
     assert!(meta.culvert_tier1_fields.inputs.contains(&"culvert_inlet_types".to_string()));
     assert_eq!(
         meta.bridge_fields.rating_curve_entry_point,
@@ -115,6 +165,8 @@ fn wasm_api_metadata_version() {
         "bridge_downstream_cross_sections",
         "bridge_internal_cross_sections",
         "bridge_opening_reach_station_origins",
+        "bridge_approach_guide_banks",
+        "bridge_departure_guide_banks",
         "bridge_abutment_left_widths",
         "bridge_abutment_right_widths",
         "bridge_abutment_left_stations",
@@ -265,6 +317,7 @@ fn cross_section_blocked_obstructions_deserialize() {
         is_overbank: None,
         blocked_obstructions: None,
         ineffective_flow_areas: None,
+    guide_banks: None,
     }
     .to_metric()
     .compute_properties_at_elevation(2.0);
