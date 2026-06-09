@@ -5,6 +5,12 @@
  * Field names use snake_case to match Rust/Python JSON and `solveSteady()` payloads.
  *
  * Check `api_version` from `getWasmApiMetadata()` after each engine upgrade.
+ * **API v22** — BU/BD bridge interior cross sections (`bridge_upstream_cross_sections`,
+ * `bridge_downstream_cross_sections`, `bridge_internal_cross_sections`,
+ * `bridge_opening_reach_station_origins`; rating curve: `opening_reach_station_origin`, `xs_internal`).
+ * `CrossSection.ineffective_flow_areas` on BU/BD cuts (reach-`x` frame, independent of reach-face
+ * ineffective). Friction length $L$ follows BU → internal → BD river stations (see README §6.I).
+ * Example payload: `examples/wasm/steady_bridge_bu_bd_v22.json`.
  * **API v21** — per-side bridge abutment fields (`bridge_abutment_left_*` / `bridge_abutment_right_*`;
  * rating curve uses flattened `abutment_*` keys on `BridgeRatingCurveInputs`).
  */
@@ -15,6 +21,18 @@ export type UnitSystem = 'USCustomary' | 'Metric';
 export interface BlockedObstruction {
   stations: number[];
   elevations: number[];
+}
+
+/** HEC-RAS normal ineffective-flow block (reach lateral `station`, activation `elevation`). */
+export interface IneffectiveBlock {
+  station: number;
+  elevation: number;
+}
+
+/** HEC-RAS ineffective-flow areas on a cross section (multiple blocks per side). */
+export interface IneffectiveFlowAreas {
+  left_blocks: IneffectiveBlock[];
+  right_blocks: IneffectiveBlock[];
 }
 
 export interface CrossSection {
@@ -30,6 +48,11 @@ export interface CrossSection {
    * Multiple polylines may be provided per section.
    */
   blocked_obstructions?: BlockedObstruction[];
+  /**
+   * HEC-RAS normal ineffective-flow blocks on this cut (reach lateral `x` coordinates).
+   * On BU/BD bridge cuts, these apply independently of reach-face ineffective areas.
+   */
+  ineffective_flow_areas?: IneffectiveFlowAreas;
 }
 
 /** Culvert shape codes passed in `culvert_shape_types`. */
@@ -130,7 +153,11 @@ export interface BridgeArrays {
   bridge_low_flow_methods?: number[];
   /** High-flow method: 0 = pressure/weir, 1 = energy. */
   bridge_high_flow_methods?: number[];
-  /** Reach length through each bridge for friction (user units). 0 uses interval spacing. */
+  /**
+   * Reach length through each bridge for friction (user units) when BU/BD faces coincide (legacy).
+   * When explicit BU/BD `CrossSection.station` values differ, friction uses their spacing
+   * (summing interior cuts); this field does not override a shorter face spacing.
+   */
   bridge_lengths?: number[];
   /** WSPRO contracted-opening discharge coefficient C per bridge (typical 0.7–0.9). */
   bridge_wspro_coeffs?: number[];
@@ -169,6 +196,14 @@ export interface BridgeArrays {
   bridge_skew_angles?: number[];
   /** Pier centerline stations across opening per bridge `[bridge][pier]`. */
   bridge_pier_stations?: number[][];
+  /** HEC-RAS BU (bridge upstream face) cross section per bridge. */
+  bridge_upstream_cross_sections?: CrossSection[];
+  /** HEC-RAS BD (bridge downstream face) cross section per bridge. */
+  bridge_downstream_cross_sections?: CrossSection[];
+  /** Optional interior bridge cuts per bridge `[bridge][section]`, US → DS. */
+  bridge_internal_cross_sections?: CrossSection[][];
+  /** Reach XS lateral `x` at bridge opening station 0 per bridge. */
+  bridge_opening_reach_station_origins?: number[];
 }
 
 export interface SteadyInputs extends CulvertArrays, BridgeArrays {
@@ -332,6 +367,10 @@ export interface BridgeRatingCurveInputs {
   num_slices?: number;
   xs_up?: CrossSection;
   xs_down?: CrossSection;
+  /** Reach XS lateral `x` at bridge opening station 0. */
+  opening_reach_station_origin?: number;
+  /** Optional interior bridge cuts (US → DS); stored for future multi-segment hydraulics. */
+  xs_internal?: CrossSection[];
 }
 
 export interface BridgeRatingCurveResult {

@@ -14,12 +14,20 @@ pub struct BridgeSectionContext {
     pub ineffective_up: Option<IneffectiveFlowAreas>,
     /// Ineffective blocks at the downstream bridge face.
     pub ineffective_down: Option<IneffectiveFlowAreas>,
+    /// BU (bridge upstream face) cross section when explicit or from reach fallback.
     pub xs_up: Option<CrossSection>,
+    /// BD (bridge downstream face) cross section when explicit or from reach fallback.
     pub xs_down: Option<CrossSection>,
+    /// Optional interior bridge cuts (US → DS). Stored for future multi-segment hydraulics.
+    pub internal_xs: Vec<CrossSection>,
+    /// Reach XS lateral `x` at bridge opening station 0 (left deck edge).
+    pub opening_reach_station_origin: Option<f64>,
     /// Skew from normal to flow, degrees (0–59°; same convention as culverts).
     pub skew_deg: f64,
     /// Pier centerline stations across the opening (user units; same frame as deck stations).
     pub pier_stations: Option<Vec<f64>>,
+    /// Reach friction length BU → BD (metric), including interior cut spacing when provided.
+    pub friction_length_m: f64,
 }
 
 /// HEC-RAS-style bridge skew: projected opening width × cos(θ), friction length ÷ cos(θ).
@@ -301,6 +309,12 @@ pub struct BridgeSolveParams {
     pub xs_up: Option<CrossSection>,
     #[serde(default)]
     pub xs_down: Option<CrossSection>,
+    /// Reach XS lateral `x` at bridge opening station 0 (aligns opening ↔ reach frames).
+    #[serde(default)]
+    pub opening_reach_station_origin: Option<f64>,
+    /// Optional interior bridge cuts (US → DS). Stored; hydraulics use BU/BD only today.
+    #[serde(default)]
+    pub xs_internal: Option<Vec<CrossSection>>,
 }
 
 fn default_wspro_coeff() -> f64 {
@@ -395,6 +409,8 @@ impl Default for BridgeSolveParams {
             num_slices: default_num_slices(),
             xs_up: None,
             xs_down: None,
+            opening_reach_station_origin: None,
+            xs_internal: None,
         }
     }
 }
@@ -765,6 +781,29 @@ fn yarnell_downstream_flow_area_m2(
     (props.a_eff + pier_submerged_area_geom(geom, depth)).max(1e-5)
 }
 
+/// HEC-RAS weighting: use the more constricted of BU and BD at a common water-surface elevation.
+fn obstructed_opening_at_wsel(
+    geom: &BridgeGeometry,
+    table_up: &GeometryTable,
+    table_down: &GeometryTable,
+    wsel: f64,
+) -> (ObstructedHydraulics, bool) {
+    let up = obstructed_hydraulics(table_up, wsel, geom.z_up_m, geom, true);
+    let down = obstructed_hydraulics(table_down, wsel, geom.z_down_m, geom, false);
+    if up.a_eff <= down.a_eff {
+        (up, true)
+    } else {
+        (down, false)
+    }
+}
+
+/// Vertical opening below the low chord (minimum of BU and BD invert depths).
+fn opening_height_below_deck_m(geom: &BridgeGeometry) -> f64 {
+    let h_up = (geom.low_chord_m - geom.z_up_m).max(0.0);
+    let h_down = (geom.low_chord_m - geom.z_down_m).max(0.0);
+    h_up.min(h_down).max(1e-3)
+}
+
 fn obstructed_hydraulics(
     table: &GeometryTable,
     wsel: f64,
@@ -896,8 +935,8 @@ fn solve_low_flow_energy_or_wspro(
         let hf = friction_loss(q_metric, k_down, k_up, length);
         let h_other = if use_wspro {
             let opening_wsel = wsel_up.min(tw_m).min(geom.low_chord_m);
-            let props_opening =
-                obstructed_hydraulics(table_up, opening_wsel, geom.z_up_m, geom, true);
+            let (props_opening, _) =
+                obstructed_opening_at_wsel(geom, table_up, table_down, opening_wsel);
             wspro_contraction_loss(
                 q_metric,
                 props_up.a_eff,
@@ -1109,31 +1148,46 @@ pub fn yarnell_pier_head_loss(
     2.0 * k * (k + 10.0 * omega - 0.6) * (alpha + 15.0 * alpha.powi(4)) * velocity_head
 }
 
-fn net_opening_area_at_low_chord(geom: &BridgeGeometry, table: &GeometryTable) -> f64 {
-    let factor = profile_opening_area_factor(geom);
-    // Cross-section openings: same per-side abutment/pier obstruction as low-flow solvers.
-    if geom.xs_up.is_some() {
-        return obstructed_hydraulics(table, geom.low_chord_m, geom.z_up_m, geom, true)
-            .a_eff
-            .max(1e-4)
-            * factor;
-    }
-    let height_under_deck = (geom.low_chord_m - geom.z_up_m).max(0.0);
+fn gross_opening_area_at_low_chord(
+    geom: &BridgeGeometry,
+    table: &GeometryTable,
+    z_bed: f64,
+    is_upstream: bool,
+) -> f64 {
+    let wsel = geom.low_chord_m;
+    let height_under_deck = (wsel - z_bed).max(0.0);
     let deck_width = gross_projected_opening_width_m(geom);
     let a_gross = if deck_width > 1e-6 {
         deck_width * height_under_deck
     } else {
         let row = lookup_row(
             table,
-            geom.xs_up.as_ref(),
-            ineffective_for_side(geom, true),
-            geom.low_chord_m,
+            section_xs(geom, is_upstream),
+            ineffective_for_side(geom, is_upstream),
+            wsel,
         );
-        base_flow_area(&row, ineffective_for_side(geom, true))
+        base_flow_area(&row, ineffective_for_side(geom, is_upstream))
     };
     let a_piers = pier_submerged_area_geom(geom, height_under_deck);
-    let a_abut = geom.abutments.submerged_area_m2(geom.low_chord_m, geom.z_up_m);
-    (a_gross - a_piers - a_abut).max(1e-4) * factor
+    let a_abut = geom.abutments.submerged_area_m2(wsel, z_bed);
+    (a_gross - a_piers - a_abut).max(1e-4)
+}
+
+/// Net opening area at the low chord using HEC-RAS min(BU, BD) weighting.
+fn net_opening_area_at_low_chord(
+    geom: &BridgeGeometry,
+    table_up: &GeometryTable,
+    table_down: &GeometryTable,
+) -> f64 {
+    let factor = profile_opening_area_factor(geom);
+    let wsel = geom.low_chord_m;
+    if geom.xs_up.is_some() || geom.xs_down.is_some() {
+        let (props, _) = obstructed_opening_at_wsel(geom, table_up, table_down, wsel);
+        return props.a_eff.max(1e-4) * factor;
+    }
+    let a_up = gross_opening_area_at_low_chord(geom, table_up, geom.z_up_m, true);
+    let a_down = gross_opening_area_at_low_chord(geom, table_down, geom.z_down_m, false);
+    a_up.min(a_down) * factor
 }
 
 fn upstream_energy_grade(
@@ -1196,7 +1250,7 @@ fn pressure_flow_discharge(
         let head = (e_up - tw_m).max(0.0);
         geom.pressure_coeff_submerged * a_net * (2.0 * G_METRIC * head).sqrt()
     } else {
-        let z = (geom.low_chord_m - geom.z_up_m).max(1e-3);
+        let z = opening_height_below_deck_m(geom);
         let y3 = (wsel_up - geom.z_up_m).max(1e-3);
         let cd = sluice_gate_discharge_coeff(y3 / z, geom.pressure_coeff_inlet);
         let props = obstructed_hydraulics(table_up, wsel_up, geom.z_up_m, geom, true);
@@ -1229,8 +1283,9 @@ fn solve_pressure_headwater(
     tw_m: f64,
     geom: &BridgeGeometry,
     table_up: &GeometryTable,
+    table_down: &GeometryTable,
 ) -> f64 {
-    let a_net = net_opening_area_at_low_chord(geom, table_up);
+    let a_net = net_opening_area_at_low_chord(geom, table_up, table_down);
     let mut low = tw_m.max(geom.z_up_m + 1e-4);
     let mut high = geom.low_chord_m + 30.0;
     let mut best = geom.low_chord_m;
@@ -1265,7 +1320,7 @@ fn apply_low_flow_pressure_check(
     if geom.high_flow_method == HighFlowMethod::Energy {
         return solve_high_flow_energy(q_metric, tw_m, geom, table_up, table_down);
     }
-    let pressure_hw = solve_pressure_headwater(q_metric, tw_m, geom, table_up);
+    let pressure_hw = solve_pressure_headwater(q_metric, tw_m, geom, table_up, table_down);
     if pressure_hw > wsel_low {
         pressure_hw
     } else {
@@ -1496,8 +1551,8 @@ fn solve_high_flow(
         return solve_high_flow_energy(q_metric, tw_clamped, geom, table_up, table_down);
     }
 
-    let a_net = net_opening_area_at_low_chord(geom, table_up);
-    let pressure_only = solve_pressure_headwater(q_metric, tw_clamped, geom, table_up);
+    let a_net = net_opening_area_at_low_chord(geom, table_up, table_down);
+    let pressure_only = solve_pressure_headwater(q_metric, tw_clamped, geom, table_up, table_down);
 
     if pressure_only < geom.high_chord_m {
         let e_up = upstream_energy_grade(pressure_only, q_metric, geom, table_up, geom.z_up_m, true);
@@ -1725,6 +1780,7 @@ fn rectangular_channel_cross_section(
         unit_system: units,
         is_overbank: None,
         blocked_obstructions: None,
+        ineffective_flow_areas: None,
     }
 }
 
@@ -1846,6 +1902,21 @@ fn ineffective_downstream_from_params(params: &BridgeSolveParams) -> Option<Inef
 }
 
 fn interval_length_metric(params: &BridgeSolveParams) -> f64 {
+    let interior = crate::solvers::bridge_interior::BridgeInteriorInput {
+        bu: params.xs_up.clone(),
+        bd: params.xs_down.clone(),
+        internal: params.xs_internal.clone().unwrap_or_default(),
+        opening_reach_station_origin: params.opening_reach_station_origin,
+    };
+    let from_faces = crate::solvers::bridge_interior::resolve_bridge_friction_length_metric(
+        &interior,
+        0.0,
+        params.length,
+        params.units,
+    );
+    if from_faces > 1e-3 {
+        return from_faces;
+    }
     let len = if params.length > 1e-6 {
         params.length
     } else if params.units == UnitSystem::USCustomary {
@@ -1933,13 +2004,31 @@ pub fn solve_bridge_from_params(params: &BridgeSolveParams) -> BridgeSolveResult
         params.deck_high_elevations.as_deref(),
         params.units,
     );
+    let opening_origin = params
+        .opening_reach_station_origin
+        .or_else(|| params.xs_up.as_ref().map(crate::solvers::bridge_interior::infer_opening_reach_station_origin));
+    let interior = crate::solvers::bridge_interior::BridgeInteriorInput {
+        bu: Some(xs_up.clone()),
+        bd: Some(xs_down.clone()),
+        internal: params.xs_internal.clone().unwrap_or_default(),
+        opening_reach_station_origin: opening_origin,
+    };
+    let friction_length_m = crate::solvers::bridge_interior::resolve_bridge_friction_length_metric(
+        &interior,
+        0.0,
+        params.length,
+        params.units,
+    );
     let sections = BridgeSectionContext {
         ineffective_up: ineffective_upstream_from_params(params),
         ineffective_down: ineffective_downstream_from_params(params),
         xs_up: Some(xs_up),
         xs_down: Some(xs_down),
+        internal_xs: interior.internal,
+        opening_reach_station_origin: opening_origin,
         skew_deg: params.skew_deg,
         pier_stations: params.pier_stations.clone(),
+        friction_length_m,
     };
     let weir_coeff = if params.weir_coeff > 1e-6 {
         params.weir_coeff
@@ -2144,17 +2233,22 @@ fn build_bridge_geometry(
     sections: Option<&BridgeSectionContext>,
 ) -> BridgeGeometry {
     let (low_min, low_max, high_min, high_max) = deck_extrema(low_chord, high_chord, deck, units);
-    let length_base_m = if coupling.length > 1e-6 {
-        if units == UnitSystem::USCustomary {
-            coupling.length * FT_TO_M
-        } else {
-            coupling.length
-        }
-    } else if interval_length > 1e-6 {
-        interval_length
-    } else {
-        10.0
-    };
+    let length_base_m = sections
+        .map(|s| s.friction_length_m)
+        .filter(|&l| l > 1e-3)
+        .unwrap_or_else(|| {
+            if interval_length > 1e-3 {
+                interval_length
+            } else if coupling.length > 1e-6 {
+                if units == UnitSystem::USCustomary {
+                    coupling.length * FT_TO_M
+                } else {
+                    coupling.length
+                }
+            } else {
+                10.0
+            }
+        });
     let skew_deg = sections.map(|s| s.skew_deg).unwrap_or(0.0);
     let (_, length_m) = apply_bridge_skew(skew_deg, 1.0, length_base_m);
     let skew_cos = {
@@ -2353,7 +2447,7 @@ fn solve_high_flow_tailwater(
         return solve_high_flow_energy_tailwater(q_metric, hw_m, geom, table_up, table_down);
     }
 
-    let a_net = net_opening_area_at_low_chord(geom, table_down);
+    let a_net = net_opening_area_at_low_chord(geom, table_up, table_down);
 
     if hw_m < geom.high_chord_m {
         let mut low = geom.z_down_m + 1e-4;
@@ -2425,6 +2519,7 @@ mod tests {
             unit_system: UnitSystem::Metric,
             is_overbank: None,
             blocked_obstructions: None,
+        ineffective_flow_areas: None,
         };
         xs.generate_lookup_table(num_slices)
     }
@@ -2883,6 +2978,184 @@ mod tests {
     }
 
     #[test]
+    fn test_bu_bd_min_opening_weighting_for_pressure_flow() {
+        let table_bu_wide = rectangular_table(10.0, 0.0, 50);
+        let table_bd_narrow = rectangular_table(4.0, 0.0, 50);
+        let table_both_wide = rectangular_table(10.0, 0.0, 50);
+        let coupling = BridgeCouplingParams::default();
+        let q = 20.0;
+        let tw = 5.2;
+        let hw_both_wide = solve_bridge_wsel(
+            q,
+            5.0,
+            7.0,
+            0.0,
+            0,
+            0,
+            1.44,
+            0.8,
+            0.0,
+            0.0,
+            tw,
+            UnitSystem::Metric,
+            &table_both_wide,
+            &table_both_wide,
+            &coupling,
+            50.0,
+            None,
+            None,
+        );
+        let bu_xs = CrossSection {
+            station: 0.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![10.0, 0.0, 0.0, 10.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.03],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+        ineffective_flow_areas: None,
+        };
+        let bd_xs = CrossSection {
+            station: 0.0,
+            x: vec![0.0, 0.0, 4.0, 4.0],
+            y: vec![10.0, 0.0, 0.0, 10.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.03],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+        ineffective_flow_areas: None,
+        };
+        let sections = BridgeSectionContext {
+            xs_up: Some(bu_xs),
+            xs_down: Some(bd_xs),
+            ..Default::default()
+        };
+        let hw_bd_constricts = solve_bridge_wsel(
+            q,
+            5.0,
+            7.0,
+            0.0,
+            0,
+            0,
+            1.44,
+            0.8,
+            0.0,
+            0.0,
+            tw,
+            UnitSystem::Metric,
+            &table_bu_wide,
+            &table_bd_narrow,
+            &coupling,
+            50.0,
+            None,
+            Some(&sections),
+        );
+        assert!(
+            hw_bd_constricts > hw_both_wide,
+            "BD constriction should raise submerged pressure headwater: wide={hw_both_wide}, constricted={hw_bd_constricts}"
+        );
+    }
+
+    #[test]
+    fn test_wspro_uses_min_bu_bd_opening_area() {
+        let table_bu = rectangular_table(10.0, 0.0, 50);
+        let table_bd = rectangular_table(5.0, 0.0, 50);
+        let coupling = BridgeCouplingParams {
+            low_flow_method: 4,
+            ..Default::default()
+        };
+        let bu_xs = CrossSection {
+            station: 0.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![10.0, 0.0, 0.0, 10.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.03],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+        ineffective_flow_areas: None,
+        };
+        let bd_xs = CrossSection {
+            station: 0.0,
+            x: vec![0.0, 0.0, 5.0, 5.0],
+            y: vec![10.0, 0.0, 0.0, 10.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.03],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+        ineffective_flow_areas: None,
+        };
+        let sections = BridgeSectionContext {
+            xs_up: Some(bu_xs),
+            xs_down: Some(bd_xs),
+            ..Default::default()
+        };
+        let hw_asymmetric = solve_bridge_wsel(
+            15.0,
+            5.0,
+            7.0,
+            0.0,
+            0,
+            0,
+            1.44,
+            0.5,
+            0.0,
+            0.0,
+            2.5,
+            UnitSystem::Metric,
+            &table_bu,
+            &table_bd,
+            &coupling,
+            50.0,
+            None,
+            Some(&sections),
+        );
+        let bu_xs_wide = CrossSection {
+            station: 0.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![10.0, 0.0, 0.0, 10.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.03],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+        ineffective_flow_areas: None,
+        };
+        let sections_symmetric = BridgeSectionContext {
+            xs_up: Some(bu_xs_wide.clone()),
+            xs_down: Some(bu_xs_wide),
+            ..Default::default()
+        };
+        let hw_symmetric_wide = solve_bridge_wsel(
+            15.0,
+            5.0,
+            7.0,
+            0.0,
+            0,
+            0,
+            1.44,
+            0.5,
+            0.0,
+            0.0,
+            2.5,
+            UnitSystem::Metric,
+            &table_bu,
+            &table_bu,
+            &coupling,
+            50.0,
+            None,
+            Some(&sections_symmetric),
+        );
+        assert!(
+            hw_asymmetric > hw_symmetric_wide,
+            "WSPRO should use min(BU,BD) opening; narrower BD raises headwater"
+        );
+    }
+
+    #[test]
     fn test_submerged_orifice_constant_driving_head() {
         let table_up = rectangular_table(10.0, 0.0, 50);
         let table_down = rectangular_table(10.0, 0.0, 50);
@@ -3080,6 +3353,7 @@ mod tests {
             unit_system: UnitSystem::Metric,
             is_overbank: Some(vec![false, false, false, false, true, true, true, true]),
             blocked_obstructions: None,
+        ineffective_flow_areas: None,
         };
         let sections_none = BridgeSectionContext::default();
         let ineff =
@@ -3139,6 +3413,179 @@ mod tests {
     }
 
     #[test]
+    fn test_bu_section_ineffective_raises_bridge_headwater() {
+        use crate::solvers::bridge_interior::{BridgeInteriorInput, resolve_bridge_face_solve_geometry};
+
+        let table_up = rectangular_table(10.0, 0.0, 50);
+        let table_down = rectangular_table(10.0, 0.0, 50);
+        let coupling = BridgeCouplingParams {
+            low_flow_method: 3,
+            ..Default::default()
+        };
+        let reach = CrossSection {
+            station: 100.0,
+            x: vec![0.0, 0.0, 10.0, 10.0, 30.0, 30.0, 40.0, 40.0],
+            y: vec![5.0, 0.0, 0.0, 5.0, 0.0, 5.0, 0.0, 5.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.03],
+            unit_system: UnitSystem::Metric,
+            is_overbank: Some(vec![false, false, false, false, true, true, true, true]),
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+        };
+        let mut bu = reach.clone();
+        bu.ineffective_flow_areas = Some(
+            IneffectiveFlowAreas::from_block_pairs(&[30.0], &[3.0], &[], &[]).unwrap(),
+        );
+        let geo_none = resolve_bridge_face_solve_geometry(
+            &BridgeInteriorInput {
+                bu: Some(reach.clone()),
+                bd: Some(reach.clone()),
+                ..Default::default()
+            },
+            Some(&reach),
+            Some(&reach),
+            &table_up,
+            &table_down,
+            0.0,
+            0.0,
+            UnitSystem::Metric,
+            50,
+            None,
+            None,
+            0.0,
+            None,
+            0.0,
+            0.0,
+        );
+        let geo_bu_ineff = resolve_bridge_face_solve_geometry(
+            &BridgeInteriorInput {
+                bu: Some(bu),
+                bd: Some(reach.clone()),
+                ..Default::default()
+            },
+            Some(&reach),
+            Some(&reach),
+            &table_up,
+            &table_down,
+            0.0,
+            0.0,
+            UnitSystem::Metric,
+            50,
+            None,
+            None,
+            0.0,
+            None,
+            0.0,
+            0.0,
+        );
+
+        let hw_none = solve_bridge_wsel(
+            20.0,
+            5.0,
+            7.0,
+            0.0,
+            0,
+            0,
+            1.44,
+            0.5,
+            0.0,
+            0.0,
+            2.5,
+            UnitSystem::Metric,
+            &table_up,
+            &table_down,
+            &coupling,
+            50.0,
+            None,
+            Some(&geo_none.sections),
+        );
+        let hw_bu = solve_bridge_wsel(
+            20.0,
+            5.0,
+            7.0,
+            0.0,
+            0,
+            0,
+            1.44,
+            0.5,
+            0.0,
+            0.0,
+            2.5,
+            UnitSystem::Metric,
+            &table_up,
+            &table_down,
+            &coupling,
+            50.0,
+            None,
+            Some(&geo_bu_ineff.sections),
+        );
+        assert!(
+            hw_bu >= hw_none,
+            "BU section ineffective should raise headwater, none={hw_none}, bu={hw_bu}"
+        );
+    }
+
+    #[test]
+    fn test_longer_bu_bd_friction_length_raises_energy_headwater() {
+        let table_up = rectangular_table(10.0, 0.0, 50);
+        let table_down = rectangular_table(10.0, 0.0, 50);
+        let coupling = BridgeCouplingParams {
+            low_flow_method: 3,
+            ..Default::default()
+        };
+        let mut sections_short = BridgeSectionContext::default();
+        sections_short.friction_length_m = 4.0;
+        let mut sections_long = BridgeSectionContext::default();
+        sections_long.friction_length_m = 40.0;
+
+        let hw_short = solve_bridge_wsel(
+            20.0,
+            5.0,
+            7.0,
+            0.0,
+            0,
+            0,
+            1.44,
+            0.5,
+            0.0,
+            0.0,
+            2.5,
+            UnitSystem::Metric,
+            &table_up,
+            &table_down,
+            &coupling,
+            50.0,
+            None,
+            Some(&sections_short),
+        );
+        let hw_long = solve_bridge_wsel(
+            20.0,
+            5.0,
+            7.0,
+            0.0,
+            0,
+            0,
+            1.44,
+            0.5,
+            0.0,
+            0.0,
+            2.5,
+            UnitSystem::Metric,
+            &table_up,
+            &table_down,
+            &coupling,
+            50.0,
+            None,
+            Some(&sections_long),
+        );
+        assert!(
+            hw_long > hw_short,
+            "longer BU–BD friction reach should raise energy headwater, short={hw_short}, long={hw_long}"
+        );
+    }
+
+    #[test]
     fn test_multi_block_ineffective_raises_bridge_headwater() {
         let table_up = rectangular_table(10.0, 0.0, 50);
         let table_down = rectangular_table(10.0, 0.0, 50);
@@ -3157,6 +3604,7 @@ mod tests {
                 false, false, false, false, true, true, true, true, true, true,
             ]),
             blocked_obstructions: None,
+        ineffective_flow_areas: None,
         };
         let single = BridgeSectionContext {
             ineffective_up: Some(
@@ -3214,6 +3662,7 @@ mod tests {
             unit_system: UnitSystem::Metric,
             is_overbank: Some(vec![false, false, false, false, true, true, true, true]),
             blocked_obstructions: None,
+        ineffective_flow_areas: None,
         };
         let sections_split = BridgeSectionContext {
             ineffective_up: Some(

@@ -3,6 +3,7 @@ pub mod unsteady;
 pub mod culvert;
 pub mod bridge;
 pub mod bridge_abutment;
+pub mod bridge_interior;
 pub mod junction;
 
 pub use bridge::{

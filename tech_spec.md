@@ -93,7 +93,9 @@ Entry points (see `src/lib.rs`):
 
 Inputs and outputs are plain JavaScript objects using **snake_case** field names (same schema as Python JSON). Steady junction runs additionally return `tributary_wsel`, `tributary_velocity`, and `tributary_froude` when tributary fields are set.
 
-Check `getWasmApiMetadata().api_version` on each engine upgrade (**21** = per-side bridge abutment fields; **20** = `blocked_obstructions` on cross sections).
+Check `getWasmApiMetadata().api_version` on each engine upgrade (**22** = BU/BD bridge interior cross sections; **21** = per-side bridge abutment fields; **20** = `blocked_obstructions` on cross sections).
+
+**Bridge interior (API version 22):** optional `bridge_upstream_cross_sections`, `bridge_downstream_cross_sections`, `bridge_internal_cross_sections`, and `bridge_opening_reach_station_origins` on steady/unsteady inputs. `CrossSection.ineffective_flow_areas` on BU/BD cuts uses reach lateral coordinates and does not inherit from the adjacent reach face. Bridge hydraulics run on the densified **BU → BD** interval; friction length follows face and interior river stations. Rating curve: `xs_up`, `xs_down`, `opening_reach_station_origin`, `xs_internal`. Example: [`examples/wasm/steady_bridge_bu_bd_v22.json`](../examples/wasm/steady_bridge_bu_bd_v22.json).
 
 **Culvert Tier 1 (API version 2):** optional inputs `culvert_inlet_types`, `culvert_z_ups`, `culvert_z_downs`, `culvert_crest_elevs`, `culvert_weir_coeffs`, `culvert_weir_lengths`; output `culvert_control_types` (`"inlet"` \| `"outlet"` \| `"overtopping"`).
 

@@ -21,6 +21,8 @@ except ImportError:
     import _streams1d
 
 class CrossSection:
+    """Reach or bridge-face polyline. Optional `ineffective_flow_areas` uses reach lateral `x` (API v22 on BU/BD cuts)."""
+
     def __init__(
         self,
         station: float,
@@ -31,6 +33,7 @@ class CrossSection:
         unit_system: str = "Metric",
         is_overbank: Optional[List[bool]] = None,
         blocked_obstructions: Optional[List[Dict[str, List[float]]]] = None,
+        ineffective_flow_areas: Optional[Dict[str, List[Dict[str, float]]]] = None,
     ):
         self.station = station
         self.x = x
@@ -40,6 +43,7 @@ class CrossSection:
         self.unit_system = unit_system
         self.is_overbank = is_overbank
         self.blocked_obstructions = blocked_obstructions
+        self.ineffective_flow_areas = ineffective_flow_areas
 
     def to_dict(self) -> dict:
         res = {
@@ -54,6 +58,8 @@ class CrossSection:
             res['is_overbank'] = self.is_overbank
         if self.blocked_obstructions is not None:
             res['blocked_obstructions'] = self.blocked_obstructions
+        if self.ineffective_flow_areas is not None:
+            res['ineffective_flow_areas'] = self.ineffective_flow_areas
         return res
 
 class SteadyInputs:
@@ -134,6 +140,10 @@ class SteadyInputs:
         bridge_ineffective_right_elevations_downstream: Optional[BridgeIneffectiveBlocks] = None,
         bridge_skew_angles: Optional[List[float]] = None,
         bridge_pier_stations: Optional[List[List[float]]] = None,
+        bridge_upstream_cross_sections: Optional[List[CrossSection]] = None,
+        bridge_downstream_cross_sections: Optional[List[CrossSection]] = None,
+        bridge_internal_cross_sections: Optional[List[List[CrossSection]]] = None,
+        bridge_opening_reach_station_origins: Optional[List[float]] = None,
         # Boundary conditions
         downstream_bc_type: Optional[int] = None,
         downstream_bc_slope: Optional[float] = None,
@@ -221,6 +231,10 @@ class SteadyInputs:
         self.bridge_ineffective_right_elevations_downstream = bridge_ineffective_right_elevations_downstream or []
         self.bridge_skew_angles = bridge_skew_angles or []
         self.bridge_pier_stations = bridge_pier_stations or []
+        self.bridge_upstream_cross_sections = bridge_upstream_cross_sections or []
+        self.bridge_downstream_cross_sections = bridge_downstream_cross_sections or []
+        self.bridge_internal_cross_sections = bridge_internal_cross_sections or []
+        self.bridge_opening_reach_station_origins = bridge_opening_reach_station_origins or []
         self.downstream_bc_type = downstream_bc_type
         self.downstream_bc_slope = downstream_bc_slope
         self.downstream_bc_rating_q = downstream_bc_rating_q
@@ -308,6 +322,10 @@ class SteadyInputs:
             'bridge_ineffective_right_elevations_downstream': self.bridge_ineffective_right_elevations_downstream,
             'bridge_skew_angles': self.bridge_skew_angles,
             'bridge_pier_stations': self.bridge_pier_stations,
+            'bridge_upstream_cross_sections': self.bridge_upstream_cross_sections,
+            'bridge_downstream_cross_sections': self.bridge_downstream_cross_sections,
+            'bridge_internal_cross_sections': self.bridge_internal_cross_sections,
+            'bridge_opening_reach_station_origins': self.bridge_opening_reach_station_origins,
         }
         if self.downstream_bc_type is not None:
             res['downstream_bc_type'] = self.downstream_bc_type
@@ -412,6 +430,10 @@ class UnsteadyInputs:
         bridge_ineffective_right_elevations_downstream: Optional[BridgeIneffectiveBlocks] = None,
         bridge_skew_angles: Optional[List[float]] = None,
         bridge_pier_stations: Optional[List[List[float]]] = None,
+        bridge_upstream_cross_sections: Optional[List[CrossSection]] = None,
+        bridge_downstream_cross_sections: Optional[List[CrossSection]] = None,
+        bridge_internal_cross_sections: Optional[List[List[CrossSection]]] = None,
+        bridge_opening_reach_station_origins: Optional[List[float]] = None,
         structure_coupling_order: Optional[int] = None,
     ):
         self.cross_sections = cross_sections
@@ -490,6 +512,10 @@ class UnsteadyInputs:
         self.bridge_ineffective_right_elevations_downstream = bridge_ineffective_right_elevations_downstream or []
         self.bridge_skew_angles = bridge_skew_angles or []
         self.bridge_pier_stations = bridge_pier_stations or []
+        self.bridge_upstream_cross_sections = bridge_upstream_cross_sections or []
+        self.bridge_downstream_cross_sections = bridge_downstream_cross_sections or []
+        self.bridge_internal_cross_sections = bridge_internal_cross_sections or []
+        self.bridge_opening_reach_station_origins = bridge_opening_reach_station_origins or []
         self.structure_coupling_order = structure_coupling_order
 
     def to_dict(self) -> dict:
@@ -570,6 +596,10 @@ class UnsteadyInputs:
             'bridge_ineffective_right_elevations_downstream': self.bridge_ineffective_right_elevations_downstream,
             'bridge_skew_angles': self.bridge_skew_angles,
             'bridge_pier_stations': self.bridge_pier_stations,
+            'bridge_upstream_cross_sections': self.bridge_upstream_cross_sections,
+            'bridge_downstream_cross_sections': self.bridge_downstream_cross_sections,
+            'bridge_internal_cross_sections': self.bridge_internal_cross_sections,
+            'bridge_opening_reach_station_origins': self.bridge_opening_reach_station_origins,
         }
         if self.structure_coupling_order is not None:
             res['structure_coupling_order'] = self.structure_coupling_order

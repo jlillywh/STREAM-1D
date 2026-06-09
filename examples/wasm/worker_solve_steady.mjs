@@ -5,6 +5,9 @@
  *   new Worker(new URL('./streams1d.worker.js', import.meta.url), { type: 'module' })
  *
  * Copy this file, adjust the import path to your deployed `pkg/streams1d.js`.
+ *
+ * Example BU/BD bridge payload (API v22): `steady_bridge_bu_bd_v22.json` in this folder.
+ * TypeScript field definitions: `docs/wasm_api.types.ts`.
  */
 
 import init, {
