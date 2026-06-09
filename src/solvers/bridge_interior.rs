@@ -1,6 +1,9 @@
 //! HEC-RAS BU / BD / internal bridge cross-section resolution (API v22).
 
-use crate::geometry::{CrossSection, GeometryTable, IneffectiveBlock, IneffectiveFlowAreas};
+use crate::geometry::{
+    resolve_guide_banks, CrossSection, GeometryTable, GuideBanks, IneffectiveBlock,
+    IneffectiveFlowAreas,
+};
 use crate::solvers::bridge::BridgeSectionContext;
 use crate::utils::{structure_in_reach_interval, UnitSystem, FT_TO_M, STRUCTURE_STATION_TOL};
 
@@ -69,6 +72,29 @@ fn resolve_face_ineffective(
     opening_frame_ineffective_to_reach(bridge_level, opening_origin)
 }
 
+/// How bridge opening station 0 is anchored to reach lateral coordinates (API v23).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(i32)]
+pub enum BridgeOpeningAnchorMode {
+    /// Opening station 0 = leftmost lateral `x` on resolved BU (or reach US fallback).
+    #[default]
+    BuLeft = 0,
+    /// Opening station 0 = leftmost lateral `x` on the reach XS at `opening_anchor_reach_station`.
+    ReachRiverStation = 1,
+    /// Opening station 0 = explicit reach lateral `x` in `opening_reach_station_origin`.
+    ReachLateralX = 2,
+}
+
+impl BridgeOpeningAnchorMode {
+    pub fn from_i32(v: i32) -> Self {
+        match v {
+            1 => Self::ReachRiverStation,
+            2 => Self::ReachLateralX,
+            _ => Self::BuLeft,
+        }
+    }
+}
+
 /// Per-bridge optional interior section inputs (steady or unsteady).
 #[derive(Debug, Clone, Default)]
 pub struct BridgeInteriorInput {
@@ -76,6 +102,21 @@ pub struct BridgeInteriorInput {
     pub bd: Option<CrossSection>,
     pub internal: Vec<CrossSection>,
     pub opening_reach_station_origin: Option<f64>,
+    pub opening_anchor_mode: Option<BridgeOpeningAnchorMode>,
+    /// Longitudinal reach river station (user units) when `opening_anchor_mode` is `ReachRiverStation`.
+    pub opening_anchor_reach_station: Option<f64>,
+    /// Explicit approach (upstream) cross section per bridge.
+    pub approach: Option<CrossSection>,
+    /// Explicit departure (downstream exit) cross section per bridge.
+    pub departure: Option<CrossSection>,
+    /// Reach river station of approach cut when `approach` is omitted.
+    pub approach_reach_station: Option<f64>,
+    /// Reach river station of departure cut when `departure` is omitted.
+    pub departure_reach_station: Option<f64>,
+    /// Guide banks on approach cut when not on embedded `CrossSection.guide_banks`.
+    pub approach_guide_banks: Option<GuideBanks>,
+    /// Guide banks on departure cut when not on embedded `CrossSection.guide_banks`.
+    pub departure_guide_banks: Option<GuideBanks>,
 }
 
 /// Resolved face geometry for one bridge interval solve.
@@ -95,9 +136,61 @@ pub fn cross_section_min_bed(xs: &CrossSection) -> f64 {
     xs.y.iter().copied().fold(f64::INFINITY, f64::min)
 }
 
-/// Infer reach XS lateral coordinate at bridge opening station 0.
+/// Infer reach XS lateral coordinate at bridge opening station 0 (leftmost polyline `x`).
 pub fn infer_opening_reach_station_origin(xs: &CrossSection) -> f64 {
     xs.x.iter().copied().fold(f64::INFINITY, f64::min)
+}
+
+/// Resolve reach lateral `x` at opening station 0 from anchor mode and optional explicit override.
+///
+/// Precedence: explicit `opening_reach_station_origin` (backward compatible with v22) wins over mode.
+pub fn resolve_opening_reach_station_origin(
+    explicit_lateral_x: Option<f64>,
+    anchor_mode: Option<BridgeOpeningAnchorMode>,
+    bu_xs: Option<&CrossSection>,
+    anchor_reach_xs: Option<&CrossSection>,
+    reach_xs_up: Option<&CrossSection>,
+) -> Option<f64> {
+    if let Some(x) = explicit_lateral_x {
+        return Some(x);
+    }
+    match anchor_mode.unwrap_or(BridgeOpeningAnchorMode::BuLeft) {
+        BridgeOpeningAnchorMode::ReachLateralX => None,
+        BridgeOpeningAnchorMode::ReachRiverStation => anchor_reach_xs
+            .or(reach_xs_up)
+            .map(infer_opening_reach_station_origin),
+        BridgeOpeningAnchorMode::BuLeft => bu_xs
+            .or(reach_xs_up)
+            .map(infer_opening_reach_station_origin),
+    }
+}
+
+/// Look up a reach cross section at a longitudinal river station on a densified grid.
+pub fn cross_section_at_reach_station(
+    stations_metric: &[f64],
+    xs: &[Option<CrossSection>],
+    station_user: f64,
+    raw_units: UnitSystem,
+) -> Option<CrossSection> {
+    let target_m = user_length_to_metric(station_user, raw_units);
+    let idx = stations_metric
+        .iter()
+        .position(|&s| (s - target_m).abs() <= STRUCTURE_STATION_TOL)?;
+    xs.get(idx).and_then(|opt| opt.clone())
+}
+
+/// Same as [`cross_section_at_reach_station`] for unsteady grids where every node has an XS.
+pub fn cross_section_at_reach_station_dense(
+    stations_metric: &[f64],
+    xs: &[CrossSection],
+    station_user: f64,
+    raw_units: UnitSystem,
+) -> Option<CrossSection> {
+    let target_m = user_length_to_metric(station_user, raw_units);
+    let idx = stations_metric
+        .iter()
+        .position(|&s| (s - target_m).abs() <= STRUCTURE_STATION_TOL)?;
+    xs.get(idx).cloned()
 }
 
 /// Map bridge opening station to reach cross-section lateral `x`.
@@ -108,6 +201,33 @@ pub fn opening_station_to_reach_x(opening_s: f64, origin: f64) -> f64 {
 /// Map reach cross-section lateral `x` to bridge opening station.
 pub fn reach_x_to_opening_station(reach_x: f64, origin: f64) -> f64 {
     reach_x - origin
+}
+
+/// Shift opening-frame lateral stations to reach XS coordinates (user units).
+pub fn remap_opening_stations_user(stations: &[f64], origin_user: f64) -> Vec<f64> {
+    stations
+        .iter()
+        .map(|&s| opening_station_to_reach_x(s, origin_user))
+        .collect()
+}
+
+/// Shift optional opening-frame stations when a reach origin is known.
+pub fn remap_opening_stations_option(
+    stations: Option<Vec<f64>>,
+    origin_user: Option<f64>,
+) -> Option<Vec<f64>> {
+    match (stations, origin_user) {
+        (Some(st), Some(origin)) => Some(remap_opening_stations_user(&st, origin)),
+        (st, _) => st,
+    }
+}
+
+/// Map opening-frame ineffective blocks onto reach lateral coordinates (public preprocessor).
+pub fn remap_ineffective_opening_to_reach(
+    areas: Option<IneffectiveFlowAreas>,
+    origin_user: f64,
+) -> Option<IneffectiveFlowAreas> {
+    opening_frame_ineffective_to_reach(areas, Some(origin_user))
 }
 
 fn bed_user_from_xs(xs: &CrossSection, raw_units: UnitSystem) -> f64 {
@@ -194,9 +314,68 @@ pub fn resolve_bridge_friction_length_metric(
     0.0
 }
 
+/// Resolve approach / departure cuts and guide banks for one bridge interval.
+///
+/// Approach / departure `CrossSection` precedence:
+/// 1. Explicit `interior.approach` / `interior.departure`
+/// 2. Reach XS at `approach_reach_station` / `departure_reach_station` on the densified grid
+/// 3. Nearest reach node upstream of BU (`bu_interval_idx - 1`) / downstream of BD (`bu_interval_idx + 2`)
+pub fn resolve_approach_departure_sections(
+    interior: &BridgeInteriorInput,
+    bu_interval_idx: usize,
+    densified_stations: &[f64],
+    densified_xs: &[Option<CrossSection>],
+    raw_units: UnitSystem,
+) -> (
+    Option<CrossSection>,
+    Option<CrossSection>,
+    Option<GuideBanks>,
+    Option<GuideBanks>,
+) {
+    let approach_xs = interior
+        .approach
+        .clone()
+        .or_else(|| {
+            interior.approach_reach_station.and_then(|st| {
+                cross_section_at_reach_station(densified_stations, densified_xs, st, raw_units)
+            })
+        })
+        .or_else(|| {
+            let idx = bu_interval_idx.checked_sub(1)?;
+            densified_xs.get(idx).and_then(|opt| opt.clone())
+        });
+    let departure_xs = interior
+        .departure
+        .clone()
+        .or_else(|| {
+            interior.departure_reach_station.and_then(|st| {
+                cross_section_at_reach_station(densified_stations, densified_xs, st, raw_units)
+            })
+        })
+        .or_else(|| {
+            let idx = bu_interval_idx + 2;
+            densified_xs.get(idx).and_then(|opt| opt.clone())
+        });
+    let guide_banks_approach = resolve_guide_banks(
+        approach_xs.as_ref(),
+        interior.approach_guide_banks.as_ref(),
+    );
+    let guide_banks_departure = resolve_guide_banks(
+        departure_xs.as_ref(),
+        interior.departure_guide_banks.as_ref(),
+    );
+    (
+        approach_xs,
+        departure_xs,
+        guide_banks_approach,
+        guide_banks_departure,
+    )
+}
+
 /// Build geometry tables and section context for a bridge interval.
 pub fn resolve_bridge_face_solve_geometry(
     interior: &BridgeInteriorInput,
+    anchor_reach_xs: Option<&CrossSection>,
     reach_xs_up: Option<&CrossSection>,
     reach_xs_down: Option<&CrossSection>,
     reach_table_up: &GeometryTable,
@@ -211,6 +390,10 @@ pub fn resolve_bridge_face_solve_geometry(
     pier_stations: Option<Vec<f64>>,
     interval_length_m: f64,
     bridge_length_user: f64,
+    approach_xs: Option<CrossSection>,
+    departure_xs: Option<CrossSection>,
+    guide_banks_approach: Option<GuideBanks>,
+    guide_banks_departure: Option<GuideBanks>,
 ) -> BridgeFaceSolveGeometry {
     let xs_up = interior
         .bu
@@ -240,9 +423,13 @@ pub fn resolve_bridge_face_solve_geometry(
         .map(|xs| bed_user_from_xs(xs, raw_units))
         .unwrap_or(reach_z_down_user);
 
-    let opening_origin = interior
-        .opening_reach_station_origin
-        .or_else(|| xs_up.as_ref().map(infer_opening_reach_station_origin));
+    let opening_origin = resolve_opening_reach_station_origin(
+        interior.opening_reach_station_origin,
+        interior.opening_anchor_mode,
+        xs_up.as_ref(),
+        anchor_reach_xs,
+        reach_xs_up,
+    );
 
     let ineffective_up = resolve_face_ineffective(
         xs_up.as_ref(),
@@ -268,6 +455,8 @@ pub fn resolve_bridge_face_solve_geometry(
         raw_units,
     );
 
+    let pier_stations = remap_opening_stations_option(pier_stations, opening_origin);
+
     let sections = BridgeSectionContext {
         ineffective_up,
         ineffective_down,
@@ -278,6 +467,10 @@ pub fn resolve_bridge_face_solve_geometry(
         skew_deg,
         pier_stations,
         friction_length_m,
+        xs_approach: approach_xs,
+        xs_departure: departure_xs,
+        guide_banks_approach,
+        guide_banks_departure,
     };
 
     BridgeFaceSolveGeometry {
@@ -315,6 +508,47 @@ pub fn interior_from_steady(
             .as_ref()
             .and_then(|v| v.get(b_idx))
             .copied(),
+        opening_anchor_mode: inputs
+            .bridge_opening_anchor_modes
+            .as_ref()
+            .and_then(|v| v.get(b_idx))
+            .copied()
+            .map(BridgeOpeningAnchorMode::from_i32),
+        opening_anchor_reach_station: inputs
+            .bridge_opening_anchor_reach_stations
+            .as_ref()
+            .and_then(|v| v.get(b_idx))
+            .copied(),
+        approach: inputs
+            .bridge_approach_cross_sections
+            .as_ref()
+            .and_then(|v| v.get(b_idx))
+            .cloned(),
+        departure: inputs
+            .bridge_departure_cross_sections
+            .as_ref()
+            .and_then(|v| v.get(b_idx))
+            .cloned(),
+        approach_reach_station: inputs
+            .bridge_approach_reach_stations
+            .as_ref()
+            .and_then(|v| v.get(b_idx))
+            .copied(),
+        departure_reach_station: inputs
+            .bridge_departure_reach_stations
+            .as_ref()
+            .and_then(|v| v.get(b_idx))
+            .copied(),
+        approach_guide_banks: inputs
+            .bridge_approach_guide_banks
+            .as_ref()
+            .and_then(|v| v.get(b_idx))
+            .cloned(),
+        departure_guide_banks: inputs
+            .bridge_departure_guide_banks
+            .as_ref()
+            .and_then(|v| v.get(b_idx))
+            .cloned(),
     }
 }
 
@@ -715,6 +949,47 @@ pub fn interior_from_unsteady(
             .as_ref()
             .and_then(|v| v.get(b_idx))
             .copied(),
+        opening_anchor_mode: b
+            .bridge_opening_anchor_modes
+            .as_ref()
+            .and_then(|v| v.get(b_idx))
+            .copied()
+            .map(BridgeOpeningAnchorMode::from_i32),
+        opening_anchor_reach_station: b
+            .bridge_opening_anchor_reach_stations
+            .as_ref()
+            .and_then(|v| v.get(b_idx))
+            .copied(),
+        approach: b
+            .bridge_approach_cross_sections
+            .as_ref()
+            .and_then(|v| v.get(b_idx))
+            .cloned(),
+        departure: b
+            .bridge_departure_cross_sections
+            .as_ref()
+            .and_then(|v| v.get(b_idx))
+            .cloned(),
+        approach_reach_station: b
+            .bridge_approach_reach_stations
+            .as_ref()
+            .and_then(|v| v.get(b_idx))
+            .copied(),
+        departure_reach_station: b
+            .bridge_departure_reach_stations
+            .as_ref()
+            .and_then(|v| v.get(b_idx))
+            .copied(),
+        approach_guide_banks: b
+            .bridge_approach_guide_banks
+            .as_ref()
+            .and_then(|v| v.get(b_idx))
+            .cloned(),
+        departure_guide_banks: b
+            .bridge_departure_guide_banks
+            .as_ref()
+            .and_then(|v| v.get(b_idx))
+            .cloned(),
     }
 }
 
@@ -734,6 +1009,7 @@ mod tests {
             is_overbank: None,
             blocked_obstructions: None,
             ineffective_flow_areas: None,
+            guide_banks: None,
         }
     }
 
@@ -749,10 +1025,12 @@ mod tests {
             bd: None,
             internal: vec![],
             opening_reach_station_origin: Some(50.0),
+            ..Default::default()
         };
         let reach = box_xs(0.0, 30.0, 0.0, 6.0);
         let geo = resolve_bridge_face_solve_geometry(
             &interior,
+            None,
             Some(&reach),
             Some(&reach),
             &flat_table(),
@@ -767,6 +1045,10 @@ mod tests {
             None,
             0.0,
             0.0,
+            None,
+            None,
+            None,
+            None,
         );
         assert!((geo.z_up_user - 2.0).abs() < 1e-9);
         assert_eq!(geo.sections.opening_reach_station_origin, Some(50.0));
@@ -796,6 +1078,7 @@ mod tests {
             is_overbank: None,
             blocked_obstructions: None,
             ineffective_flow_areas: None,
+        guide_banks: None,
         };
         let bd = CrossSection {
             station: 495.0,
@@ -859,6 +1142,7 @@ mod tests {
                 bd: Some(bd),
                 internal: vec![],
                 opening_reach_station_origin: None,
+                ..Default::default()
             },
             faces,
             UnitSystem::Metric,
@@ -885,10 +1169,11 @@ mod tests {
             bu: Some(bu),
             bd: None,
             internal: vec![],
-            opening_reach_station_origin: None,
+            ..Default::default()
         };
         let geo = resolve_bridge_face_solve_geometry(
             &interior,
+            None,
             None,
             None,
             &flat_table(),
@@ -903,6 +1188,10 @@ mod tests {
             None,
             0.0,
             0.0,
+            None,
+            None,
+            None,
+            None,
         );
         assert_eq!(geo.sections.opening_reach_station_origin, Some(42.5));
     }
@@ -926,11 +1215,13 @@ mod tests {
             bd: None,
             internal: vec![],
             opening_reach_station_origin: Some(0.0),
+            ..Default::default()
         };
         let bridge_opening = IneffectiveFlowAreas::from_block_pairs(&[20.0], &[3.0], &[], &[]).unwrap();
 
         let geo = resolve_bridge_face_solve_geometry(
             &interior,
+            None,
             Some(&reach),
             Some(&reach),
             &flat_table(),
@@ -945,6 +1236,10 @@ mod tests {
             None,
             0.0,
             0.0,
+            None,
+            None,
+            None,
+            None,
         );
 
         let up = geo
@@ -964,6 +1259,7 @@ mod tests {
 
         let geo = resolve_bridge_face_solve_geometry(
             &BridgeInteriorInput::default(),
+            None,
             Some(&reach),
             Some(&reach),
             &flat_table(),
@@ -978,6 +1274,10 @@ mod tests {
             None,
             0.0,
             0.0,
+            None,
+            None,
+            None,
+            None,
         );
 
         let up = geo.sections.ineffective_up.expect("reach ineffective");
@@ -990,7 +1290,11 @@ mod tests {
         let bridge_opening = IneffectiveFlowAreas::from_block_pairs(&[5.0], &[3.0], &[], &[]).unwrap();
 
         let geo = resolve_bridge_face_solve_geometry(
-            &BridgeInteriorInput::default(),
+            &BridgeInteriorInput {
+                opening_reach_station_origin: Some(100.0),
+                ..Default::default()
+            },
+            None,
             Some(&reach),
             None,
             &flat_table(),
@@ -1005,6 +1309,10 @@ mod tests {
             None,
             0.0,
             0.0,
+            None,
+            None,
+            None,
+            None,
         );
 
         let up = geo.sections.ineffective_up.expect("shifted ineffective");
@@ -1021,7 +1329,7 @@ mod tests {
             bu: Some(bu),
             bd: Some(bd),
             internal: vec![],
-            opening_reach_station_origin: None,
+            ..Default::default()
         };
         let len = resolve_bridge_friction_length_metric(&interior, 4.0, 100.0, UnitSystem::Metric);
         assert!((len - 4.0).abs() < 1e-9);
@@ -1039,7 +1347,7 @@ mod tests {
             bu: Some(bu),
             bd: Some(bd),
             internal: vec![internal],
-            opening_reach_station_origin: None,
+            ..Default::default()
         };
         let len = resolve_bridge_friction_length_metric(&interior, 0.0, 0.0, UnitSystem::Metric);
         assert!((len - 7.0).abs() < 1e-9);
@@ -1055,10 +1363,11 @@ mod tests {
             bu: Some(bu),
             bd: Some(bd),
             internal: vec![],
-            opening_reach_station_origin: None,
+            ..Default::default()
         };
         let geo = resolve_bridge_face_solve_geometry(
             &interior,
+            None,
             None,
             None,
             &flat_table(),
@@ -1073,7 +1382,262 @@ mod tests {
             None,
             6.0,
             50.0,
+            None,
+            None,
+            None,
+            None,
         );
         assert!((geo.sections.friction_length_m - 6.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn anchor_reach_river_station_uses_approach_min_x() {
+        let approach = box_xs(80.0, 50.0, 0.0, 6.0);
+        let bu = box_xs(100.0, 20.0, 1.0, 6.0);
+        let interior = BridgeInteriorInput {
+            bu: Some(bu),
+            bd: None,
+            internal: vec![],
+            opening_anchor_mode: Some(BridgeOpeningAnchorMode::ReachRiverStation),
+            opening_anchor_reach_station: Some(600.0),
+            ..Default::default()
+        };
+        let geo = resolve_bridge_face_solve_geometry(
+            &interior,
+            Some(&approach),
+            None,
+            None,
+            &flat_table(),
+            &flat_table(),
+            0.0,
+            0.0,
+            UnitSystem::Metric,
+            20,
+            None,
+            None,
+            0.0,
+            None,
+            0.0,
+            0.0,
+            None,
+            None,
+            None,
+            None,
+        );
+        assert_eq!(geo.sections.opening_reach_station_origin, Some(80.0));
+    }
+
+    #[test]
+    fn explicit_lateral_x_overrides_anchor_mode() {
+        let origin = resolve_opening_reach_station_origin(
+            Some(99.0),
+            Some(BridgeOpeningAnchorMode::BuLeft),
+            None,
+            None,
+            None,
+        );
+        assert_eq!(origin, Some(99.0));
+    }
+
+    #[test]
+    fn approach_departure_guide_banks_resolve_from_explicit_cuts() {
+        use crate::geometry::{GuideBankToe, GuideBanks};
+        let approach = CrossSection {
+            station: 600.0,
+            x: vec![0.0, 100.0],
+            y: vec![5.0, 5.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.03],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: Some(GuideBanks {
+                left_toe: Some(GuideBankToe {
+                    station: 20.0,
+                    elevation: 4.0,
+                }),
+                right_toe: Some(GuideBankToe {
+                    station: 80.0,
+                    elevation: 4.0,
+                }),
+                ..Default::default()
+            }),
+        };
+        let interior = BridgeInteriorInput {
+            approach: Some(approach),
+            departure_guide_banks: Some(GuideBanks {
+                left_toe: Some(GuideBankToe {
+                    station: 99.0,
+                    elevation: 4.0,
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let stations = vec![600.0, 550.0, 500.0, 450.0];
+        let xs: Vec<Option<CrossSection>> = stations
+            .iter()
+            .map(|&st| {
+                Some(CrossSection {
+                    station: st,
+                    x: vec![0.0, 100.0],
+                    y: vec![5.0, 5.0],
+                    n_stations: vec![0.0],
+                    n_values: vec![0.03],
+                    unit_system: UnitSystem::Metric,
+                    is_overbank: None,
+                    blocked_obstructions: None,
+                    ineffective_flow_areas: None,
+                    guide_banks: None,
+                })
+            })
+            .collect();
+        let (app, dep, gb_app, gb_dep) =
+            resolve_approach_departure_sections(&interior, 1, &stations, &xs, UnitSystem::Metric);
+        assert_eq!(app.as_ref().map(|x| x.station), Some(600.0));
+        assert_eq!(dep.as_ref().map(|x| x.station), Some(450.0));
+        assert_eq!(gb_app.unwrap().left_toe.unwrap().station, 20.0);
+        assert_eq!(gb_dep.unwrap().left_toe.unwrap().station, 99.0);
+    }
+
+    #[test]
+    fn pier_stations_remapped_to_reach_frame() {
+        let bu = box_xs(100.0, 30.0, 1.0, 6.0);
+        let interior = BridgeInteriorInput {
+            bu: Some(bu),
+            bd: None,
+            internal: vec![],
+            opening_reach_station_origin: Some(100.0),
+            ..Default::default()
+        };
+        let geo = resolve_bridge_face_solve_geometry(
+            &interior,
+            None,
+            None,
+            None,
+            &flat_table(),
+            &flat_table(),
+            0.0,
+            0.0,
+            UnitSystem::Metric,
+            20,
+            None,
+            None,
+            0.0,
+            Some(vec![5.0, 20.0]),
+            0.0,
+            0.0,
+            None,
+            None,
+            None,
+            None,
+        );
+        let piers = geo.sections.pier_stations.expect("piers");
+        assert!((piers[0] - 105.0).abs() < 1e-9);
+        assert!((piers[1] - 120.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn ineffective_preprocessor_shifts_opening_blocks() {
+        let blocks = IneffectiveFlowAreas::from_block_pairs(&[8.0], &[3.0], &[], &[]).unwrap();
+        let shifted = remap_ineffective_opening_to_reach(Some(blocks), 100.0).unwrap();
+        assert!((shifted.left_blocks[0].station - 108.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn approach_resolves_from_reach_station_pointer() {
+        use crate::geometry::{GuideBankToe, GuideBanks};
+        let stations = vec![600.0, 550.0, 500.0, 450.0];
+        let xs: Vec<Option<CrossSection>> = stations
+            .iter()
+            .map(|&st| {
+                let width = if (st - 550.0_f64).abs() < 1e-9 { 30.0 } else { 10.0 };
+                let mut section = box_xs(st, width, 0.0, 5.0);
+                section.station = st;
+                Some(section)
+            })
+            .collect();
+        let interior = BridgeInteriorInput {
+            approach_reach_station: Some(550.0),
+            approach_guide_banks: Some(GuideBanks {
+                left_toe: Some(GuideBankToe {
+                    station: 60.0,
+                    elevation: 0.0,
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let (app, _, gb_app, _) =
+            resolve_approach_departure_sections(&interior, 1, &stations, &xs, UnitSystem::Metric);
+        let app = app.expect("approach from reach station");
+        assert!((app.station - 550.0).abs() < 1e-9);
+        let width: f64 = app.x[2] - app.x[0];
+        assert!((width - 30.0).abs() < 1e-9);
+        assert_eq!(gb_app.unwrap().left_toe.unwrap().station, 60.0);
+    }
+
+    #[test]
+    fn interior_from_unsteady_carries_guide_bank_fields() {
+        use crate::geometry::{GuideBankToe, GuideBanks};
+        use crate::solvers::unsteady::UnsteadyBridgeInputs;
+        let bridge = UnsteadyBridgeInputs {
+            bridge_departure_guide_banks: Some(vec![GuideBanks {
+                right_toe: Some(GuideBankToe {
+                    station: 90.0,
+                    elevation: 0.0,
+                }),
+                ..Default::default()
+            }]),
+            bridge_departure_reach_stations: Some(vec![45.0]),
+            ..UnsteadyBridgeInputs::default()
+        };
+        let interior = interior_from_unsteady(&bridge, 0);
+        assert_eq!(
+            interior.departure_guide_banks.unwrap().right_toe.unwrap().station,
+            90.0
+        );
+        assert_eq!(interior.departure_reach_station, Some(45.0));
+    }
+
+    #[test]
+    fn interior_from_steady_carries_guide_bank_fields() {
+        use crate::geometry::{GuideBankToe, GuideBanks};
+        use crate::solvers::steady::SteadyInputs;
+        let inputs = SteadyInputs {
+            bridge_stations: Some(vec![50.0]),
+            bridge_approach_guide_banks: Some(vec![GuideBanks {
+                left_toe: Some(GuideBankToe {
+                    station: 12.0,
+                    elevation: 0.0,
+                }),
+                ..Default::default()
+            }]),
+            bridge_departure_reach_stations: Some(vec![40.0]),
+            ..Default::default()
+        };
+        let interior = interior_from_steady(&inputs, 0);
+        assert_eq!(
+            interior.approach_guide_banks.unwrap().left_toe.unwrap().station,
+            12.0
+        );
+        assert_eq!(interior.departure_reach_station, Some(40.0));
+    }
+
+    #[test]
+    fn cross_section_lookup_at_reach_station() {
+        let stations = vec![600.0, 400.0, 200.0];
+        let xs: Vec<Option<CrossSection>> = stations
+            .iter()
+            .map(|&st| {
+                let mut section = box_xs(st, 10.0, 0.0, 5.0);
+                section.station = st;
+                Some(section)
+            })
+            .collect();
+        let found = cross_section_at_reach_station(&stations, &xs, 400.0, UnitSystem::Metric)
+            .expect("station 400");
+        assert!((found.x[0] - 400.0).abs() < 1e-9);
     }
 }

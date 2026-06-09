@@ -48,6 +48,7 @@ fn rectangular_table(width: f64, z_bed: f64, num_slices: usize) -> GeometryTable
         is_overbank: None,
         blocked_obstructions: None,
     ineffective_flow_areas: None,
+    guide_banks: None,
     };
     xs.generate_lookup_table(num_slices)
 }

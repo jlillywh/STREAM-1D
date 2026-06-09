@@ -23,6 +23,9 @@ pub struct CrossSection {
     /// HEC-RAS normal ineffective-flow blocks on this cut (reach lateral `x` frame).
     #[serde(default)]
     pub ineffective_flow_areas: Option<IneffectiveFlowAreas>,
+    /// Optional guide banks on this cut (approach / departure); reach lateral `x` frame.
+    #[serde(default)]
+    pub guide_banks: Option<crate::geometry::GuideBanks>,
 }
 
 /// One blocked-obstruction polyline across the section (station/elevation pairs, monotonic stations).
@@ -275,6 +278,10 @@ impl CrossSection {
             ineffective_flow_areas: self.ineffective_flow_areas.as_ref().map(|areas| {
                 areas.convert_units(self.unit_system, UnitSystem::Metric)
             }),
+            guide_banks: self
+                .guide_banks
+                .as_ref()
+                .map(|g| g.to_metric(self.unit_system)),
         }
     }
 
@@ -395,6 +402,7 @@ impl CrossSection {
             elev,
             None,
             self.blocked_obstructions.as_deref(),
+            None,
         )
     }
 
@@ -408,6 +416,7 @@ impl CrossSection {
             elev,
             ineffective,
             self.blocked_obstructions.as_deref(),
+            None,
         )
     }
 
@@ -417,6 +426,7 @@ impl CrossSection {
         elev: f64,
         ineffective: Option<&IneffectiveFlowAreas>,
         blocked: Option<&[BlockedObstruction]>,
+        guide_banks: Option<&crate::geometry::GuideBanks>,
     ) -> GeometryRow {
         let n_pts = self.x.len();
         if n_pts < 2 || elev <= self.y.iter().cloned().fold(f64::INFINITY, f64::min) {
@@ -516,6 +526,22 @@ impl CrossSection {
                     .filter(|i| i.is_configured())
                     .map(|i| segment_is_ineffective(x_mid, elev, i))
                     .unwrap_or(false);
+                let guide_frac = guide_banks
+                    .filter(|g| g.is_configured())
+                    .and_then(|gb| crate::geometry::lateral_limits_at_wsel(gb, elev))
+                    .map(|limits| crate::geometry::segment_guide_fraction(xa, xb, limits))
+                    .unwrap_or(1.0);
+                let active_scale = if is_ineffective { 0.0 } else { guide_frac };
+
+                let add_active =
+                    |zone: &mut ZoneProperties, scale: f64| {
+                        if scale > 1e-9 {
+                            zone.area += seg_area * scale;
+                            zone.perimeter += seg_wetted_len * scale;
+                            zone.top_width += seg_width * scale;
+                            zone.sum_pn15 += sum_pn15_contrib * scale;
+                        }
+                    };
 
                 if is_subdivided {
                     if x_mid < left_bank_x {
@@ -523,46 +549,26 @@ impl CrossSection {
                         lob.perimeter += seg_wetted_len;
                         lob.top_width += seg_width;
                         lob.sum_pn15 += sum_pn15_contrib;
-                        if !is_ineffective {
-                            lob_active.area += seg_area;
-                            lob_active.perimeter += seg_wetted_len;
-                            lob_active.top_width += seg_width;
-                            lob_active.sum_pn15 += sum_pn15_contrib;
-                        }
+                        add_active(&mut lob_active, active_scale);
                     } else if x_mid > right_bank_x {
                         rob.area += seg_area;
                         rob.perimeter += seg_wetted_len;
                         rob.top_width += seg_width;
                         rob.sum_pn15 += sum_pn15_contrib;
-                        if !is_ineffective {
-                            rob_active.area += seg_area;
-                            rob_active.perimeter += seg_wetted_len;
-                            rob_active.top_width += seg_width;
-                            rob_active.sum_pn15 += sum_pn15_contrib;
-                        }
+                        add_active(&mut rob_active, active_scale);
                     } else {
                         ch.area += seg_area;
                         ch.perimeter += seg_wetted_len;
                         ch.top_width += seg_width;
                         ch.sum_pn15 += sum_pn15_contrib;
-                        if !is_ineffective {
-                            ch_active.area += seg_area;
-                            ch_active.perimeter += seg_wetted_len;
-                            ch_active.top_width += seg_width;
-                            ch_active.sum_pn15 += sum_pn15_contrib;
-                        }
+                        add_active(&mut ch_active, active_scale);
                     }
                 } else {
                     ch.area += seg_area;
                     ch.perimeter += seg_wetted_len;
                     ch.top_width += seg_width;
                     ch.sum_pn15 += sum_pn15_contrib;
-                    if !is_ineffective {
-                        ch_active.area += seg_area;
-                        ch_active.perimeter += seg_wetted_len;
-                        ch_active.top_width += seg_width;
-                        ch_active.sum_pn15 += sum_pn15_contrib;
-                    }
+                    add_active(&mut ch_active, active_scale);
                 }
             }
         }
@@ -585,13 +591,16 @@ impl CrossSection {
             }
         };
 
-        let active_area = if ineffective.filter(|i| i.is_configured()).is_some() {
+        let clip_active = ineffective.filter(|i| i.is_configured()).is_some()
+            || guide_banks.filter(|g| g.is_configured()).is_some();
+
+        let active_area = if clip_active {
             lob_active.area + ch_active.area + rob_active.area
         } else {
             area
         };
 
-        let conveyance = if ineffective.filter(|i| i.is_configured()).is_some() {
+        let conveyance = if clip_active {
             if is_subdivided {
                 get_conveyance(&lob_active) + get_conveyance(&ch_active) + get_conveyance(&rob_active)
             } else {
@@ -603,7 +612,7 @@ impl CrossSection {
             get_conveyance(&ch)
         };
 
-        let active_channel_area = if ineffective.filter(|i| i.is_configured()).is_some() {
+        let active_channel_area = if clip_active {
             ch_active.area
         } else {
             ch.area
@@ -642,17 +651,20 @@ pub fn row_at_elevation(
     xs: &CrossSection,
     elev: f64,
     ineffective: Option<&IneffectiveFlowAreas>,
+    guide_banks: Option<&crate::geometry::GuideBanks>,
 ) -> GeometryRow {
     let has_ineffective = ineffective.filter(|i| i.is_configured()).is_some();
+    let has_guide_banks = guide_banks.filter(|g| g.is_configured()).is_some();
     let has_blocked = xs
         .blocked_obstructions
         .as_ref()
         .is_some_and(|b| b.iter().any(|poly| poly.is_valid()));
-    if has_ineffective || has_blocked {
+    if has_ineffective || has_blocked || has_guide_banks {
         xs.to_metric().compute_properties_at_elevation_with_modifiers(
             elev,
             ineffective,
             xs.blocked_obstructions.as_deref(),
+            guide_banks,
         )
     } else {
         let row = table.interpolate(elev);
@@ -855,6 +867,7 @@ mod tests {
             is_overbank: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
+        guide_banks: None,
         };
         let table1 = xs1.generate_lookup_table(10);
 
@@ -869,6 +882,7 @@ mod tests {
             is_overbank: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
+        guide_banks: None,
         };
         let table2 = xs2.generate_lookup_table(10);
 
@@ -900,6 +914,7 @@ mod tests {
             is_overbank: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
+        guide_banks: None,
         };
 
         // Generating a table
@@ -958,6 +973,7 @@ mod tests {
             ]),
             blocked_obstructions: None,
         ineffective_flow_areas: None,
+        guide_banks: None,
         };
         // Single block inactive at WSEL 2.5 (activation 2.0); multi blocks left of 20 and 30.
         let single = IneffectiveFlowAreas::from_block_pairs(&[30.0], &[2.0], &[], &[]).unwrap();
@@ -992,6 +1008,7 @@ mod tests {
             is_overbank: Some(vec![false, false, false, false, true, true, true, true]),
             blocked_obstructions: None,
         ineffective_flow_areas: None,
+        guide_banks: None,
         };
         let ineffective =
             IneffectiveFlowAreas::from_block_pairs(&[30.0], &[3.0], &[], &[]).unwrap();
@@ -1018,6 +1035,7 @@ mod tests {
             is_overbank: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
+        guide_banks: None,
         };
         let blocked = CrossSection {
             blocked_obstructions: Some(vec![BlockedObstruction {
@@ -1051,6 +1069,7 @@ mod tests {
                 elevations: vec![2.0, 2.0],
             }]),
             ineffective_flow_areas: None,
+        guide_banks: None,
         };
         let row_low = xs.compute_properties_at_elevation(2.5);
         let row_high = xs.compute_properties_at_elevation(3.5);
@@ -1070,6 +1089,7 @@ mod tests {
             is_overbank: Some(vec![false, false, false, false, true, true, true, true]),
             blocked_obstructions: None,
         ineffective_flow_areas: None,
+        guide_banks: None,
         };
         let blocked = CrossSection {
             blocked_obstructions: Some(vec![BlockedObstruction {
@@ -1087,6 +1107,41 @@ mod tests {
             (row_ineff.area - row_blocked.area).abs() > 1.0,
             "ineffective keeps storage; blocked fill removes it"
         );
+    }
+
+    #[test]
+    fn guide_banks_reduce_active_area_outside_guided_channel() {
+        use crate::geometry::{GuideBankToe, GuideBanks};
+        let xs = CrossSection {
+            station: 0.0,
+            x: vec![0.0, 0.0, 20.0, 20.0],
+            y: vec![10.0, 0.0, 0.0, 10.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.03],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let guide_banks = GuideBanks {
+            left_toe: Some(GuideBankToe {
+                station: 5.0,
+                elevation: 0.0,
+            }),
+            right_toe: Some(GuideBankToe {
+                station: 15.0,
+                elevation: 0.0,
+            }),
+            ..Default::default()
+        };
+        let plain = xs.compute_properties_at_elevation(3.0);
+        let guided = xs
+            .to_metric()
+            .compute_properties_at_elevation_with_modifiers(3.0, None, None, Some(&guide_banks));
+        assert!((plain.area - 60.0).abs() < 0.1);
+        assert!((guided.active_area - 30.0).abs() < 0.1);
+        assert!(guided.active_area < plain.area);
     }
 
     #[test]
@@ -1113,6 +1168,7 @@ mod tests {
             is_overbank: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
+        guide_banks: None,
         };
 
         let table = xs.generate_lookup_table(50);

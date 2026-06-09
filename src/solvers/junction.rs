@@ -306,6 +306,7 @@ mod tests {
             is_overbank: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
+        guide_banks: None,
         }
     }
 
@@ -337,6 +338,7 @@ mod tests {
             is_overbank: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
+        guide_banks: None,
         }
     }
 

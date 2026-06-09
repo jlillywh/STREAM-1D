@@ -3,7 +3,7 @@
 use serde::Serialize;
 
 /// API contract version — increment when SteadyInputs / SteadyResult fields change.
-pub const API_VERSION: u32 = 22;
+pub const API_VERSION: u32 = 24;
 
 /// Engine package version (keep in sync with `Cargo.toml`).
 pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -258,6 +258,14 @@ pub fn build_api_metadata() -> WasmApiMetadata {
                 "bridge_downstream_cross_sections".to_string(),
                 "bridge_internal_cross_sections".to_string(),
                 "bridge_opening_reach_station_origins".to_string(),
+                "bridge_opening_anchor_modes".to_string(),
+                "bridge_opening_anchor_reach_stations".to_string(),
+                "bridge_approach_cross_sections".to_string(),
+                "bridge_departure_cross_sections".to_string(),
+                "bridge_approach_reach_stations".to_string(),
+                "bridge_departure_reach_stations".to_string(),
+                "bridge_approach_guide_banks".to_string(),
+                "bridge_departure_guide_banks".to_string(),
             ],
             unsteady_outputs: vec![
                 "bridge_flow_regimes".to_string(),
@@ -360,7 +368,7 @@ mod tests {
     fn test_api_metadata_serializes() {
         let json = serde_json::to_string(&build_api_metadata()).unwrap();
         assert!(json.contains("culvert_inlet_types"));
-        assert!(json.contains("\"api_version\":22"));
+        assert!(json.contains("\"api_version\":24"));
         assert!(json.contains("structure_coupling_orders"));
     }
 

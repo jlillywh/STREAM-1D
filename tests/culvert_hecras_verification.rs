@@ -95,6 +95,7 @@ fn build_conspan_inputs_from_json(v: &serde_json::Value) -> SteadyInputs {
             }),
             blocked_obstructions: None,
         ineffective_flow_areas: None,
+        guide_banks: None,
         });
     }
 

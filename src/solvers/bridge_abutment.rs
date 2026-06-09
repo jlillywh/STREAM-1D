@@ -310,6 +310,29 @@ pub fn resolve_abutments(
     BridgeAbutments::default()
 }
 
+/// Shift opening-frame abutment stations to reach XS coordinates (user units).
+pub fn remap_abutment_input_to_reach(
+    input: &BridgeAbutmentUserInput,
+    origin_user: f64,
+) -> BridgeAbutmentUserInput {
+    let shift = |s: f64| {
+        crate::solvers::bridge_interior::opening_station_to_reach_x(s, origin_user)
+    };
+    BridgeAbutmentUserInput {
+        left_station: input.left_station.map(shift),
+        right_station: input.right_station.map(shift),
+        left_top_profile_stations: input
+            .left_top_profile_stations
+            .as_ref()
+            .map(|v| v.iter().map(|&s| shift(s)).collect()),
+        right_top_profile_stations: input
+            .right_top_profile_stations
+            .as_ref()
+            .map(|v| v.iter().map(|&s| shift(s)).collect()),
+        ..input.clone()
+    }
+}
+
 pub fn abutment_user_input_from_steady(
     legacy_total: Option<f64>,
     left_widths: Option<&Vec<f64>>,
@@ -512,6 +535,21 @@ mod tests {
             abut.submerged_area_m2(3.0, 0.0) < uniform.submerged_area_m2(3.0, 0.0),
             "partial right abutment top should block less plan area"
         );
+    }
+
+    #[test]
+    fn abutment_input_remapped_to_reach_frame() {
+        let input = BridgeAbutmentUserInput {
+            left_station: Some(0.0),
+            right_station: Some(30.0),
+            left_top_profile_stations: Some(vec![0.0, 10.0]),
+            left_top_profile_elevations: Some(vec![0.0, 2.0]),
+            ..Default::default()
+        };
+        let remapped = remap_abutment_input_to_reach(&input, 100.0);
+        assert!((remapped.left_station.unwrap() - 100.0).abs() < 1e-9);
+        assert!((remapped.right_station.unwrap() - 130.0).abs() < 1e-9);
+        assert!((remapped.left_top_profile_stations.unwrap()[1] - 110.0).abs() < 1e-9);
     }
 
     #[test]

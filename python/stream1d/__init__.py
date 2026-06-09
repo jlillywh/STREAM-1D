@@ -144,6 +144,8 @@ class SteadyInputs:
         bridge_downstream_cross_sections: Optional[List[CrossSection]] = None,
         bridge_internal_cross_sections: Optional[List[List[CrossSection]]] = None,
         bridge_opening_reach_station_origins: Optional[List[float]] = None,
+        bridge_opening_anchor_modes: Optional[List[int]] = None,
+        bridge_opening_anchor_reach_stations: Optional[List[float]] = None,
         # Boundary conditions
         downstream_bc_type: Optional[int] = None,
         downstream_bc_slope: Optional[float] = None,
@@ -235,6 +237,8 @@ class SteadyInputs:
         self.bridge_downstream_cross_sections = bridge_downstream_cross_sections or []
         self.bridge_internal_cross_sections = bridge_internal_cross_sections or []
         self.bridge_opening_reach_station_origins = bridge_opening_reach_station_origins or []
+        self.bridge_opening_anchor_modes = bridge_opening_anchor_modes or []
+        self.bridge_opening_anchor_reach_stations = bridge_opening_anchor_reach_stations or []
         self.downstream_bc_type = downstream_bc_type
         self.downstream_bc_slope = downstream_bc_slope
         self.downstream_bc_rating_q = downstream_bc_rating_q
@@ -326,6 +330,8 @@ class SteadyInputs:
             'bridge_downstream_cross_sections': self.bridge_downstream_cross_sections,
             'bridge_internal_cross_sections': self.bridge_internal_cross_sections,
             'bridge_opening_reach_station_origins': self.bridge_opening_reach_station_origins,
+            'bridge_opening_anchor_modes': self.bridge_opening_anchor_modes,
+            'bridge_opening_anchor_reach_stations': self.bridge_opening_anchor_reach_stations,
         }
         if self.downstream_bc_type is not None:
             res['downstream_bc_type'] = self.downstream_bc_type
@@ -434,6 +440,8 @@ class UnsteadyInputs:
         bridge_downstream_cross_sections: Optional[List[CrossSection]] = None,
         bridge_internal_cross_sections: Optional[List[List[CrossSection]]] = None,
         bridge_opening_reach_station_origins: Optional[List[float]] = None,
+        bridge_opening_anchor_modes: Optional[List[int]] = None,
+        bridge_opening_anchor_reach_stations: Optional[List[float]] = None,
         structure_coupling_order: Optional[int] = None,
     ):
         self.cross_sections = cross_sections
@@ -516,6 +524,8 @@ class UnsteadyInputs:
         self.bridge_downstream_cross_sections = bridge_downstream_cross_sections or []
         self.bridge_internal_cross_sections = bridge_internal_cross_sections or []
         self.bridge_opening_reach_station_origins = bridge_opening_reach_station_origins or []
+        self.bridge_opening_anchor_modes = bridge_opening_anchor_modes or []
+        self.bridge_opening_anchor_reach_stations = bridge_opening_anchor_reach_stations or []
         self.structure_coupling_order = structure_coupling_order
 
     def to_dict(self) -> dict:
@@ -600,6 +610,8 @@ class UnsteadyInputs:
             'bridge_downstream_cross_sections': self.bridge_downstream_cross_sections,
             'bridge_internal_cross_sections': self.bridge_internal_cross_sections,
             'bridge_opening_reach_station_origins': self.bridge_opening_reach_station_origins,
+            'bridge_opening_anchor_modes': self.bridge_opening_anchor_modes,
+            'bridge_opening_anchor_reach_stations': self.bridge_opening_anchor_reach_stations,
         }
         if self.structure_coupling_order is not None:
             res['structure_coupling_order'] = self.structure_coupling_order

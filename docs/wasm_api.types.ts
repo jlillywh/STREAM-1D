@@ -5,6 +5,11 @@
  * Field names use snake_case to match Rust/Python JSON and `solveSteady()` payloads.
  *
  * Check `api_version` from `getWasmApiMetadata()` after each engine upgrade.
+ * **API v24** — Guide banks on approach/departure cuts (`CrossSection.guide_banks`,
+ * `bridge_approach_*` / `bridge_departure_*` cross sections, reach stations, guide-bank arrays).
+ * **API v23** — Bridge opening anchor modes (`bridge_opening_anchor_modes`,
+ * `bridge_opening_anchor_reach_stations`); reach river station or BU left anchoring for
+ * `bridge_opening_reach_station_origins` resolution.
  * **API v22** — BU/BD bridge interior cross sections (`bridge_upstream_cross_sections`,
  * `bridge_downstream_cross_sections`, `bridge_internal_cross_sections`,
  * `bridge_opening_reach_station_origins`; rating curve: `opening_reach_station_origin`, `xs_internal`).
@@ -35,6 +40,29 @@ export interface IneffectiveFlowAreas {
   right_blocks: IneffectiveBlock[];
 }
 
+/** One guide-bank polyline on an approach or departure cut (reach lateral coordinates). */
+export interface GuideBankPolyline {
+  stations: number[];
+  elevations: number[];
+}
+
+/** Simplified left or right guide-bank toe (station + elevation). */
+export interface GuideBankToe {
+  station: number;
+  elevation: number;
+}
+
+/**
+ * Guide banks on an approach or departure cross section (API v24).
+ * Bounds effective channel width for bridge contraction/expansion — reach `x` frame.
+ */
+export interface GuideBanks {
+  left_polylines?: GuideBankPolyline[];
+  right_polylines?: GuideBankPolyline[];
+  left_toe?: GuideBankToe;
+  right_toe?: GuideBankToe;
+}
+
 export interface CrossSection {
   station: number;
   x: number[];
@@ -53,6 +81,8 @@ export interface CrossSection {
    * On BU/BD bridge cuts, these apply independently of reach-face ineffective areas.
    */
   ineffective_flow_areas?: IneffectiveFlowAreas;
+  /** Guide banks on approach / departure cuts (reach lateral `x`). */
+  guide_banks?: GuideBanks;
 }
 
 /** Culvert shape codes passed in `culvert_shape_types`. */
@@ -202,8 +232,27 @@ export interface BridgeArrays {
   bridge_downstream_cross_sections?: CrossSection[];
   /** Optional interior bridge cuts per bridge `[bridge][section]`, US → DS. */
   bridge_internal_cross_sections?: CrossSection[][];
-  /** Reach XS lateral `x` at bridge opening station 0 per bridge. */
+  /** Reach XS lateral `x` at bridge opening station 0 per bridge (explicit anchor). */
   bridge_opening_reach_station_origins?: number[];
+  /**
+   * Opening ↔ reach anchor mode per bridge: 0 = BU left `min(x)`, 1 = reach river station,
+   * 2 = explicit lateral `x` (requires `bridge_opening_reach_station_origins`).
+   */
+  bridge_opening_anchor_modes?: number[];
+  /** Longitudinal reach river station (user units) for anchor mode 1 per bridge. */
+  bridge_opening_anchor_reach_stations?: number[];
+  /** Explicit approach (upstream) cross section per bridge — HEC-RAS section 4 equivalent. */
+  bridge_approach_cross_sections?: CrossSection[];
+  /** Explicit departure (exit) cross section per bridge. */
+  bridge_departure_cross_sections?: CrossSection[];
+  /** Reach river station of approach cut when explicit section omitted. */
+  bridge_approach_reach_stations?: number[];
+  /** Reach river station of departure cut when explicit section omitted. */
+  bridge_departure_reach_stations?: number[];
+  /** Guide banks on approach cut when not on `CrossSection.guide_banks`. */
+  bridge_approach_guide_banks?: GuideBanks[];
+  /** Guide banks on departure cut when not on `CrossSection.guide_banks`. */
+  bridge_departure_guide_banks?: GuideBanks[];
 }
 
 export interface SteadyInputs extends CulvertArrays, BridgeArrays {
@@ -228,6 +277,11 @@ export interface SteadyInputs extends CulvertArrays, BridgeArrays {
   tributary_cross_sections?: CrossSection[];
   tributary_flow_rate?: number;
   junction_main_station?: number;
+}
+
+/** Non-fatal issues from `validateSteadyInputs` (parse errors still throw). */
+export interface SteadyValidationResult {
+  warnings: string[];
 }
 
 export interface SteadyResult {
@@ -498,7 +552,7 @@ export interface Streams1dWasmModule {
   default: (url?: string | URL) => Promise<unknown>;
   getEngineVersion: () => string;
   getWasmApiMetadata: () => WasmApiMetadata;
-  validateSteadyInputs: (inputs: SteadyInputs) => void;
+  validateSteadyInputs: (inputs: SteadyInputs) => SteadyValidationResult;
   solveSteady: (inputs: SteadyInputs) => SteadyResult;
   solveUnsteady: (inputs: UnsteadyInputs) => UnsteadyResult;
   computeCulvertRatingCurve: (inputs: CulvertRatingCurveInputs) => CulvertRatingCurveResult;

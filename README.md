@@ -116,6 +116,7 @@ Field reference: [`python/stream1d/__init__.py`](python/stream1d/__init__.py), [
 | ConSpan culvert 5/25/50 yr profiles | [`python/verification/hecras_conspan_profiles.json`](python/verification/hecras_conspan_profiles.json) | ±0.04 ft WSEL |
 | Bridge abutments (WSPRO) | [`python/verification/bridge_abutment_hecras.json`](python/verification/bridge_abutment_hecras.json) | ±2 mm HW |
 | Bridge BU/BD faces | [`python/verification/bridge_bu_bd_hecras.json`](python/verification/bridge_bu_bd_hecras.json) | ±2 mm HW |
+| Bridge opening ↔ reach alignment (skew + offset origin) | [`tests/bridge_opening_alignment_verification.rs`](tests/bridge_opening_alignment_verification.rs) | preprocessor + validation |
 
 ```bash
 PYTHONPATH=python python python/test_hecras_culvert_verification.py
@@ -141,7 +142,7 @@ WASM API: [`docs/web/wasm_integration.md`](docs/web/wasm_integration.md).
 | [`docs/reference/equations.md`](docs/reference/equations.md) | GVF, Saint-Venant, culvert and bridge theory |
 | [`docs/reference/hecras_parity.md`](docs/reference/hecras_parity.md) | Scope vs HEC-RAS |
 | [`docs/reference/api_changelog.md`](docs/reference/api_changelog.md) | Input schema versions |
-| [`docs/BRIDGE_INTERIOR_SECTIONS_API.md`](docs/BRIDGE_INTERIOR_SECTIONS_API.md) | BU/BD interior sections |
+| [`docs/BRIDGE_INTERIOR_SECTIONS_API.md`](docs/BRIDGE_INTERIOR_SECTIONS_API.md) | Advanced: BU/BD, opening alignment, guide banks |
 | [`docs/web/wasm_integration.md`](docs/web/wasm_integration.md) | WASM build and JavaScript usage |
 | [`docs/development/testing.md`](docs/development/testing.md) | Test suites and CI |
 | [`docs/development/publishing.md`](docs/development/publishing.md) | PyPI trusted publishing and releases |
