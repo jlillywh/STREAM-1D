@@ -1,2 +1,6 @@
 *.sh text eol=lf
 build_wasm.sh text eol=lf
+postBuild text eol=lf
+apt.txt text eol=lf
+requirements.txt text eol=lf
+runtime.txt text eol=lf
