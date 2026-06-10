@@ -20,6 +20,34 @@ if $PRE_COMMIT; then
 fi
 
 if ! command -v cargo >/dev/null 2>&1; then
+  wsl_linux_root() {
+    local p="$1"
+    p="${p//\\//}"
+    if [[ "$p" == //wsl.localhost/* ]]; then
+      printf '/%s\n' "$(echo "${p#//wsl.localhost/}" | cut -d/ -f2-)"
+    elif [[ "$p" == /home/* ]]; then
+      printf '%s\n' "$p"
+    elif command -v wslpath >/dev/null 2>&1; then
+      wslpath -u "$p"
+    else
+      printf '%s\n' "$p"
+    fi
+  }
+  WSL_BIN=""
+  if command -v wsl.exe >/dev/null 2>&1; then
+    WSL_BIN=wsl.exe
+  elif command -v wsl >/dev/null 2>&1; then
+    WSL_BIN=wsl
+  fi
+  if [[ -n "$WSL_BIN" ]]; then
+    LINUX_ROOT="$(wsl_linux_root "$ROOT")"
+    WSL_ARGS=()
+    if [[ "$PRE_COMMIT" == true ]]; then
+      WSL_ARGS+=(--pre-commit)
+    fi
+    echo "coverage: delegating to WSL ($LINUX_ROOT)"
+    exec "$WSL_BIN" -d Ubuntu bash -lc "cd $(printf '%q' "$LINUX_ROOT") && export PATH=\"\${HOME}/.cargo/bin:\${PATH}\" && bash scripts/run_coverage.sh ${WSL_ARGS[*]}"
+  fi
   echo "coverage: error — cargo not found in PATH" >&2
   exit 1
 fi
