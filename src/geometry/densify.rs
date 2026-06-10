@@ -138,8 +138,6 @@ pub fn interpolate_cross_section(
     }
 
     let x = merged_lateral_stations(upstream, downstream);
-    let z_up = min_bed(upstream);
-    let z_down = min_bed(downstream);
     let y: Vec<f64> = x
         .iter()
         .map(|&xi| {
