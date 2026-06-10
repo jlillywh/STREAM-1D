@@ -1,6 +1,12 @@
+pub mod densify;
 pub mod guide_banks;
 pub mod ineffective_serde;
 pub mod processor;
+
+pub use densify::{
+    apply_reach_modifier_policy, copy_reach_modifiers, densify_interior_node,
+    interpolate_cross_section, DensifyReachModifierPolicy,
+};
 
 pub use guide_banks::{
     lateral_limits_at_wsel, resolve_guide_banks, segment_guide_fraction,

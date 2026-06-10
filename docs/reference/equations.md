@@ -239,7 +239,7 @@ Example — 2 m tall blockage across 12–18 m on a trapezoidal section:
 ]
 ```
 
-Blocked obstructions are baked into geometry lookup tables at user cross sections. Interpolated (densified) interior points do not inherit blockage unless defined on the parent section.
+Blocked obstructions on **user** cross sections are baked into lookup tables at section build time. On **`max_spacing` interior nodes** with `densify_reach_modifier_policy: 0` (default), blocked hydraulics still appear via **table interpolation** between parents; obstruction polylines are not copied. With policy `1`/`2`/`3`, blocked polylines are **copied** from the chosen parent onto the synthetic interpolated cut and the interior table is rebuilt from that cut.
 
 #### I. BU / BD interior cross sections (API v22)
 

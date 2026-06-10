@@ -1,7 +1,7 @@
 use crate::utils::{G_METRIC, UnitSystem, FT_TO_M, Mat2, Vec2, solve_block_tridiagonal, structure_in_reach_interval};
 use crate::geometry::{
-    conveyance_derivative_at_elevation, flow_area_for_row, geometry_row_at_elevation, CrossSection,
-    GeometryTable, IneffectiveFlowAreas,
+    conveyance_derivative_at_elevation, flow_area_for_row, geometry_row_at_elevation,
+    CrossSection, DensifyReachModifierPolicy, GeometryTable, IneffectiveFlowAreas,
 };
 
 /// Culvert model fields for unsteady routing (flattened into JSON; same keys as steady).
@@ -434,6 +434,9 @@ pub struct UnsteadyInputs {
     pub num_slices: Option<usize>,
     /// Maximum distance between adjacent sections before automatic interpolation (optional, in user units).
     pub max_spacing: Option<f64>,
+    /// Reach modifier inheritance on `max_spacing` interior nodes: 0=none, 1=upstream, 2=downstream, 3=nearest.
+    #[serde(default)]
+    pub densify_reach_modifier_policy: Option<u8>,
     /// Contraction loss coefficient (default 0.1).
     pub coeff_contraction: Option<f64>,
     /// Expansion loss coefficient (default 0.3).
@@ -1311,6 +1314,7 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
             downstream_wsel: inputs.downstream_wsel_hydrograph.first().cloned(),
             upstream_wsel: None,
             max_spacing: inputs.max_spacing,
+            densify_reach_modifier_policy: inputs.densify_reach_modifier_policy,
             culvert_stations: inputs.culvert.culvert_stations.clone(),
             culvert_shape_types: inputs.culvert.culvert_shape_types.clone(),
             culvert_spans: inputs.culvert.culvert_spans.clone(),
@@ -1459,6 +1463,7 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
     }).unwrap_or_else(|| {
         if raw_units == UnitSystem::USCustomary { 50.0 * FT_TO_M } else { 15.0 }
     });
+    let densify_policy = DensifyReachModifierPolicy::from_option(inputs.densify_reach_modifier_policy);
 
     let mut densified_tables = Vec::new();
     let mut densified_z_mins = Vec::new();
@@ -1487,21 +1492,29 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
                 for k in 1..num_spaces {
                         let t = k as f64 / num_spaces as f64;
                         let s_interp = xs_list[i].station - k as f64 * ds;
-                        
-                        let (t_interp, z_interp) = crate::geometry::processor::interpolate_geometry_table(
-                            &tables[i],
-                            z_mins[i],
-                            &tables[i + 1],
-                            z_mins[i + 1],
-                            t,
-                            num_slices,
-                        );
-                        
+
+                        let (t_interp, z_interp, xs_opt) =
+                            crate::geometry::densify_interior_node(
+                                &xs_list[i],
+                                &xs_list[i + 1],
+                                &tables[i],
+                                z_mins[i],
+                                &tables[i + 1],
+                                z_mins[i + 1],
+                                s_interp,
+                                t,
+                                num_slices,
+                                densify_policy,
+                            );
+
                         let y_interp = (1.0 - t) * y_current[i] + t * y_current[i + 1];
                         let q_interp = (1.0 - t) * q_current[i] + t * q_current[i + 1];
 
-                        let mut xs_interp = xs_list[i].clone();
-                        xs_interp.station = s_interp;
+                        let xs_interp = xs_opt.unwrap_or_else(|| {
+                            let mut xs = xs_list[i].clone();
+                            xs.station = s_interp;
+                            xs
+                        });
 
                         densified_tables.push(t_interp);
                         densified_z_mins.push(z_interp);
@@ -1924,6 +1937,7 @@ mod tests {
             theta: Some(0.6),
             num_slices: Some(50),
             max_spacing: None,
+            densify_reach_modifier_policy: None,
             coeff_contraction: None,
             coeff_expansion: None,
             culvert: UnsteadyCulvertInputs::default(),
@@ -1988,6 +2002,7 @@ mod tests {
             theta: Some(0.6),
             num_slices: Some(50),
             max_spacing: Some(100.0),
+            densify_reach_modifier_policy: None,
             coeff_contraction: None,
             coeff_expansion: None,
             culvert: UnsteadyCulvertInputs::default(),
@@ -2107,6 +2122,7 @@ mod tests {
             theta: Some(1.0),
             num_slices: Some(100),
             max_spacing: None,
+            densify_reach_modifier_policy: None,
             coeff_contraction: None,
             coeff_expansion: None,
             culvert: UnsteadyCulvertInputs::default(),
@@ -2172,6 +2188,7 @@ mod tests {
             theta: Some(0.6),
             num_slices: Some(50),
             max_spacing: None,
+            densify_reach_modifier_policy: None,
             coeff_contraction: None,
             coeff_expansion: None,
             culvert: UnsteadyCulvertInputs::default(),
@@ -2265,6 +2282,7 @@ mod tests {
             theta: Some(0.6),
             num_slices: Some(50),
             max_spacing: None,
+            densify_reach_modifier_policy: None,
             coeff_contraction: None,
             coeff_expansion: None,
             culvert: UnsteadyCulvertInputs {
@@ -2342,6 +2360,7 @@ mod tests {
             theta: Some(0.6),
             num_slices: Some(50),
             max_spacing: None,
+            densify_reach_modifier_policy: None,
             coeff_contraction: None,
             coeff_expansion: None,
             culvert: UnsteadyCulvertInputs::default(),
@@ -2581,6 +2600,7 @@ mod tests {
             theta: Some(0.6),
             num_slices: Some(50),
             max_spacing: None,
+            densify_reach_modifier_policy: None,
             coeff_contraction: None,
             coeff_expansion: None,
             culvert: UnsteadyCulvertInputs {
