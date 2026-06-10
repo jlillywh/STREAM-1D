@@ -337,4 +337,32 @@ mod tests {
             serde_json::from_str(r#"{"ineffective_flow_areas":null}"#).unwrap();
         assert!(xs.ineffective_flow_areas.is_none());
     }
+
+    #[test]
+    fn cross_section_rejects_non_object_ineffective() {
+        assert!(serde_json::from_str::<XsIneffective>(r#"{"ineffective_flow_areas":[]}"#).is_err());
+    }
+
+    #[test]
+    fn cross_section_empty_side_arrays_deserialize_none() {
+        let xs: XsIneffective = serde_json::from_str(
+            r#"{"ineffective_flow_areas":{"left_stations":[],"left_elevations":[]}}"#,
+        )
+        .unwrap();
+        assert!(xs.ineffective_flow_areas.is_none());
+    }
+
+    #[test]
+    fn cross_section_serializes_none_as_absent() {
+        let out = serde_json::to_string(&XsOut {
+            ineffective_flow_areas: None,
+        })
+        .unwrap();
+        assert!(!out.contains("ineffective_flow_areas"));
+    }
+
+    #[test]
+    fn bridge_block_arrays_reject_mixed_flat_and_nested() {
+        assert!(serde_json::from_str::<Wrapper>(r#"{"blocks":[30.0,[40.0]]}"#).is_err());
+    }
 }

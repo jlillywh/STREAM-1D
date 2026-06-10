@@ -17,7 +17,7 @@ All profile stations (10 per event) are checked within **±0.04 ft** vs HEC-RAS 
 | Explicit BU/BD faces (v22) | `tests/bridge_bu_bd_hecras_verification.rs` | [`python/verification/bridge_bu_bd_hecras.json`](python/verification/bridge_bu_bd_hecras.json) — legacy Yarnell ±2 mm; explicit BU/BD + WSPRO golden HW |
 | 3-section vs 2-face reach layout | `tests/bridge_bu_bd_hecras_verification.rs` (`three_section_bridge_reach_matches_two_face_baseline`) | BU+internal+BD inserts extra node; BU/BD headwater and friction path match 2-face baseline |
 | WASM / JSON contract | `tests/wasm_json_contract.rs` | Steady BU/BD v22 fixture, unsteady BU/BD deserialize, `ineffective_flow_areas` on `CrossSection`; `api_version` metadata |
-| Reach ineffective flow | `src/geometry/processor.rs`, `src/solvers/bridge_tests.rs`, `src/solvers/steady.rs` | Blocked vs ineffective semantics; approach-cut storage/conveyance split; BU ineffective headwater; steady reach geometry at fixed stage |
+| Reach ineffective flow | `src/geometry/processor.rs`, `src/solvers/bridge_tests.rs`, `src/solvers/steady.rs` | Blocked vs ineffective semantics; approach-cut storage/conveyance split; BU ineffective headwater; `solve_step` modifier search (plain, ineffective, supercritical, blocked obstruction, mixed regime) |
 | Node WASM smoke | `examples/wasm/bridge_smoke_test.mjs`, `node_smoke_test.mjs` | Culvert Tier 1 + bridge BU/BD steady solve after `build_wasm.sh` |
 
 ```bash
