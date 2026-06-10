@@ -1,7 +1,7 @@
 use crate::utils::{G_METRIC, UnitSystem, FT_TO_M, Mat2, Vec2, solve_block_tridiagonal, structure_in_reach_interval};
 use crate::geometry::{
-    conveyance_derivative_at_elevation, flow_area_for_row, geometry_row_at_elevation, CrossSection,
-    GeometryTable, IneffectiveFlowAreas,
+    conveyance_derivative_at_elevation, flow_area_for_row, geometry_row_at_elevation,
+    CrossSection, DensifyReachModifierPolicy, GeometryTable, IneffectiveFlowAreas,
 };
 
 /// Culvert model fields for unsteady routing (flattened into JSON; same keys as steady).
@@ -188,7 +188,10 @@ fn bridge_face_blocks(
     (stations, elevations)
 }
 
-fn bridge_ineffective_upstream_for(inputs: &UnsteadyInputs, b_idx: usize) -> Option<IneffectiveFlowAreas> {
+pub(crate) fn bridge_ineffective_upstream_for(
+    inputs: &UnsteadyInputs,
+    b_idx: usize,
+) -> Option<IneffectiveFlowAreas> {
     let b = &inputs.bridge;
     let (left_s, left_e) = bridge_face_blocks(
         b.bridge_ineffective_left_stations_upstream.as_ref(),
@@ -207,7 +210,10 @@ fn bridge_ineffective_upstream_for(inputs: &UnsteadyInputs, b_idx: usize) -> Opt
     IneffectiveFlowAreas::from_block_pairs(&left_s, &left_e, &right_s, &right_e)
 }
 
-fn bridge_ineffective_downstream_for(inputs: &UnsteadyInputs, b_idx: usize) -> Option<IneffectiveFlowAreas> {
+pub(crate) fn bridge_ineffective_downstream_for(
+    inputs: &UnsteadyInputs,
+    b_idx: usize,
+) -> Option<IneffectiveFlowAreas> {
     let b = &inputs.bridge;
     let (left_s, left_e) = bridge_face_blocks(
         b.bridge_ineffective_left_stations_downstream.as_ref(),
@@ -434,6 +440,9 @@ pub struct UnsteadyInputs {
     pub num_slices: Option<usize>,
     /// Maximum distance between adjacent sections before automatic interpolation (optional, in user units).
     pub max_spacing: Option<f64>,
+    /// Reach modifier inheritance on `max_spacing` interior nodes: 0=none, 1=upstream, 2=downstream, 3=nearest.
+    #[serde(default)]
+    pub densify_reach_modifier_policy: Option<u8>,
     /// Contraction loss coefficient (default 0.1).
     pub coeff_contraction: Option<f64>,
     /// Expansion loss coefficient (default 0.3).
@@ -1311,6 +1320,7 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
             downstream_wsel: inputs.downstream_wsel_hydrograph.first().cloned(),
             upstream_wsel: None,
             max_spacing: inputs.max_spacing,
+            densify_reach_modifier_policy: inputs.densify_reach_modifier_policy,
             culvert_stations: inputs.culvert.culvert_stations.clone(),
             culvert_shape_types: inputs.culvert.culvert_shape_types.clone(),
             culvert_spans: inputs.culvert.culvert_spans.clone(),
@@ -1459,6 +1469,7 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
     }).unwrap_or_else(|| {
         if raw_units == UnitSystem::USCustomary { 50.0 * FT_TO_M } else { 15.0 }
     });
+    let densify_policy = DensifyReachModifierPolicy::from_option(inputs.densify_reach_modifier_policy);
 
     let mut densified_tables = Vec::new();
     let mut densified_z_mins = Vec::new();
@@ -1487,21 +1498,29 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
                 for k in 1..num_spaces {
                         let t = k as f64 / num_spaces as f64;
                         let s_interp = xs_list[i].station - k as f64 * ds;
-                        
-                        let (t_interp, z_interp) = crate::geometry::processor::interpolate_geometry_table(
-                            &tables[i],
-                            z_mins[i],
-                            &tables[i + 1],
-                            z_mins[i + 1],
-                            t,
-                            num_slices,
-                        );
-                        
+
+                        let (t_interp, z_interp, xs_opt) =
+                            crate::geometry::densify_interior_node(
+                                &xs_list[i],
+                                &xs_list[i + 1],
+                                &tables[i],
+                                z_mins[i],
+                                &tables[i + 1],
+                                z_mins[i + 1],
+                                s_interp,
+                                t,
+                                num_slices,
+                                densify_policy,
+                            );
+
                         let y_interp = (1.0 - t) * y_current[i] + t * y_current[i + 1];
                         let q_interp = (1.0 - t) * q_current[i] + t * q_current[i + 1];
 
-                        let mut xs_interp = xs_list[i].clone();
-                        xs_interp.station = s_interp;
+                        let xs_interp = xs_opt.unwrap_or_else(|| {
+                            let mut xs = xs_list[i].clone();
+                            xs.station = s_interp;
+                            xs
+                        });
 
                         densified_tables.push(t_interp);
                         densified_z_mins.push(z_interp);
@@ -1924,6 +1943,7 @@ mod tests {
             theta: Some(0.6),
             num_slices: Some(50),
             max_spacing: None,
+            densify_reach_modifier_policy: None,
             coeff_contraction: None,
             coeff_expansion: None,
             culvert: UnsteadyCulvertInputs::default(),
@@ -1988,6 +2008,7 @@ mod tests {
             theta: Some(0.6),
             num_slices: Some(50),
             max_spacing: Some(100.0),
+            densify_reach_modifier_policy: None,
             coeff_contraction: None,
             coeff_expansion: None,
             culvert: UnsteadyCulvertInputs::default(),
@@ -2011,6 +2032,202 @@ mod tests {
         
         let cr = result.max_courant.unwrap();
         assert!(cr > 0.0, "max_courant was {}", cr);
+    }
+
+    #[test]
+    fn unsteady_blocked_densify_profile_matches_explicit_station_grid() {
+        use crate::geometry::BlockedObstruction;
+
+        let section = |station: f64, z: f64| -> CrossSection {
+            CrossSection {
+                station,
+                x: vec![0.0, 0.0, 10.0, 10.0],
+                y: vec![5.0 + z, z, z, 5.0 + z],
+                n_stations: vec![0.0],
+                n_values: vec![0.02],
+                unit_system: UnitSystem::Metric,
+                is_overbank: None,
+                blocked_obstructions: Some(vec![BlockedObstruction {
+                    stations: vec![3.0, 7.0],
+                    elevations: vec![1.5, 1.5],
+                }]),
+                ineffective_flow_areas: None,
+                guide_banks: None,
+            }
+        };
+
+        let sparse = UnsteadyInputs {
+            cross_sections: vec![section(200.0, 0.1), section(0.0, 0.0)],
+            initial_wsel: vec![2.0, 1.8],
+            initial_q: vec![14.0, 14.0],
+            dt: 10.0,
+            num_steps: 3,
+            upstream_q_hydrograph: vec![14.0; 3],
+            downstream_wsel_hydrograph: vec![1.8; 3],
+            theta: Some(0.6),
+            num_slices: Some(50),
+            max_spacing: Some(50.0),
+            densify_reach_modifier_policy: Some(1),
+            coeff_contraction: None,
+            coeff_expansion: None,
+            culvert: UnsteadyCulvertInputs::default(),
+            bridge: UnsteadyBridgeInputs::default(),
+            structure_coupling_order: None,
+        };
+        let dense = UnsteadyInputs {
+            cross_sections: vec![
+                section(200.0, 0.1),
+                section(150.0, 0.075),
+                section(100.0, 0.05),
+                section(50.0, 0.025),
+                section(0.0, 0.0),
+            ],
+            initial_wsel: vec![2.0, 1.9, 1.85, 1.82, 1.8],
+            initial_q: vec![14.0; 5],
+            dt: 10.0,
+            num_steps: 3,
+            upstream_q_hydrograph: vec![14.0; 3],
+            downstream_wsel_hydrograph: vec![1.8; 3],
+            theta: Some(0.6),
+            num_slices: Some(50),
+            max_spacing: None,
+            densify_reach_modifier_policy: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            culvert: UnsteadyCulvertInputs::default(),
+            bridge: UnsteadyBridgeInputs::default(),
+            structure_coupling_order: None,
+        };
+
+        let r_sparse = solve_unsteady(&sparse);
+        let r_dense = solve_unsteady(&dense);
+        let last = r_sparse.wsel.len() - 1;
+        assert!(
+            (r_sparse.wsel[last][0] - r_dense.wsel[last][0]).abs() < 0.05,
+            "unsteady upstream WSEL sparse {} vs explicit {}",
+            r_sparse.wsel[last][0],
+            r_dense.wsel[last][0]
+        );
+        assert!(
+            (r_sparse.wsel[last][1] - r_dense.wsel[last][4]).abs() < 0.05,
+            "unsteady downstream WSEL sparse {} vs explicit {}",
+            r_sparse.wsel[last][1],
+            r_dense.wsel[last][4]
+        );
+    }
+
+    #[test]
+    fn unsteady_densify_downstream_policy_runs() {
+        use crate::geometry::IneffectiveFlowAreas;
+
+        let xs_us = CrossSection {
+            station: 200.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![5.1, 0.1, 0.1, 5.1],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: Some(
+                IneffectiveFlowAreas::from_block_pairs(&[], &[], &[9.0], &[2.5]).unwrap(),
+            ),
+            guide_banks: None,
+        };
+        let xs_ds = CrossSection {
+            station: 0.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![5.0, 0.0, 0.0, 5.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: Some(
+                IneffectiveFlowAreas::from_block_pairs(&[], &[], &[2.0], &[2.5]).unwrap(),
+            ),
+            guide_banks: None,
+        };
+        let inputs = UnsteadyInputs {
+            cross_sections: vec![xs_us, xs_ds],
+            initial_wsel: vec![2.0, 1.8],
+            initial_q: vec![14.0, 14.0],
+            dt: 10.0,
+            num_steps: 2,
+            upstream_q_hydrograph: vec![14.0; 2],
+            downstream_wsel_hydrograph: vec![1.8; 2],
+            theta: Some(0.6),
+            num_slices: Some(50),
+            max_spacing: Some(50.0),
+            densify_reach_modifier_policy: Some(2),
+            coeff_contraction: None,
+            coeff_expansion: None,
+            culvert: UnsteadyCulvertInputs::default(),
+            bridge: UnsteadyBridgeInputs::default(),
+            structure_coupling_order: None,
+        };
+        let result = solve_unsteady(&inputs);
+        assert_eq!(result.wsel.len(), 2);
+        assert!(result.wsel[1][0].is_finite());
+    }
+
+    #[test]
+    fn unsteady_bridge_layout_without_explicit_faces() {
+        let xs200 = CrossSection {
+            station: 200.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![5.1, 0.1, 0.1, 5.1],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let xs0 = CrossSection {
+            station: 0.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![5.0, 0.0, 0.0, 5.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let inputs = UnsteadyInputs {
+            cross_sections: vec![xs200, xs0],
+            initial_wsel: vec![2.0, 1.8],
+            initial_q: vec![14.0, 14.0],
+            dt: 10.0,
+            num_steps: 2,
+            upstream_q_hydrograph: vec![14.0; 2],
+            downstream_wsel_hydrograph: vec![1.8; 2],
+            theta: Some(0.6),
+            num_slices: Some(50),
+            max_spacing: Some(50.0),
+            densify_reach_modifier_policy: Some(1),
+            coeff_contraction: None,
+            coeff_expansion: None,
+            culvert: UnsteadyCulvertInputs::default(),
+            bridge: UnsteadyBridgeInputs {
+                bridge_stations: Some(vec![100.0]),
+                bridge_lengths: Some(vec![10.0]),
+                bridge_low_chords: Some(vec![5.0]),
+                bridge_high_chords: Some(vec![7.0]),
+                bridge_weir_coeffs: Some(vec![1.44]),
+                bridge_orifice_coeffs: Some(vec![0.5]),
+                bridge_ineffective_left_stations_upstream: Some(vec![vec![5.0]]),
+                bridge_ineffective_left_elevations_upstream: Some(vec![vec![3.0]]),
+                ..Default::default()
+            },
+            structure_coupling_order: None,
+        };
+        let result = solve_unsteady(&inputs);
+        assert_eq!(result.wsel.len(), 2);
+        assert!(result.wsel[1][0] > result.wsel[1][1]);
     }
 
     #[test]
@@ -2107,6 +2324,7 @@ mod tests {
             theta: Some(1.0),
             num_slices: Some(100),
             max_spacing: None,
+            densify_reach_modifier_policy: None,
             coeff_contraction: None,
             coeff_expansion: None,
             culvert: UnsteadyCulvertInputs::default(),
@@ -2172,6 +2390,7 @@ mod tests {
             theta: Some(0.6),
             num_slices: Some(50),
             max_spacing: None,
+            densify_reach_modifier_policy: None,
             coeff_contraction: None,
             coeff_expansion: None,
             culvert: UnsteadyCulvertInputs::default(),
@@ -2265,6 +2484,7 @@ mod tests {
             theta: Some(0.6),
             num_slices: Some(50),
             max_spacing: None,
+            densify_reach_modifier_policy: None,
             coeff_contraction: None,
             coeff_expansion: None,
             culvert: UnsteadyCulvertInputs {
@@ -2342,6 +2562,7 @@ mod tests {
             theta: Some(0.6),
             num_slices: Some(50),
             max_spacing: None,
+            densify_reach_modifier_policy: None,
             coeff_contraction: None,
             coeff_expansion: None,
             culvert: UnsteadyCulvertInputs::default(),
@@ -2581,6 +2802,7 @@ mod tests {
             theta: Some(0.6),
             num_slices: Some(50),
             max_spacing: None,
+            densify_reach_modifier_policy: None,
             coeff_contraction: None,
             coeff_expansion: None,
             culvert: UnsteadyCulvertInputs {

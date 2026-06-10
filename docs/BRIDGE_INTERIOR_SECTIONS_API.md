@@ -175,7 +175,7 @@ Parallel per-bridge arrays on **`SteadyInputs`**, nested under **`UnsteadyInputs
 
 `CrossSection.station` on BU/BD/internal cuts is **informational** (bridge face reach station); hydraulics use the polyline (`x`, `y`, `n_*`, `blocked_obstructions`, `is_overbank`, `ineffective_flow_areas`).
 
-Modifier semantics (`blocked_obstructions` vs `ineffective_flow_areas` vs `bridge_ineffective_*`): [`reference/equations.md` §H0](reference/equations.md).
+Modifier semantics (`blocked_obstructions` vs `ineffective_flow_areas` vs `bridge_ineffective_*`): [`reference/equations.md` §H0](reference/equations.md). Densified BU/BD/internal inheritance: §H1.
 
 ### Ineffective flow on reach / BU / BD cuts (API v22)
 
@@ -217,7 +217,7 @@ Canonical serialized form uses `left_blocks` / `right_blocks`. Ineffective block
 | Ineffective on the adjacent reach face | ✗ (not inherited) |
 | `bridge_ineffective_*` opening-frame fields | ✓ only when the explicit cut omits `ineffective_flow_areas` (stations shifted by `bridge_opening_reach_station_origins`) |
 
-When BU/BD are omitted (reach interval fallback), ineffective resolution uses reach `ineffective_flow_areas` first, then opening-frame `bridge_ineffective_*`.
+When BU/BD are omitted, layout inserts interpolate geometry at the face stations. Those densified BU/BD nodes inherit opening-frame `bridge_ineffective_*` (shifted by `bridge_opening_reach_station_origins`), not reach `ineffective_flow_areas` copied from adjacent densified nodes — even when `densify_reach_modifier_policy` copies reach modifiers on interior `max_spacing` nodes. Internal layout cuts without explicit polylines follow the reach densify policy for modifiers.
 
 ### Rating curve (`computeBridgeRatingCurve`)
 

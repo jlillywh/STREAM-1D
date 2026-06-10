@@ -1,7 +1,8 @@
 use crate::utils::{G_METRIC, UnitSystem, FT_TO_M, structure_in_reach_interval};
 use crate::geometry::{
     flow_area_for_row, geometry_row_at_elevation, section_needs_dynamic_geometry,
-    specific_force_at_elevation, CrossSection, GeometryRow, GeometryTable, IneffectiveFlowAreas,
+    specific_force_at_elevation, CrossSection, DensifyReachModifierPolicy, GeometryRow,
+    GeometryTable, IneffectiveFlowAreas,
 };
 
 /// Input parameters for the steady-state solver.
@@ -25,6 +26,9 @@ pub struct SteadyInputs {
     pub upstream_wsel: Option<f64>,
     /// Maximum distance between adjacent sections before automatic interpolation (optional, in user units).
     pub max_spacing: Option<f64>,
+    /// Reach modifier inheritance on `max_spacing` interior nodes: 0=none, 1=upstream, 2=downstream, 3=nearest.
+    #[serde(default)]
+    pub densify_reach_modifier_policy: Option<u8>,
     /// Culvert stations (optional)
     #[serde(default)]
     pub culvert_stations: Option<Vec<f64>>,
@@ -757,7 +761,10 @@ fn bridge_face_blocks(
     (stations, elevations)
 }
 
-fn bridge_ineffective_upstream_for(inputs: &SteadyInputs, b_idx: usize) -> Option<IneffectiveFlowAreas> {
+pub(crate) fn bridge_ineffective_upstream_for(
+    inputs: &SteadyInputs,
+    b_idx: usize,
+) -> Option<IneffectiveFlowAreas> {
     let (left_s, left_e) = bridge_face_blocks(
         inputs.bridge_ineffective_left_stations_upstream.as_ref(),
         inputs.bridge_ineffective_left_elevations_upstream.as_ref(),
@@ -775,7 +782,10 @@ fn bridge_ineffective_upstream_for(inputs: &SteadyInputs, b_idx: usize) -> Optio
     IneffectiveFlowAreas::from_block_pairs(&left_s, &left_e, &right_s, &right_e)
 }
 
-fn bridge_ineffective_downstream_for(inputs: &SteadyInputs, b_idx: usize) -> Option<IneffectiveFlowAreas> {
+pub(crate) fn bridge_ineffective_downstream_for(
+    inputs: &SteadyInputs,
+    b_idx: usize,
+) -> Option<IneffectiveFlowAreas> {
     let (left_s, left_e) = bridge_face_blocks(
         inputs.bridge_ineffective_left_stations_downstream.as_ref(),
         inputs.bridge_ineffective_left_elevations_downstream.as_ref(),
@@ -972,6 +982,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
     let max_sp = inputs.max_spacing.map(|sp| {
         if raw_units == UnitSystem::USCustomary { sp * FT_TO_M } else { sp }
     });
+    let densify_policy = DensifyReachModifierPolicy::from_option(inputs.densify_reach_modifier_policy);
 
     let mut densified_tables = Vec::new();
     let mut densified_z_mins = Vec::new();
@@ -997,20 +1008,25 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                     for k in 1..num_spaces {
                         let t = k as f64 / num_spaces as f64;
                         let s_interp = xs_list[i].station - k as f64 * ds;
-                        
-                        let (t_interp, z_interp) = crate::geometry::processor::interpolate_geometry_table(
-                            &tables[i],
-                            z_mins[i],
-                            &tables[i + 1],
-                            z_mins[i + 1],
-                            t,
-                            num_slices,
-                        );
-                        
+
+                        let (t_interp, z_interp, xs_opt) =
+                            crate::geometry::densify_interior_node(
+                                &xs_list[i],
+                                &xs_list[i + 1],
+                                &tables[i],
+                                z_mins[i],
+                                &tables[i + 1],
+                                z_mins[i + 1],
+                                s_interp,
+                                t,
+                                num_slices,
+                                densify_policy,
+                            );
+
                         densified_tables.push(t_interp);
                         densified_z_mins.push(z_interp);
                         densified_stations.push(s_interp);
-                        densified_xs.push(None);
+                        densified_xs.push(xs_opt);
                     }
                 }
             }
@@ -1120,20 +1136,44 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
         let Some(j) = *interval else { continue };
         structure_adjacent_indices.insert(j);
         structure_adjacent_indices.insert(j + 1);
+        let interior = crate::solvers::bridge_interior::interior_from_steady(inputs, b_idx);
+        let opening_origin = crate::solvers::bridge_interior::resolve_opening_reach_station_origin(
+            interior.opening_reach_station_origin,
+            interior.opening_anchor_mode,
+            interior.bu.as_ref(),
+            None,
+            densified_xs[j].as_ref(),
+        );
         if let Some(ineff) = bridge_ineffective_upstream_for(inputs, b_idx).map(|ineff| {
-            if raw_units == UnitSystem::USCustomary {
+            let metric = if raw_units == UnitSystem::USCustomary {
                 ineff.to_metric(UnitSystem::USCustomary)
             } else {
                 ineff
+            };
+            match opening_origin {
+                Some(origin) => crate::solvers::bridge_interior::remap_ineffective_opening_to_reach(
+                    Some(metric.clone()),
+                    origin,
+                )
+                .unwrap_or(metric),
+                None => metric,
             }
         }) {
             structure_ineffective.insert(j, ineff);
         }
         if let Some(ineff) = bridge_ineffective_downstream_for(inputs, b_idx).map(|ineff| {
-            if raw_units == UnitSystem::USCustomary {
+            let metric = if raw_units == UnitSystem::USCustomary {
                 ineff.to_metric(UnitSystem::USCustomary)
             } else {
                 ineff
+            };
+            match opening_origin {
+                Some(origin) => crate::solvers::bridge_interior::remap_ineffective_opening_to_reach(
+                    Some(metric.clone()),
+                    origin,
+                )
+                .unwrap_or(metric),
+                None => metric,
             }
         }) {
             structure_ineffective.insert(j + 1, ineff);
@@ -1973,6 +2013,267 @@ mod tests {
         assert_eq!(result.wsel[1], 1.2);
         // Upstream water surface elevation should be solved successfully and be greater than bed level (1.0m)
         assert!(result.wsel[0] > 1.0);
+    }
+
+    fn channel_with_blocked_obstruction(station: f64, z: f64) -> CrossSection {
+        use crate::geometry::BlockedObstruction;
+
+        let mut xs = metric_rect_channel(station, z);
+        xs.blocked_obstructions = Some(vec![BlockedObstruction {
+            stations: vec![3.0, 7.0],
+            elevations: vec![1.5, 1.5],
+        }]);
+        xs
+    }
+
+    fn channel_with_reach_ineffective(station: f64, z: f64) -> CrossSection {
+        use crate::geometry::IneffectiveFlowAreas;
+
+        let mut xs = metric_rect_channel(station, z);
+        xs.ineffective_flow_areas = Some(
+            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[9.0], &[2.5]).unwrap(),
+        );
+        xs
+    }
+
+    #[test]
+    fn steady_blocked_densify_profile_matches_explicit_station_grid() {
+        let sparse = SteadyInputs {
+            cross_sections: vec![
+                channel_with_blocked_obstruction(200.0, 0.1),
+                channel_with_blocked_obstruction(0.0, 0.0),
+            ],
+            flow_rate: 15.0,
+            num_slices: Some(50),
+            regime: 0,
+            downstream_wsel: Some(1.8),
+            max_spacing: Some(50.0),
+            densify_reach_modifier_policy: Some(1),
+            ..Default::default()
+        };
+        let dense = SteadyInputs {
+            cross_sections: vec![
+                channel_with_blocked_obstruction(200.0, 0.1),
+                channel_with_blocked_obstruction(150.0, 0.075),
+                channel_with_blocked_obstruction(100.0, 0.05),
+                channel_with_blocked_obstruction(50.0, 0.025),
+                channel_with_blocked_obstruction(0.0, 0.0),
+            ],
+            flow_rate: 15.0,
+            num_slices: Some(50),
+            regime: 0,
+            downstream_wsel: Some(1.8),
+            max_spacing: None,
+            densify_reach_modifier_policy: None,
+            ..Default::default()
+        };
+
+        let wsel_sparse = solve_steady(&sparse).wsel;
+        let wsel_dense = solve_steady(&dense).wsel;
+        assert_eq!(wsel_sparse.len(), 2);
+        assert_eq!(wsel_dense.len(), 5);
+        assert!(
+            (wsel_sparse[0] - wsel_dense[0]).abs() < 0.03,
+            "upstream WSEL sparse {} vs explicit grid {}",
+            wsel_sparse[0],
+            wsel_dense[0]
+        );
+        assert!(
+            (wsel_sparse[1] - wsel_dense[4]).abs() < 0.03,
+            "downstream WSEL sparse {} vs explicit grid {}",
+            wsel_sparse[1],
+            wsel_dense[4]
+        );
+    }
+
+    #[test]
+    fn steady_ineffective_densify_profile_matches_explicit_station_grid() {
+        let sparse = SteadyInputs {
+            cross_sections: vec![
+                channel_with_reach_ineffective(200.0, 0.1),
+                channel_with_reach_ineffective(0.0, 0.0),
+            ],
+            flow_rate: 20.0,
+            num_slices: Some(50),
+            regime: 0,
+            downstream_wsel: Some(1.6),
+            max_spacing: Some(50.0),
+            densify_reach_modifier_policy: Some(1),
+            ..Default::default()
+        };
+        let dense = SteadyInputs {
+            cross_sections: vec![
+                channel_with_reach_ineffective(200.0, 0.1),
+                channel_with_reach_ineffective(150.0, 0.075),
+                channel_with_reach_ineffective(100.0, 0.05),
+                channel_with_reach_ineffective(50.0, 0.025),
+                channel_with_reach_ineffective(0.0, 0.0),
+            ],
+            flow_rate: 20.0,
+            num_slices: Some(50),
+            regime: 0,
+            downstream_wsel: Some(1.6),
+            max_spacing: None,
+            densify_reach_modifier_policy: None,
+            ..Default::default()
+        };
+
+        let wsel_sparse = solve_steady(&sparse).wsel;
+        let wsel_dense = solve_steady(&dense).wsel;
+        assert!(
+            (wsel_sparse[0] - wsel_dense[0]).abs() < 0.03,
+            "upstream ineffective profile sparse {} vs explicit {}",
+            wsel_sparse[0],
+            wsel_dense[0]
+        );
+        assert!(
+            (wsel_sparse[1] - wsel_dense[4]).abs() < 0.03,
+            "downstream ineffective profile sparse {} vs explicit {}",
+            wsel_sparse[1],
+            wsel_dense[4]
+        );
+    }
+
+    #[test]
+    fn steady_densify_downstream_policy_differs_from_upstream() {
+        use crate::geometry::IneffectiveFlowAreas;
+
+        let mut xs_us = metric_rect_channel(200.0, 0.1);
+        xs_us.ineffective_flow_areas = Some(
+            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[9.0], &[2.5]).unwrap(),
+        );
+        let mut xs_ds = metric_rect_channel(0.0, 0.0);
+        xs_ds.ineffective_flow_areas = Some(
+            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[2.0], &[2.5]).unwrap(),
+        );
+        let base = SteadyInputs {
+            cross_sections: vec![xs_us, xs_ds],
+            flow_rate: 20.0,
+            num_slices: Some(50),
+            regime: 0,
+            downstream_wsel: Some(1.6),
+            max_spacing: Some(50.0),
+            ..Default::default()
+        };
+        let mut upstream_policy = base.clone();
+        upstream_policy.densify_reach_modifier_policy = Some(1);
+        let mut downstream_policy = base;
+        downstream_policy.densify_reach_modifier_policy = Some(2);
+        let w_up = solve_steady(&upstream_policy).wsel[0];
+        let w_down = solve_steady(&downstream_policy).wsel[0];
+        assert!(
+            (w_up - w_down).abs() > 1e-4,
+            "downstream policy should change profile: {w_up} vs {w_down}"
+        );
+    }
+
+    #[test]
+    fn steady_densify_nearest_policy_at_midpoint() {
+        use crate::geometry::IneffectiveFlowAreas;
+
+        let mut xs_us = metric_rect_channel(200.0, 0.1);
+        xs_us.ineffective_flow_areas = Some(
+            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[9.0], &[2.5]).unwrap(),
+        );
+        let mut xs_ds = metric_rect_channel(0.0, 0.0);
+        xs_ds.ineffective_flow_areas = Some(
+            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[2.0], &[2.5]).unwrap(),
+        );
+        let inputs = SteadyInputs {
+            cross_sections: vec![xs_us, xs_ds],
+            flow_rate: 20.0,
+            num_slices: Some(50),
+            regime: 0,
+            downstream_wsel: Some(1.6),
+            max_spacing: Some(100.0),
+            densify_reach_modifier_policy: Some(3),
+            ..Default::default()
+        };
+        let result = solve_steady(&inputs);
+        assert!(result.wsel[0].is_finite() && result.wsel[0] > 1.0);
+    }
+
+    #[test]
+    fn steady_bridge_ineffective_with_opening_origin_and_layout() {
+        let xs200 = metric_rect_channel(200.0, 0.1);
+        let xs0 = metric_rect_channel(0.0, 0.0);
+        let result = solve_steady(&SteadyInputs {
+            cross_sections: vec![xs200, xs0],
+            flow_rate: 15.0,
+            num_slices: Some(50),
+            regime: 0,
+            downstream_wsel: Some(1.5),
+            max_spacing: Some(50.0),
+            densify_reach_modifier_policy: Some(1),
+            bridge_stations: Some(vec![100.0]),
+            bridge_lengths: Some(vec![10.0]),
+            bridge_low_chords: Some(vec![5.0]),
+            bridge_high_chords: Some(vec![7.0]),
+            bridge_weir_coeffs: Some(vec![1.44]),
+            bridge_orifice_coeffs: Some(vec![0.5]),
+            bridge_opening_reach_station_origins: Some(vec![0.0]),
+            bridge_ineffective_left_stations_upstream: Some(vec![vec![5.0]]),
+            bridge_ineffective_left_elevations_upstream: Some(vec![vec![3.0]]),
+            bridge_ineffective_left_stations_downstream: Some(vec![vec![6.0]]),
+            bridge_ineffective_left_elevations_downstream: Some(vec![vec![3.0]]),
+            ..Default::default()
+        });
+        assert_eq!(result.wsel.len(), 2);
+        assert!(result.wsel.iter().all(|w| w.is_finite() && *w > 0.0));
+    }
+
+    #[test]
+    fn test_steady_densify_inherits_upstream_ineffective() {
+        use crate::geometry::IneffectiveFlowAreas;
+
+        let xs1000 = CrossSection {
+            station: 1000.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![6.0, 1.0, 1.0, 6.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: Some(
+                IneffectiveFlowAreas::from_block_pairs(&[], &[], &[8.0], &[3.0]).unwrap(),
+            ),
+            guide_banks: None,
+        };
+        let xs0 = CrossSection {
+            station: 0.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![5.0, 0.0, 0.0, 5.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+
+        let base = SteadyInputs {
+            cross_sections: vec![xs1000.clone(), xs0.clone()],
+            flow_rate: 20.0,
+            num_slices: Some(50),
+            regime: 0,
+            downstream_wsel: Some(1.5),
+            max_spacing: Some(100.0),
+            ..Default::default()
+        };
+
+        let mut without = base.clone();
+        without.densify_reach_modifier_policy = Some(0);
+        let mut with_upstream = base;
+        with_upstream.densify_reach_modifier_policy = Some(1);
+
+        let wsel_without = solve_steady(&without).wsel[0];
+        let wsel_with = solve_steady(&with_upstream).wsel[0];
+        assert!(
+            (wsel_with - wsel_without).abs() > 1e-4,
+            "densify policy should change upstream WSEL ({wsel_with} vs {wsel_without})"
+        );
     }
 
     #[test]

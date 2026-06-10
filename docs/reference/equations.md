@@ -214,6 +214,33 @@ Three HEC-RAS cross-section modifiers change how properties are computed. They a
 
 **`GeometryRow` fields:** `area` is total submerged storage; `active_area` and `conveyance` exclude ineffective zones and guide-bank clipping but include ponded ineffective volume in `area`. Blocked obstructions reduce both.
 
+#### H1. Densified stations — modifier inheritance
+
+When spacing exceeds `max_spacing`, or when bridge layout inserts BU/BD/internal river stations **without** an explicit `CrossSection` on that cut, the solver adds **synthetic** nodes between parent sections. Modifier fields on those nodes follow the rules below (not the parent reach face by default).
+
+**Input:** `densify_reach_modifier_policy` (`u8`, steady and unsteady). Default **`0` (`none`)** — backward compatible with pre-policy steady profiles.
+
+| Value | Name | Reach modifiers copied from |
+|------:|------|-----------------------------|
+| `0` | `none` | None — interior hydraulics from blended lookup tables only |
+| `1` | `upstream` | Upstream user section (**recommended** when using reach ineffective with `max_spacing`) |
+| `2` | `downstream` | Downstream user section |
+| `3` | `nearest` | Closer parent by interpolation factor `t` (`t ≤ 0.5` → upstream, else downstream) |
+
+**Geometry:** Policy `none` — `interpolate_geometry_table` between parent tables (blocked fill baked at user stations still blends hydraulically). Policy `1`/`2`/`3` — `interpolate_cross_section` between parents, copy modifiers per table below, rebuild lookup table from the synthetic cut.
+
+| Node type | `ineffective_flow_areas` | `blocked_obstructions` | `guide_banks` |
+|-----------|--------------------------|------------------------|---------------|
+| **`max_spacing` interior** (`densify_reach_modifier_policy: 0`) | Not on cut; steady uses static table only | Polylines not copied; hydraulics via table blend |
+| **`max_spacing` interior** (policy `1` / `2` / `3`) | Copied from chosen parent | Copied from chosen parent | Copied from chosen parent |
+| **Bridge BU / BD** (interpolated, no explicit cut) | **`bridge_ineffective_*`** on that face (opening frame → reach `x` via `bridge_opening_reach_station_origins`); **does not** inherit reach `ineffective_flow_areas` from adjacent densified nodes | Not copied from reach policy; geometry from interpolated channel polyline |
+| **Bridge internal** (interpolated, no explicit cut) | `densify_reach_modifier_policy` | Same policy | Same policy |
+| **Explicit user / BU / BD / approach / departure cut** | On-cut `ineffective_flow_areas` when present; else bridge-level rules — [`BRIDGE_INTERIOR_SECTIONS_API.md`](../BRIDGE_INTERIOR_SECTIONS_API.md) | On-cut polylines | On-cut or bridge-level `bridge_*_guide_banks` |
+
+**Precedence:** explicit `CrossSection` at a river station always replaces interpolated geometry at that station. Bridge ineffective on BU/BD faces does not fall back to reach ineffective on the adjacent densified node.
+
+**Integrators:** models with reach `ineffective_flow_areas` and `max_spacing` should set `densify_reach_modifier_policy: 1` so interior standard-step nodes apply ineffective on the interpolated polyline. Design notes: [`development/densify_modifier_inheritance.md`](../development/densify_modifier_inheritance.md).
+
 #### H. Ineffective Flow Areas
 Optional HEC-RAS ineffective-flow blocks per bridge at the upstream and downstream bridge faces. Each side may have **multiple blocks** (OR logic: a segment is ineffective if any block on that side triggers).
 
@@ -239,7 +266,7 @@ Example — 2 m tall blockage across 12–18 m on a trapezoidal section:
 ]
 ```
 
-Blocked obstructions are baked into geometry lookup tables at user cross sections. Interpolated (densified) interior points do not inherit blockage unless defined on the parent section.
+Blocked obstructions on **user** cross sections are baked into lookup tables at section build time. Inheritance on densified nodes: **§H1**.
 
 #### I. BU / BD interior cross sections (API v22)
 
