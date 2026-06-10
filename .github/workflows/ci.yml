@@ -11,6 +11,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: API version matches changelog
+        run: |
+          API_VER=$(grep -m1 'pub const API_VERSION' src/wasm_api.rs | grep -oE '[0-9]+')
+          CHANGELOG_VER=$(grep -m1 'Current version' docs/reference/api_changelog.md | grep -oE '[0-9]+')
+          test "$API_VER" = "$CHANGELOG_VER" || { echo "API_VERSION $API_VER != changelog $CHANGELOG_VER"; exit 1; }
+
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: taiki-e/install-action@cargo-llvm-cov

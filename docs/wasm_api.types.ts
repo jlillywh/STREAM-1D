@@ -1,40 +1,24 @@
 /**
- * STREAM-1D WASM API TypeScript definitions.
- *
- * Copy into the web app (e.g. `src/types/stream1d.ts`).
- * Field names use snake_case to match Rust/Python JSON and `solveSteady()` payloads.
- *
- * Check `api_version` from `getWasmApiMetadata()` after each engine upgrade.
- * **API v24** — Guide banks on approach/departure cuts (`CrossSection.guide_banks`,
- * `bridge_approach_*` / `bridge_departure_*` cross sections, reach stations, guide-bank arrays).
- * **API v23** — Bridge opening anchor modes (`bridge_opening_anchor_modes`,
- * `bridge_opening_anchor_reach_stations`); reach river station or BU left anchoring for
- * `bridge_opening_reach_station_origins` resolution.
- * **API v22** — BU/BD bridge interior cross sections (`bridge_upstream_cross_sections`,
- * `bridge_downstream_cross_sections`, `bridge_internal_cross_sections`,
- * `bridge_opening_reach_station_origins`; rating curve: `opening_reach_station_origin`, `xs_internal`).
- * `CrossSection.ineffective_flow_areas` on BU/BD cuts (reach-`x` frame, independent of reach-face
- * ineffective). Friction length $L$ follows BU → internal → BD river stations (see README §6.I).
- * Example payload: `examples/wasm/steady_bridge_bu_bd_v22.json`.
- * **API v21** — per-side bridge abutment fields (`bridge_abutment_left_*` / `bridge_abutment_right_*`;
- * rating curve uses flattened `abutment_*` keys on `BridgeRatingCurveInputs`).
+ * STREAM-1D WASM API types (snake_case; matches Rust/Python JSON).
+ * Copy into the web app. Version history: `docs/reference/api_changelog.md`.
+ * Modifier semantics: `docs/reference/equations.md` §H0.
  */
 
 export type UnitSystem = 'USCustomary' | 'Metric';
 
-/** One blocked-obstruction polyline (monotonic `stations`, paired `elevations`). */
+/** See equations.md §H0. */
 export interface BlockedObstruction {
   stations: number[];
   elevations: number[];
 }
 
-/** HEC-RAS normal ineffective-flow block (reach lateral `station`, activation `elevation`). */
+/** One normal ineffective-flow block (reach lateral `station`, activation `elevation`). */
 export interface IneffectiveBlock {
   station: number;
   elevation: number;
 }
 
-/** HEC-RAS ineffective-flow areas on a cross section (multiple blocks per side). */
+/** Normal ineffective flow (OR across blocks). See equations.md §H0. */
 export interface IneffectiveFlowAreas {
   left_blocks: IneffectiveBlock[];
   right_blocks: IneffectiveBlock[];
@@ -52,10 +36,7 @@ export interface GuideBankToe {
   elevation: number;
 }
 
-/**
- * Guide banks on an approach or departure cross section (API v24).
- * Bounds effective channel width for bridge contraction/expansion — reach `x` frame.
- */
+/** Guide banks on approach/departure cuts (reach `x`). */
 export interface GuideBanks {
   left_polylines?: GuideBankPolyline[];
   right_polylines?: GuideBankPolyline[];
@@ -71,16 +52,11 @@ export interface CrossSection {
   n_values: number[];
   unit_system: UnitSystem;
   is_overbank?: boolean[];
-  /**
-   * HEC-RAS blocked obstructions — permanent fill that removes area from flow and storage.
-   * Multiple polylines may be provided per section.
-   */
+  /** Permanent fill. See equations.md §H0. */
   blocked_obstructions?: BlockedObstruction[];
-  /**
-   * HEC-RAS normal ineffective-flow blocks on this cut (reach lateral `x` coordinates).
-   * On BU/BD bridge cuts, these apply independently of reach-face ineffective areas.
-   */
+  /** Normal ineffective flow (alias `ineffective_areas`). See equations.md §H0. */
   ineffective_flow_areas?: IneffectiveFlowAreas;
+  ineffective_areas?: IneffectiveFlowAreas;
   /** Guide banks on approach / departure cuts (reach lateral `x`). */
   guide_banks?: GuideBanks;
 }
@@ -201,10 +177,7 @@ export interface BridgeArrays {
   bridge_deck_low_elevations?: number[][];
   /** High chord elevation at each deck station `[bridge][point]`. */
   bridge_deck_high_elevations?: number[][];
-  /**
-   * Left ineffective-flow stations per bridge `[bridge][block]`.
-   * Flat `number[]` = one block per bridge (backward compatible).
-   */
+  /** Bridge ineffective (opening `s`). Same hydraulics as §H0. Flat array = one block per bridge. */
   bridge_ineffective_left_stations?: number[] | number[][];
   /** Activation elevations for left ineffective blocks per bridge `[bridge][block]`. */
   bridge_ineffective_left_elevations?: number[] | number[][];

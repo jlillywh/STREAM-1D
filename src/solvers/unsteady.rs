@@ -1,5 +1,8 @@
 use crate::utils::{G_METRIC, UnitSystem, FT_TO_M, Mat2, Vec2, solve_block_tridiagonal, structure_in_reach_interval};
-use crate::geometry::{CrossSection, GeometryTable, IneffectiveFlowAreas};
+use crate::geometry::{
+    conveyance_derivative_at_elevation, flow_area_for_row, geometry_row_at_elevation, CrossSection,
+    GeometryTable, IneffectiveFlowAreas,
+};
 
 /// Culvert model fields for unsteady routing (flattened into JSON; same keys as steady).
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -637,6 +640,7 @@ fn build_unsteady_culvert_params(
     i: usize,
     raw_units: UnitSystem,
     densified_tables: &[GeometryTable],
+    densified_xs: &[CrossSection],
     densified_z_mins: &[f64],
     y_metric: &[f64],
     q_metric: &[f64],
@@ -683,7 +687,13 @@ fn build_unsteady_culvert_params(
         q_metric[i]
     };
 
-    let ds_row = densified_tables[i + 1].interpolate(y_metric[i + 1]);
+    let ds_row = geometry_row_at_elevation(
+        &densified_tables[i + 1],
+        Some(&densified_xs[i + 1]),
+        y_metric[i + 1],
+        None,
+        None,
+    );
     let ds_area_user = if raw_units == UnitSystem::USCustomary {
         ds_row.channel_area / (FT_TO_M * FT_TO_M)
     } else {
@@ -696,7 +706,13 @@ fn build_unsteady_culvert_params(
     } else {
         upstream_wsel_user
     };
-    let us_row = densified_tables[i].interpolate(wsel_up_metric);
+    let us_row = geometry_row_at_elevation(
+        &densified_tables[i],
+        Some(&densified_xs[i]),
+        wsel_up_metric,
+        None,
+        None,
+    );
     let us_area_user = if raw_units == UnitSystem::USCustomary {
         us_row.channel_area / (FT_TO_M * FT_TO_M)
     } else {
@@ -740,6 +756,7 @@ fn converge_culvert_headwater(
     i: usize,
     raw_units: UnitSystem,
     densified_tables: &[GeometryTable],
+    densified_xs: &[CrossSection],
     densified_z_mins: &[f64],
     y_metric: &[f64],
     q_metric: &[f64],
@@ -767,6 +784,7 @@ fn converge_culvert_headwater(
             i,
             raw_units,
             densified_tables,
+            densified_xs,
             densified_z_mins,
             y_metric,
             q_metric,
@@ -871,6 +889,7 @@ fn apply_structure_internal_boundaries(
                         i,
                         raw_units,
                         densified_tables,
+                        densified_xs,
                         densified_z_mins,
                         y_metric,
                         q_metric,
@@ -1047,11 +1066,8 @@ fn converge_bridge_headwater(
 }
 
 /// Helper to compute numerical derivative of conveyance K with respect to elevation y.
-fn compute_dk_dy(table: &GeometryTable, elev: f64) -> f64 {
-    let dy = 0.01;
-    let k_plus = table.interpolate(elev + dy).conveyance;
-    let k_minus = table.interpolate(elev - dy).conveyance;
-    (k_plus - k_minus) / (2.0 * dy)
+fn compute_dk_dy(table: &GeometryTable, xs: &CrossSection, elev: f64) -> f64 {
+    conveyance_derivative_at_elevation(table, Some(xs), elev, None, None, 0.01)
 }
 
 /// Solves a single unsteady time step.
@@ -1100,24 +1116,27 @@ pub fn solve_unsteady_step(
             return None; // Invalid station spacing
         }
 
-        // Section properties at current time step
-        let row_i = tables[i].interpolate(y_current[i]);
-        let row_ip = tables[i + 1].interpolate(y_current[i + 1]);
+        // Section properties at current time step (ineffective/blocked/guide-bank aware)
+        let row_i = geometry_row_at_elevation(&tables[i], Some(&xs_list[i]), y_current[i], None, None);
+        let row_ip =
+            geometry_row_at_elevation(&tables[i + 1], Some(&xs_list[i + 1]), y_current[i + 1], None, None);
 
         let a_i = row_i.area.max(1e-6);
         let a_ip = row_ip.area.max(1e-6);
+        let flow_a_i = flow_area_for_row(&row_i).max(1e-6);
+        let flow_a_ip = flow_area_for_row(&row_ip).max(1e-6);
         let t_i = row_i.top_width.max(1e-6);
         let t_ip = row_ip.top_width.max(1e-6);
 
-        let v_i = q_current[i] / a_i;
-        let v_ip = q_current[i + 1] / a_ip;
+        let v_i = q_current[i] / flow_a_i;
+        let v_ip = q_current[i + 1] / flow_a_ip;
 
         // Conveyance and its derivatives
         let k_i = row_i.conveyance.max(1e-6);
         let k_ip = row_ip.conveyance.max(1e-6);
-        
-        let dk_dy_i = compute_dk_dy(&tables[i], y_current[i]);
-        let dk_dy_ip = compute_dk_dy(&tables[i + 1], y_current[i + 1]);
+
+        let dk_dy_i = compute_dk_dy(&tables[i], &xs_list[i], y_current[i]);
+        let dk_dy_ip = compute_dk_dy(&tables[i + 1], &xs_list[i + 1], y_current[i + 1]);
 
         // Friction slope and derivatives
         let q_avg = 0.5 * (q_current[i] + q_current[i + 1]);
@@ -1176,10 +1195,10 @@ pub fn solve_unsteady_step(
         let sign_v = (v_ip * v_ip - v_i * v_i).signum();
         let s_ce_force = a_avg * (c_ec / (2.0 * dx)) * (v_ip * v_ip - v_i * v_i).abs();
 
-        let dfce_dyi = a_avg * (c_ec / dx) * sign_v * (v_i * v_i * t_i / a_i);
-        let dfce_dqi = -a_avg * (c_ec / dx) * sign_v * (v_i / a_i);
-        let dfce_dyip = -a_avg * (c_ec / dx) * sign_v * (v_ip * v_ip * t_ip / a_ip);
-        let dfce_dqip = a_avg * (c_ec / dx) * sign_v * (v_ip / a_ip);
+        let dfce_dyi = a_avg * (c_ec / dx) * sign_v * (v_i * v_i * t_i / flow_a_i);
+        let dfce_dqi = -a_avg * (c_ec / dx) * sign_v * (v_i / flow_a_i);
+        let dfce_dyip = -a_avg * (c_ec / dx) * sign_v * (v_ip * v_ip * t_ip / flow_a_ip);
+        let dfce_dqip = a_avg * (c_ec / dx) * sign_v * (v_ip / flow_a_ip);
 
         let m1 = theta / dx * (v_i * v_i * t_i) * factor_i - G_METRIC * a_avg * theta / dx + G_METRIC * a_avg * theta * d_sf_dy_i + theta * dfce_dyi;
         let m2 = (1.0 / (2.0 * dt)) - theta / dx * (2.0 * v_i) * factor_i + 0.5 * G_METRIC * a_avg * theta * d_sf_d_q + theta * dfce_dqi;
@@ -1545,11 +1564,18 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
     for k in 0..dm {
         let y_val = densified_y_current[k];
         let q_val = densified_q_current[k];
-        let row = densified_tables[k].interpolate(y_val);
-        
+        let row = geometry_row_at_elevation(
+            &densified_tables[k],
+            Some(&densified_xs[k]),
+            y_val,
+            None,
+            None,
+        );
+
         let area = row.area;
         let top_width = row.top_width;
-        let vel = if area > 1e-6 { q_val / area } else { 0.0 };
+        let flow_area = flow_area_for_row(&row);
+        let vel = if flow_area > 1e-6 { q_val / flow_area } else { 0.0 };
         let d_hyd = if top_width > 1e-6 { area / top_width } else { 0.0 };
         let celerity = (G_METRIC * d_hyd).sqrt();
         let wave_speed = vel.abs() + celerity;
@@ -1611,7 +1637,13 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
         if densified_y_current[k] < min_wsel {
             densified_y_current[k] = min_wsel;
         }
-        let row = densified_tables[k].interpolate(densified_y_current[k]);
+        let row = geometry_row_at_elevation(
+            &densified_tables[k],
+            Some(&densified_xs[k]),
+            densified_y_current[k],
+            None,
+            None,
+        );
         let area = row.area.max(1e-6);
         let depth = (densified_y_current[k] - densified_z_mins[k]).max(0.0);
         let max_phys_vel = 15.0 * (depth / 0.1).min(1.0).max(0.1);
@@ -1746,10 +1778,16 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
             for k in 0..dm {
                 let min_wsel = densified_z_mins[k] + 0.05;
                 densified_y_current[k] = densified_y_current[k].max(min_wsel);
-                let row = densified_tables[k].interpolate(densified_y_current[k]);
+                let row = geometry_row_at_elevation(
+                    &densified_tables[k],
+                    Some(&densified_xs[k]),
+                    densified_y_current[k],
+                    None,
+                    None,
+                );
                 let area = row.area.max(1e-6);
                 let depth = (densified_y_current[k] - densified_z_mins[k]).max(0.0);
-                
+
                 if k > 0 {
                     let max_phys_vel = 15.0 * (depth / 0.1).min(1.0).max(0.1);
                     let max_q = area * max_phys_vel;
@@ -1775,8 +1813,15 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
             let w_val = densified_y_current[sorted_idx];
             let q_val = densified_q_current[sorted_idx];
             
-            let row = densified_tables[sorted_idx].interpolate(w_val);
-            let vel_val = if row.area > 1e-6 { q_val / row.area } else { 0.0 };
+            let row = geometry_row_at_elevation(
+                &densified_tables[sorted_idx],
+                Some(&densified_xs[sorted_idx]),
+                w_val,
+                None,
+                None,
+            );
+            let flow_area = flow_area_for_row(&row);
+            let vel_val = if flow_area > 1e-6 { q_val / flow_area } else { 0.0 };
 
             if raw_units == UnitSystem::USCustomary {
                 step_wsel[orig_idx] = w_val / FT_TO_M;
@@ -2347,6 +2392,104 @@ mod tests {
         assert!(hl > 0.0, "expected positive pier head loss, got {hl}");
         assert!(hw > tw, "upstream bridge WSEL {hw} should exceed tailwater {tw}");
         assert!((hw - tw - hl).abs() < 1e-4);
+    }
+
+    #[test]
+    fn test_unsteady_step_ineffective_reduces_conveyance() {
+        use crate::geometry::IneffectiveFlowAreas;
+
+        fn compound_channel(station: f64, z_bottom: f64) -> CrossSection {
+            CrossSection {
+                station,
+                x: vec![0.0, 0.0, 10.0, 10.0, 30.0, 30.0, 40.0, 40.0],
+                y: vec![
+                    5.0 + z_bottom,
+                    z_bottom,
+                    z_bottom,
+                    5.0 + z_bottom,
+                    z_bottom,
+                    5.0 + z_bottom,
+                    z_bottom,
+                    5.0 + z_bottom,
+                ],
+                n_stations: vec![0.0, 10.0],
+                n_values: vec![0.03, 0.05],
+                unit_system: UnitSystem::Metric,
+                is_overbank: Some(vec![
+                    false, false, false, false, true, true, true, true,
+                ]),
+                blocked_obstructions: None,
+                ineffective_flow_areas: None,
+                guide_banks: None,
+            }
+        }
+
+        let xs_ds = compound_channel(0.0, 0.0);
+        let mut xs_us_ineff = compound_channel(100.0, 0.0);
+        xs_us_ineff.ineffective_flow_areas = Some(
+            IneffectiveFlowAreas::from_block_pairs(&[30.0], &[3.0], &[], &[]).unwrap(),
+        );
+        let xs_us_open = compound_channel(100.0, 0.0);
+
+        let make_tables = |xs_us: &CrossSection| {
+            let tables = vec![
+                xs_us.generate_lookup_table(50),
+                xs_ds.generate_lookup_table(50),
+            ];
+            let z_mins = vec![
+                xs_us.y.iter().cloned().fold(f64::INFINITY, f64::min),
+                xs_ds.y.iter().cloned().fold(f64::INFINITY, f64::min),
+            ];
+            (tables, z_mins)
+        };
+
+        let y0 = vec![2.0, 2.0];
+        let q0 = vec![30.0, 30.0];
+        let dt = 60.0;
+
+        let (tables_open, z_open) = make_tables(&xs_us_open);
+        let open = solve_unsteady_step(
+            &tables_open,
+            &[xs_us_open.clone(), xs_ds.clone()],
+            &z_open,
+            &y0,
+            &q0,
+            dt,
+            30.0,
+            2.0,
+            0.6,
+            0.1,
+            0.3,
+        )
+        .expect("open step");
+
+        let (tables_ineff, z_ineff) = make_tables(&xs_us_ineff);
+        let ineffective = solve_unsteady_step(
+            &tables_ineff,
+            &[xs_us_ineff, xs_ds],
+            &z_ineff,
+            &y0,
+            &q0,
+            dt,
+            30.0,
+            2.0,
+            0.6,
+            0.1,
+            0.3,
+        )
+        .expect("ineffective step");
+
+        assert!(
+            ineffective.0[0] > open.0[0],
+            "upstream stage should rise when overbank conveyance is clipped: open={}, ineffective={}",
+            open.0[0],
+            ineffective.0[0],
+        );
+        assert!(
+            (ineffective.0[1] - 2.0).abs() < 1e-3,
+            "downstream BC should be enforced, got {}",
+            ineffective.0[1],
+        );
     }
 
     #[test]

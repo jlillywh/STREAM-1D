@@ -44,7 +44,7 @@ Transforms arbitrary $(x, y)$ cross-section polylines into vertical lookup table
 * Area, wetted perimeter, top width, conveyance
 * Horton–Einstein composite Manning's $n$ when $n$ varies by station
 * Optional channel / overbank subdivision via `is_overbank` → `channel_area` for structure-adjacent calculations
-* HEC-RAS ineffective flow areas (multi-block per side) and blocked obstructions on cross sections
+* Cross-section modifiers — see [`docs/reference/equations.md`](docs/reference/equations.md) §H0
 
 ### Module B: Steady-State Solver (`src/solvers/steady.rs`, `junction.rs`, `bridge.rs`, `bridge_abutment.rs`, `culvert.rs`)
 
@@ -93,15 +93,7 @@ Entry points (see `src/lib.rs`):
 
 Inputs and outputs are plain JavaScript objects using **snake_case** field names (same schema as Python JSON). Steady junction runs additionally return `tributary_wsel`, `tributary_velocity`, and `tributary_froude` when tributary fields are set.
 
-Check `getWasmApiMetadata().api_version` on each engine upgrade (**22** = BU/BD bridge interior cross sections; **21** = per-side bridge abutment fields; **20** = `blocked_obstructions` on cross sections).
-
-**Bridge interior (API version 22):** optional `bridge_upstream_cross_sections`, `bridge_downstream_cross_sections`, `bridge_internal_cross_sections`, and `bridge_opening_reach_station_origins` on steady/unsteady inputs. `CrossSection.ineffective_flow_areas` on BU/BD cuts uses reach lateral coordinates and does not inherit from the adjacent reach face. Bridge hydraulics run on the densified **BU → BD** interval; friction length follows face and interior river stations. Rating curve: `xs_up`, `xs_down`, `opening_reach_station_origin`, `xs_internal`. Example: [`examples/wasm/steady_bridge_bu_bd_v22.json`](../examples/wasm/steady_bridge_bu_bd_v22.json).
-
-**Culvert Tier 1 (API version 2):** optional inputs `culvert_inlet_types`, `culvert_z_ups`, `culvert_z_downs`, `culvert_crest_elevs`, `culvert_weir_coeffs`, `culvert_weir_lengths`; output `culvert_control_types` (`"inlet"` \| `"outlet"` \| `"overtopping"`).
-
-**Bridge abutments (API version 21):** `bridge_abutment_left_*` / `bridge_abutment_right_*` on steady and unsteady inputs; flattened `abutment_*` keys on `computeBridgeRatingCurve`. Legacy `bridge_abutment_block_widths` splits symmetrically when per-side widths are omitted.
-
-**Web app integrators:** see [`docs/wasm_api.types.ts`](docs/wasm_api.types.ts) and [`examples/wasm/`](../examples/wasm/).
+Check `getWasmApiMetadata().api_version` on each upgrade — history in [`docs/reference/api_changelog.md`](docs/reference/api_changelog.md). Types and examples: [`docs/wasm_api.types.ts`](docs/wasm_api.types.ts), [`examples/wasm/`](../examples/wasm/). Bridge BU/BD design: [`docs/BRIDGE_INTERIOR_SECTIONS_API.md`](docs/BRIDGE_INTERIOR_SECTIONS_API.md).
 
 **Build outputs:** `./build_wasm.sh` produces `./pkg` (web) and `./pkg-node` (Node), runs JSON contract tests, and executes a Node smoke test.
 

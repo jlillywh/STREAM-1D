@@ -1,7 +1,51 @@
 //! Unit tests for bridge hydraulics (see `bridge.rs`).
 
 use super::*;
-use crate::geometry::{CrossSection, GuideBankToe, GuideBanks};
+use crate::geometry::{CrossSection, GuideBankToe, GuideBanks, IneffectiveFlowAreas, row_at_elevation};
+
+fn compound_overbank_approach(ineffective: bool) -> CrossSection {
+    CrossSection {
+        station: 60.0,
+        x: vec![0.0, 0.0, 10.0, 10.0, 30.0, 30.0, 40.0, 40.0],
+        y: vec![5.0, 0.0, 0.0, 5.0, 0.0, 5.0, 0.0, 5.0],
+        n_stations: vec![0.0, 10.0],
+        n_values: vec![0.03, 0.05],
+        unit_system: UnitSystem::Metric,
+        is_overbank: Some(vec![
+            false, false, false, false, true, true, true, true,
+        ]),
+        blocked_obstructions: None,
+        ineffective_flow_areas: if ineffective {
+            Some(
+                IneffectiveFlowAreas::from_block_pairs(&[30.0], &[3.0], &[], &[]).unwrap(),
+            )
+        } else {
+            // Inactive block keeps the reach-cut energy path without clipping conveyance.
+            Some(
+                IneffectiveFlowAreas::from_block_pairs(&[30.0], &[-100.0], &[], &[]).unwrap(),
+            )
+        },
+        guide_banks: None,
+    }
+}
+
+fn approach_sections_with_ineffective_overbank() -> BridgeSectionContext {
+    BridgeSectionContext {
+        ineffective_up: None,
+        ineffective_down: None,
+        xs_up: None,
+        xs_down: None,
+        internal_xs: vec![],
+        opening_reach_station_origin: None,
+        skew_deg: 0.0,
+        pier_stations: None,
+        friction_length_m: 50.0,
+        xs_approach: Some(compound_overbank_approach(true)),
+        xs_departure: None,
+        guide_banks_approach: None,
+        guide_banks_departure: None,
+    }
+}
 
 fn approach_sections_with_guide_banks(
     approach_width: f64,
@@ -1017,7 +1061,7 @@ fn test_bu_section_ineffective_raises_bridge_headwater() {
     };
     let mut bu = reach.clone();
     bu.ineffective_flow_areas = Some(
-        IneffectiveFlowAreas::from_block_pairs(&[30.0], &[3.0], &[], &[]).unwrap(),
+        IneffectiveFlowAreas::from_block_pairs(&[], &[], &[30.0], &[3.0]).unwrap(),
     );
     let geo_none = resolve_bridge_face_solve_geometry(
         &BridgeInteriorInput {
@@ -1083,10 +1127,10 @@ fn test_bu_section_ineffective_raises_bridge_headwater() {
         0.5,
         0.0,
         0.0,
-        2.5,
+        2.0,
         UnitSystem::Metric,
-        &table_up,
-        &table_down,
+        &geo_none.table_up,
+        &geo_none.table_down,
         &coupling,
         50.0,
         None,
@@ -1103,10 +1147,10 @@ fn test_bu_section_ineffective_raises_bridge_headwater() {
         0.5,
         0.0,
         0.0,
-        2.5,
+        2.0,
         UnitSystem::Metric,
-        &table_up,
-        &table_down,
+        &geo_bu_ineff.table_up,
+        &geo_bu_ineff.table_down,
         &coupling,
         50.0,
         None,
@@ -2030,4 +2074,107 @@ fn test_high_flow_energy_supercritical_roundtrip() {
         UnitSystem::Metric, &table_up, &table_down, &coupling, 50.0, None, None,
     );
     assert!((hw_back - hw).abs() < 0.05, "roundtrip hw={hw}, hw_back={hw_back}, tw={tw}");
+}
+
+#[test]
+fn approach_overbank_ineffective_splits_storage_and_conveyance() {
+    let approach = compound_overbank_approach(true);
+    let table = approach.generate_lookup_table(50);
+    let wsel = 2.5;
+    let row = row_at_elevation(&table, &approach, wsel, None, None);
+    let plain = approach.compute_properties_at_elevation(wsel);
+    assert!(
+        (row.area - plain.area).abs() < 1e-2,
+        "ineffective should retain ponded storage on approach cut"
+    );
+    assert!(
+        row.active_area < row.area - 1.0,
+        "left overbank ineffective should clip conveyance below activation"
+    );
+    assert!(row.conveyance < plain.conveyance);
+}
+
+#[test]
+fn reach_cut_flow_area_uses_approach_ineffective_without_guide_banks() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let sections = approach_sections_with_ineffective_overbank();
+    let coupling = BridgeCouplingParams {
+        low_flow_method: 3,
+        coeff_contraction: 0.3,
+        length: 50.0,
+        ..Default::default()
+    };
+    let geom = build_bridge_geometry(
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.5,
+        0.0,
+        0.0,
+        UnitSystem::Metric,
+        &coupling,
+        50.0,
+        None,
+        Some(&sections),
+    );
+    let wsel = 2.5;
+    let a_approach = reach_cut_flow_area(&geom, true, wsel).expect("approach ineffective area");
+    let table = geom.table_approach.as_ref().expect("approach table");
+    let xs = geom.xs_approach.as_ref().expect("approach xs");
+    let row = row_at_elevation(table, xs, wsel, None, None);
+    assert!((a_approach - row.active_area).abs() < 1e-2);
+    let a_bu = obstructed_hydraulics(&table_up, wsel, geom.z_up_m, &geom, true).a_eff;
+    assert!(
+        a_approach < a_bu - 1.0,
+        "ineffective approach should convey less than BU reach face"
+    );
+}
+
+#[test]
+fn approach_ineffective_raises_energy_headwater() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let table_down = rectangular_table(10.0, 0.0, 50);
+    let sections_open = BridgeSectionContext {
+        xs_approach: Some(compound_overbank_approach(false)),
+        friction_length_m: 50.0,
+        ..approach_sections_with_ineffective_overbank()
+    };
+    let sections_ineff = approach_sections_with_ineffective_overbank();
+    let coupling = BridgeCouplingParams {
+        low_flow_method: 3,
+        coeff_contraction: 0.3,
+        length: 50.0,
+        ..Default::default()
+    };
+    let solve = |sections: Option<&BridgeSectionContext>| {
+        solve_bridge_wsel(
+            20.0,
+            5.0,
+            7.0,
+            0.0,
+            0,
+            0,
+            1.44,
+            0.5,
+            0.0,
+            0.0,
+            2.5,
+            UnitSystem::Metric,
+            &table_up,
+            &table_down,
+            &coupling,
+            50.0,
+            None,
+            sections,
+        )
+    };
+    let hw_open = solve(Some(&sections_open));
+    let hw_ineff = solve(Some(&sections_ineff));
+    assert!(
+        hw_ineff > hw_open + 1e-4,
+        "approach overbank ineffective should raise HW via contraction loss: open={hw_open}, ineff={hw_ineff}"
+    );
 }

@@ -8,12 +8,21 @@ This repository is the solver only. It does not include a GUI, project database,
 
 ## Capabilities
 
-| Analysis | Structures | Limits |
-|----------|------------|--------|
-| Steady GVF (subcritical, supercritical, mixed) | Culverts (FHWA inlet/outlet), bridges (HEC-RAS Class A/B/C, pressure, weir) | Single reach; one tributary junction (steady, subcritical) |
-| Unsteady routing (single reach) | Inline culverts and bridges | Upstream *Q*(*t*), downstream WSEL(*t*); no multi-reach networks |
+| Analysis | Structures |
+|----------|------------|
+| Steady GVF (subcritical, supercritical, mixed) | Culverts (FHWA inlet/outlet), bridges (HEC-RAS Class A/B/C, pressure, weir) |
+| Unsteady routing (single reach) | Inline culverts and bridges |
 
-Full HEC-RAS comparison: [`docs/reference/hecras_parity.md`](docs/reference/hecras_parity.md).
+## Limitations (read before comparing to HEC-RAS)
+
+| Topic | In this engine |
+|-------|----------------|
+| Topology | Single reach; one tributary junction (steady, subcritical) |
+| Unsteady | One reach; upstream *Q*(*t*) and downstream WSEL(*t*); no multi-reach networks |
+| Reach geometry | `blocked_obstructions`; `ineffective_flow_areas` on any cross section (steady and unsteady) |
+| Bridge cuts | `guide_banks`, `bridge_ineffective_*`, approach/departure ineffective on explicit cuts |
+
+Modifier semantics (blocked vs ineffective vs bridge ineffective): [`docs/reference/equations.md`](docs/reference/equations.md) §H0. Full HEC-RAS gap table: [`docs/reference/hecras_parity.md`](docs/reference/hecras_parity.md).
 
 ## Python
 
@@ -99,7 +108,7 @@ Culvert, bridge, junction, and rating-curve examples: [`docs/python/getting_star
 
 ## Inputs and outputs
 
-**Cross sections** — river station; (*x*, *y*) cut polyline; Manning *n* zones (`n_stations`, `n_values`); optional `is_overbank`, `blocked_obstructions`, `ineffective_flow_areas`.
+**Cross sections** — river station; (*x*, *y*) polyline; Manning *n* zones; optional `is_overbank`, `blocked_obstructions`, `ineffective_flow_areas`, `guide_banks`. Modifier semantics: [`docs/reference/equations.md`](docs/reference/equations.md) §H0.
 
 **Steady** — `flow_rate`, `regime` (0 subcritical, 1 supercritical, 2 mixed), downstream boundary (`downstream_wsel`, normal depth, rating curve, etc.). Structure fields: `culvert_*`, `bridge_*`.
 
@@ -138,6 +147,7 @@ WASM API: [`docs/web/wasm_integration.md`](docs/web/wasm_integration.md).
 
 | Document | Contents |
 |----------|----------|
+| [`docs/README.md`](docs/README.md) | Index — canonical source per topic |
 | [`docs/python/getting_started.md`](docs/python/getting_started.md) | Culvert, bridge, unsteady Python examples |
 | [`docs/reference/equations.md`](docs/reference/equations.md) | GVF, Saint-Venant, culvert and bridge theory |
 | [`docs/reference/hecras_parity.md`](docs/reference/hecras_parity.md) | Scope vs HEC-RAS |
