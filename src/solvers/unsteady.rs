@@ -2117,6 +2117,120 @@ mod tests {
     }
 
     #[test]
+    fn unsteady_densify_downstream_policy_runs() {
+        use crate::geometry::IneffectiveFlowAreas;
+
+        let xs_us = CrossSection {
+            station: 200.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![5.1, 0.1, 0.1, 5.1],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: Some(
+                IneffectiveFlowAreas::from_block_pairs(&[], &[], &[9.0], &[2.5]).unwrap(),
+            ),
+            guide_banks: None,
+        };
+        let xs_ds = CrossSection {
+            station: 0.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![5.0, 0.0, 0.0, 5.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: Some(
+                IneffectiveFlowAreas::from_block_pairs(&[], &[], &[2.0], &[2.5]).unwrap(),
+            ),
+            guide_banks: None,
+        };
+        let inputs = UnsteadyInputs {
+            cross_sections: vec![xs_us, xs_ds],
+            initial_wsel: vec![2.0, 1.8],
+            initial_q: vec![14.0, 14.0],
+            dt: 10.0,
+            num_steps: 2,
+            upstream_q_hydrograph: vec![14.0; 2],
+            downstream_wsel_hydrograph: vec![1.8; 2],
+            theta: Some(0.6),
+            num_slices: Some(50),
+            max_spacing: Some(50.0),
+            densify_reach_modifier_policy: Some(2),
+            coeff_contraction: None,
+            coeff_expansion: None,
+            culvert: UnsteadyCulvertInputs::default(),
+            bridge: UnsteadyBridgeInputs::default(),
+            structure_coupling_order: None,
+        };
+        let result = solve_unsteady(&inputs);
+        assert_eq!(result.wsel.len(), 2);
+        assert!(result.wsel[1][0].is_finite());
+    }
+
+    #[test]
+    fn unsteady_bridge_layout_without_explicit_faces() {
+        let xs200 = CrossSection {
+            station: 200.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![5.1, 0.1, 0.1, 5.1],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let xs0 = CrossSection {
+            station: 0.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![5.0, 0.0, 0.0, 5.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let inputs = UnsteadyInputs {
+            cross_sections: vec![xs200, xs0],
+            initial_wsel: vec![2.0, 1.8],
+            initial_q: vec![14.0, 14.0],
+            dt: 10.0,
+            num_steps: 2,
+            upstream_q_hydrograph: vec![14.0; 2],
+            downstream_wsel_hydrograph: vec![1.8; 2],
+            theta: Some(0.6),
+            num_slices: Some(50),
+            max_spacing: Some(50.0),
+            densify_reach_modifier_policy: Some(1),
+            coeff_contraction: None,
+            coeff_expansion: None,
+            culvert: UnsteadyCulvertInputs::default(),
+            bridge: UnsteadyBridgeInputs {
+                bridge_stations: Some(vec![100.0]),
+                bridge_lengths: Some(vec![10.0]),
+                bridge_low_chords: Some(vec![5.0]),
+                bridge_high_chords: Some(vec![7.0]),
+                bridge_weir_coeffs: Some(vec![1.44]),
+                bridge_orifice_coeffs: Some(vec![0.5]),
+                bridge_ineffective_left_stations_upstream: Some(vec![vec![5.0]]),
+                bridge_ineffective_left_elevations_upstream: Some(vec![vec![3.0]]),
+                ..Default::default()
+            },
+            structure_coupling_order: None,
+        };
+        let result = solve_unsteady(&inputs);
+        assert_eq!(result.wsel.len(), 2);
+        assert!(result.wsel[1][0] > result.wsel[1][1]);
+    }
+
+    #[test]
     fn test_project_11_debug() {
         let xs1000 = CrossSection {
             station: 1000.0,

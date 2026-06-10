@@ -2135,6 +2135,94 @@ mod tests {
     }
 
     #[test]
+    fn steady_densify_downstream_policy_differs_from_upstream() {
+        use crate::geometry::IneffectiveFlowAreas;
+
+        let mut xs_us = metric_rect_channel(200.0, 0.1);
+        xs_us.ineffective_flow_areas = Some(
+            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[9.0], &[2.5]).unwrap(),
+        );
+        let mut xs_ds = metric_rect_channel(0.0, 0.0);
+        xs_ds.ineffective_flow_areas = Some(
+            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[2.0], &[2.5]).unwrap(),
+        );
+        let base = SteadyInputs {
+            cross_sections: vec![xs_us, xs_ds],
+            flow_rate: 20.0,
+            num_slices: Some(50),
+            regime: 0,
+            downstream_wsel: Some(1.6),
+            max_spacing: Some(50.0),
+            ..Default::default()
+        };
+        let mut upstream_policy = base.clone();
+        upstream_policy.densify_reach_modifier_policy = Some(1);
+        let mut downstream_policy = base;
+        downstream_policy.densify_reach_modifier_policy = Some(2);
+        let w_up = solve_steady(&upstream_policy).wsel[0];
+        let w_down = solve_steady(&downstream_policy).wsel[0];
+        assert!(
+            (w_up - w_down).abs() > 1e-4,
+            "downstream policy should change profile: {w_up} vs {w_down}"
+        );
+    }
+
+    #[test]
+    fn steady_densify_nearest_policy_at_midpoint() {
+        use crate::geometry::IneffectiveFlowAreas;
+
+        let mut xs_us = metric_rect_channel(200.0, 0.1);
+        xs_us.ineffective_flow_areas = Some(
+            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[9.0], &[2.5]).unwrap(),
+        );
+        let mut xs_ds = metric_rect_channel(0.0, 0.0);
+        xs_ds.ineffective_flow_areas = Some(
+            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[2.0], &[2.5]).unwrap(),
+        );
+        let inputs = SteadyInputs {
+            cross_sections: vec![xs_us, xs_ds],
+            flow_rate: 20.0,
+            num_slices: Some(50),
+            regime: 0,
+            downstream_wsel: Some(1.6),
+            max_spacing: Some(100.0),
+            densify_reach_modifier_policy: Some(3),
+            ..Default::default()
+        };
+        let result = solve_steady(&inputs);
+        assert!(result.wsel[0].is_finite() && result.wsel[0] > 1.0);
+    }
+
+    #[test]
+    fn steady_bridge_ineffective_with_opening_origin_and_layout() {
+        let xs200 = metric_rect_channel(200.0, 0.1);
+        let xs0 = metric_rect_channel(0.0, 0.0);
+        let result = solve_steady(&SteadyInputs {
+            cross_sections: vec![xs200, xs0],
+            flow_rate: 15.0,
+            num_slices: Some(50),
+            regime: 0,
+            downstream_wsel: Some(1.5),
+            max_spacing: Some(50.0),
+            densify_reach_modifier_policy: Some(1),
+            bridge_stations: Some(vec![100.0]),
+            bridge_lengths: Some(vec![10.0]),
+            bridge_low_chords: Some(vec![5.0]),
+            bridge_high_chords: Some(vec![7.0]),
+            bridge_weir_coeffs: Some(vec![1.44]),
+            bridge_orifice_coeffs: Some(vec![0.5]),
+            bridge_opening_reach_station_origins: Some(vec![0.0]),
+            bridge_ineffective_left_stations_upstream: Some(vec![vec![5.0]]),
+            bridge_ineffective_left_elevations_upstream: Some(vec![vec![3.0]]),
+            bridge_ineffective_left_stations_downstream: Some(vec![vec![6.0]]),
+            bridge_ineffective_left_elevations_downstream: Some(vec![vec![3.0]]),
+            ..Default::default()
+        });
+        assert_eq!(result.wsel.len(), 2);
+        assert!(result.wsel.iter().all(|w| w.is_finite() && *w > 0.0));
+    }
+
+    #[test]
     fn test_steady_densify_inherits_upstream_ineffective() {
         use crate::geometry::IneffectiveFlowAreas;
 

@@ -476,6 +476,162 @@ mod tests {
     }
 
     #[test]
+    fn densify_reach_modifier_policy_from_u8_and_option() {
+        assert_eq!(
+            DensifyReachModifierPolicy::from_u8(1),
+            DensifyReachModifierPolicy::Upstream
+        );
+        assert_eq!(
+            DensifyReachModifierPolicy::from_u8(2),
+            DensifyReachModifierPolicy::Downstream
+        );
+        assert_eq!(
+            DensifyReachModifierPolicy::from_u8(3),
+            DensifyReachModifierPolicy::Nearest
+        );
+        assert_eq!(
+            DensifyReachModifierPolicy::from_u8(99),
+            DensifyReachModifierPolicy::None
+        );
+        assert_eq!(
+            DensifyReachModifierPolicy::from_option(None),
+            DensifyReachModifierPolicy::None
+        );
+        assert_eq!(
+            DensifyReachModifierPolicy::from_option(Some(2)),
+            DensifyReachModifierPolicy::Downstream
+        );
+    }
+
+    #[test]
+    fn downstream_policy_copies_modifiers_from_downstream_parent() {
+        use crate::geometry::BlockedObstruction;
+
+        let up = rect(200.0, 0.0, 20.0);
+        let mut down = rect(0.0, 0.0, 20.0);
+        down.blocked_obstructions = Some(vec![BlockedObstruction {
+            stations: vec![4.0, 6.0],
+            elevations: vec![1.0, 1.0],
+        }]);
+        let table_up = up.generate_lookup_table(30);
+        let table_down = down.generate_lookup_table(30);
+        let (_, _, xs) = densify_interior_node(
+            &up,
+            &down,
+            &table_up,
+            min_bed(&up),
+            &table_down,
+            min_bed(&down),
+            100.0,
+            0.5,
+            30,
+            DensifyReachModifierPolicy::Downstream,
+        );
+        let interior = xs.expect("downstream policy materializes xs");
+        assert_eq!(
+            interior.blocked_obstructions.as_ref().unwrap()[0].stations,
+            down.blocked_obstructions.as_ref().unwrap()[0].stations
+        );
+    }
+
+    #[test]
+    fn nearest_policy_uses_downstream_when_t_above_half() {
+        use crate::geometry::IneffectiveFlowAreas;
+
+        let mut up = rect(200.0, 0.0, 20.0);
+        up.ineffective_flow_areas = Some(
+            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[18.0], &[3.0]).unwrap(),
+        );
+        let mut down = rect(0.0, 0.0, 20.0);
+        down.ineffective_flow_areas = Some(
+            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[2.0], &[3.0]).unwrap(),
+        );
+        let table_up = up.generate_lookup_table(30);
+        let table_down = down.generate_lookup_table(30);
+        let (_, _, xs_near) = densify_interior_node(
+            &up,
+            &down,
+            &table_up,
+            min_bed(&up),
+            &table_down,
+            min_bed(&down),
+            40.0,
+            0.6,
+            30,
+            DensifyReachModifierPolicy::Nearest,
+        );
+        let interior = xs_near.expect("nearest policy xs");
+        let right = interior
+            .ineffective_flow_areas
+            .as_ref()
+            .and_then(|i| i.right_blocks.first())
+            .expect("downstream ineffective");
+        assert!((right.station - 2.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn upstream_policy_copies_guide_banks() {
+        use crate::geometry::{GuideBankPolyline, GuideBanks};
+
+        let mut up = rect(200.0, 0.0, 20.0);
+        up.guide_banks = Some(GuideBanks {
+            left_polylines: vec![GuideBankPolyline {
+                stations: vec![1.0, 5.0],
+                elevations: vec![2.0, 2.5],
+            }],
+            ..Default::default()
+        });
+        let down = rect(0.0, 0.0, 20.0);
+        let table_up = up.generate_lookup_table(30);
+        let table_down = down.generate_lookup_table(30);
+        let (_, _, xs) = densify_interior_node(
+            &up,
+            &down,
+            &table_up,
+            min_bed(&up),
+            &table_down,
+            min_bed(&down),
+            100.0,
+            0.5,
+            30,
+            DensifyReachModifierPolicy::Upstream,
+        );
+        let interior = xs.expect("guide banks copied");
+        assert!(interior.guide_banks.as_ref().is_some_and(|g| g.is_configured()));
+    }
+
+    #[test]
+    fn interpolate_cross_section_merged_lateral_grid() {
+        let up = CrossSection {
+            station: 100.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![5.0, 1.0, 1.0, 5.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.03],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let down = CrossSection {
+            station: 0.0,
+            x: vec![5.0, 5.0, 15.0, 15.0],
+            y: vec![5.0, 0.0, 0.0, 5.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.04],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let mid = interpolate_cross_section(&up, &down, 0.5, 50.0);
+        assert!(mid.x.len() >= 4, "merged lateral grid should union parent stations");
+        assert!((min_bed(&mid) - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
     fn none_policy_leaves_modifiers_empty_on_synthetic_xs() {
         let mut up = rect(100.0, 0.0, 10.0);
         up.ineffective_flow_areas = Some(

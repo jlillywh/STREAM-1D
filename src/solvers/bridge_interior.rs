@@ -1954,4 +1954,361 @@ mod tests {
             .expect("station 400");
         assert!((found.x[0] - 400.0).abs() < 1e-9);
     }
+
+    #[test]
+    fn layout_cuts_attach_face_meta_when_bu_bd_omitted() {
+        let ineffective =
+            IneffectiveFlowAreas::from_block_pairs(&[5.0], &[3.0], &[], &[]).unwrap();
+        let faces = resolve_bridge_face_stations_metric(
+            500.0,
+            UnitSystem::Metric,
+            None,
+            None,
+            20.0,
+        );
+        let cuts = layout_cuts_for_bridge(
+            &BridgeInteriorInput {
+                opening_reach_station_origin: Some(0.0),
+                ..Default::default()
+            },
+            faces,
+            UnitSystem::Metric,
+            Some(ineffective.clone()),
+            Some(ineffective),
+        );
+        assert_eq!(cuts.len(), 2);
+        assert_eq!(cuts[0].kind, BridgeLayoutCutKind::Bu);
+        assert!(cuts[0].xs.is_none());
+        assert!(cuts[0].face_meta.is_some());
+        assert_eq!(cuts[1].kind, BridgeLayoutCutKind::Bd);
+    }
+
+    #[test]
+    fn layout_cuts_empty_when_no_explicit_and_faces_coincide() {
+        let faces = BridgeFaceStations {
+            bu_station_m: 500.0,
+            bd_station_m: 500.0,
+        };
+        let cuts = layout_cuts_for_bridge(
+            &BridgeInteriorInput::default(),
+            faces,
+            UnitSystem::Metric,
+            None,
+            None,
+        );
+        assert!(cuts.is_empty());
+    }
+
+    #[test]
+    fn interpolated_bd_inherits_bridge_ineffective() {
+        let mut reach_us = box_xs(0.0, 40.0, 0.0, 5.0);
+        reach_us.station = 520.0;
+        let mut reach_ds = box_xs(0.0, 40.0, 0.0, 5.0);
+        reach_ds.station = 480.0;
+        let mut stations = vec![520.0, 480.0];
+        let table_us = reach_us.generate_lookup_table(20);
+        let table_ds = reach_ds.generate_lookup_table(20);
+        let mut tables = vec![table_us, table_ds];
+        let mut z_mins = vec![
+            cross_section_min_bed(&reach_us),
+            cross_section_min_bed(&reach_ds),
+        ];
+        let mut xs: Vec<Option<CrossSection>> = vec![Some(reach_us), Some(reach_ds)];
+        let faces = resolve_bridge_face_stations_metric(
+            500.0,
+            UnitSystem::Metric,
+            None,
+            None,
+            20.0,
+        );
+        let bridge_opening =
+            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[8.0], &[3.0]).unwrap();
+        let cuts = layout_cuts_for_bridge(
+            &BridgeInteriorInput {
+                opening_reach_station_origin: Some(0.0),
+                ..Default::default()
+            },
+            faces,
+            UnitSystem::Metric,
+            None,
+            Some(bridge_opening),
+        );
+        insert_reach_layout_cuts(
+            &mut stations,
+            &mut tables,
+            &mut z_mins,
+            &mut xs,
+            &cuts,
+            20,
+            DensifyReachModifierPolicy::Upstream,
+            UnitSystem::Metric,
+            &mut [],
+        );
+        let bd_idx = stations
+            .iter()
+            .position(|&s| (s - faces.bd_station_m).abs() < 1e-6)
+            .expect("BD node");
+        let bd = xs[bd_idx].as_ref().expect("BD xs");
+        let ineff = bd
+            .ineffective_flow_areas
+            .as_ref()
+            .expect("BD bridge ineffective");
+        assert_eq!(ineff.right_blocks.len(), 1);
+        assert!((ineff.right_blocks[0].station - 8.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn internal_layout_cut_inherits_reach_modifiers() {
+        use crate::geometry::IneffectiveFlowAreas;
+
+        let mut up = box_xs(0.0, 20.0, 0.0, 5.0);
+        up.ineffective_flow_areas = Some(
+            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[15.0], &[3.0]).unwrap(),
+        );
+        up.station = 510.0;
+        let mut down = box_xs(0.0, 20.0, 0.0, 5.0);
+        down.station = 490.0;
+        let mut internal = box_xs(0.0, 20.0, 0.0, 5.0);
+        internal.station = 500.0;
+        let faces = BridgeFaceStations {
+            bu_station_m: 510.0,
+            bd_station_m: 490.0,
+        };
+        let cuts = layout_cuts_for_bridge(
+            &BridgeInteriorInput {
+                internal: vec![internal],
+                ..Default::default()
+            },
+            faces,
+            UnitSystem::Metric,
+            None,
+            None,
+        );
+        assert_eq!(cuts.len(), 3);
+        assert_eq!(cuts[1].kind, BridgeLayoutCutKind::Internal);
+        assert!(cuts[1].xs.is_some());
+
+        let mut stations = vec![510.0, 490.0];
+        let mut tables = vec![
+            up.generate_lookup_table(20),
+            down.generate_lookup_table(20),
+        ];
+        let mut z_mins = vec![
+            cross_section_min_bed(&up),
+            cross_section_min_bed(&down),
+        ];
+        let mut xs: Vec<Option<CrossSection>> = vec![Some(up), Some(down)];
+        insert_reach_layout_cuts(
+            &mut stations,
+            &mut tables,
+            &mut z_mins,
+            &mut xs,
+            &cuts,
+            20,
+            DensifyReachModifierPolicy::Upstream,
+            UnitSystem::Metric,
+            &mut [],
+        );
+        assert!(
+            stations.iter().any(|&s| (s - 500.0).abs() < 1e-6),
+            "explicit internal cut should land on grid"
+        );
+        assert!(stations.len() >= 3);
+    }
+
+    #[test]
+    fn layout_insert_fallback_when_downstream_xs_missing() {
+        let mut up = box_xs(0.0, 20.0, 0.0, 5.0);
+        up.station = 520.0;
+        let table = up.generate_lookup_table(20);
+        let mut stations = vec![520.0, 480.0];
+        let mut tables = vec![table.clone(), table.clone()];
+        let mut z_mins = vec![0.0, 0.0];
+        let mut xs: Vec<Option<CrossSection>> = vec![Some(up), None];
+        let faces = resolve_bridge_face_stations_metric(
+            500.0,
+            UnitSystem::Metric,
+            None,
+            None,
+            20.0,
+        );
+        let bridge_opening =
+            IneffectiveFlowAreas::from_block_pairs(&[3.0], &[3.0], &[], &[]).unwrap();
+        let cuts = layout_cuts_for_bridge(
+            &BridgeInteriorInput {
+                opening_reach_station_origin: Some(0.0),
+                ..Default::default()
+            },
+            faces,
+            UnitSystem::Metric,
+            Some(bridge_opening),
+            None,
+        );
+        insert_reach_layout_cuts(
+            &mut stations,
+            &mut tables,
+            &mut z_mins,
+            &mut xs,
+            &cuts,
+            20,
+            DensifyReachModifierPolicy::None,
+            UnitSystem::Metric,
+            &mut [],
+        );
+        let bu_idx = stations
+            .iter()
+            .position(|&s| (s - faces.bu_station_m).abs() < 1e-6)
+            .expect("BU inserted");
+        let bu = xs[bu_idx].as_ref().expect("fallback BU xs");
+        assert!(bu
+            .ineffective_flow_areas
+            .as_ref()
+            .is_some_and(|i| i.is_configured()));
+    }
+
+    #[test]
+    fn apply_bridge_reach_layout_steady_wires_ineffective() {
+        use crate::solvers::steady::SteadyInputs;
+
+        let mut up = box_xs(0.0, 10.0, 0.0, 5.0);
+        up.station = 200.0;
+        let mut down = box_xs(0.0, 10.0, 0.0, 5.0);
+        down.station = 0.0;
+        let mut stations = vec![200.0, 0.0];
+        let mut tables = vec![
+            up.generate_lookup_table(20),
+            down.generate_lookup_table(20),
+        ];
+        let mut z_mins = vec![
+            cross_section_min_bed(&up),
+            cross_section_min_bed(&down),
+        ];
+        let mut xs: Vec<Option<CrossSection>> = vec![Some(up), Some(down)];
+        let inputs = SteadyInputs {
+            cross_sections: xs.iter().filter_map(|o| o.clone()).collect(),
+            bridge_stations: Some(vec![100.0]),
+            bridge_lengths: Some(vec![10.0]),
+            bridge_ineffective_left_stations_upstream: Some(vec![vec![5.0]]),
+            bridge_ineffective_left_elevations_upstream: Some(vec![vec![3.0]]),
+            bridge_opening_reach_station_origins: Some(vec![0.0]),
+            densify_reach_modifier_policy: Some(1),
+            ..Default::default()
+        };
+        let intervals = apply_bridge_reach_layout_steady(
+            &inputs,
+            UnitSystem::Metric,
+            20,
+            &mut stations,
+            &mut tables,
+            &mut z_mins,
+            &mut xs,
+        );
+        assert_eq!(intervals.len(), 1);
+        assert!(intervals[0].is_some());
+        assert!(stations.len() > 2);
+    }
+
+    #[test]
+    fn apply_bridge_reach_layout_unsteady_interpolates_state() {
+        use crate::solvers::unsteady::UnsteadyInputs;
+
+        let mut up = box_xs(0.0, 10.0, 0.0, 5.0);
+        up.station = 200.0;
+        let mut down = box_xs(0.0, 10.0, 0.0, 5.0);
+        down.station = 0.0;
+        let mut stations = vec![200.0, 0.0];
+        let mut tables = vec![
+            up.generate_lookup_table(20),
+            down.generate_lookup_table(20),
+        ];
+        let mut z_mins = vec![
+            cross_section_min_bed(&up),
+            cross_section_min_bed(&down),
+        ];
+        let mut xs = vec![up.clone(), down];
+        let mut y = vec![2.0, 1.5];
+        let mut q = vec![10.0, 10.0];
+        let inputs = UnsteadyInputs {
+            cross_sections: xs.clone(),
+            initial_wsel: y.clone(),
+            initial_q: q.clone(),
+            dt: 10.0,
+            num_steps: 1,
+            upstream_q_hydrograph: vec![10.0],
+            downstream_wsel_hydrograph: vec![1.5],
+            theta: Some(0.6),
+            num_slices: Some(20),
+            max_spacing: None,
+            densify_reach_modifier_policy: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            culvert: crate::solvers::unsteady::UnsteadyCulvertInputs::default(),
+            bridge: crate::solvers::unsteady::UnsteadyBridgeInputs {
+                bridge_stations: Some(vec![100.0]),
+                bridge_lengths: Some(vec![10.0]),
+                ..Default::default()
+            },
+            structure_coupling_order: None,
+        };
+        let intervals = apply_bridge_reach_layout_unsteady(
+            &inputs,
+            UnitSystem::Metric,
+            20,
+            &mut stations,
+            &mut tables,
+            &mut z_mins,
+            &mut xs,
+            &mut y,
+            &mut q,
+        );
+        assert_eq!(intervals.len(), 1);
+        assert_eq!(xs.len(), stations.len());
+        assert_eq!(y.len(), stations.len());
+        assert_eq!(q.len(), stations.len());
+    }
+
+    #[test]
+    fn insert_updates_existing_station_with_explicit_bu() {
+        let mut bu = box_xs(50.0, 6.0, 0.0, 5.0);
+        bu.station = 505.0;
+        let faces = BridgeFaceStations {
+            bu_station_m: 505.0,
+            bd_station_m: 495.0,
+        };
+        let mut stations = vec![505.0, 400.0, 0.0];
+        let table = flat_table();
+        let mut tables = vec![table.clone(), table.clone(), table.clone()];
+        let mut z_mins = vec![0.0; 3];
+        let mut xs: Vec<Option<CrossSection>> = stations
+            .iter()
+            .map(|&st| {
+                let mut s = box_xs(0.0, 20.0, 0.0, 5.0);
+                s.station = st;
+                Some(s)
+            })
+            .collect();
+        let cuts = layout_cuts_for_bridge(
+            &BridgeInteriorInput {
+                bu: Some(bu.clone()),
+                ..Default::default()
+            },
+            faces,
+            UnitSystem::Metric,
+            None,
+            None,
+        );
+        insert_reach_layout_cuts(
+            &mut stations,
+            &mut tables,
+            &mut z_mins,
+            &mut xs,
+            &cuts,
+            20,
+            DensifyReachModifierPolicy::None,
+            UnitSystem::Metric,
+            &mut [],
+        );
+        let idx = stations.iter().position(|&s| (s - 505.0).abs() < 1e-6).unwrap();
+        assert!(tables[idx].interpolate(3.0).area < flat_table().interpolate(3.0).area);
+    }
 }
