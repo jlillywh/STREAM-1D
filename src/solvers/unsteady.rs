@@ -188,7 +188,10 @@ fn bridge_face_blocks(
     (stations, elevations)
 }
 
-fn bridge_ineffective_upstream_for(inputs: &UnsteadyInputs, b_idx: usize) -> Option<IneffectiveFlowAreas> {
+pub(crate) fn bridge_ineffective_upstream_for(
+    inputs: &UnsteadyInputs,
+    b_idx: usize,
+) -> Option<IneffectiveFlowAreas> {
     let b = &inputs.bridge;
     let (left_s, left_e) = bridge_face_blocks(
         b.bridge_ineffective_left_stations_upstream.as_ref(),
@@ -207,7 +210,10 @@ fn bridge_ineffective_upstream_for(inputs: &UnsteadyInputs, b_idx: usize) -> Opt
     IneffectiveFlowAreas::from_block_pairs(&left_s, &left_e, &right_s, &right_e)
 }
 
-fn bridge_ineffective_downstream_for(inputs: &UnsteadyInputs, b_idx: usize) -> Option<IneffectiveFlowAreas> {
+pub(crate) fn bridge_ineffective_downstream_for(
+    inputs: &UnsteadyInputs,
+    b_idx: usize,
+) -> Option<IneffectiveFlowAreas> {
     let b = &inputs.bridge;
     let (left_s, left_e) = bridge_face_blocks(
         b.bridge_ineffective_left_stations_downstream.as_ref(),
@@ -2026,6 +2032,88 @@ mod tests {
         
         let cr = result.max_courant.unwrap();
         assert!(cr > 0.0, "max_courant was {}", cr);
+    }
+
+    #[test]
+    fn unsteady_blocked_densify_profile_matches_explicit_station_grid() {
+        use crate::geometry::BlockedObstruction;
+
+        let section = |station: f64, z: f64| -> CrossSection {
+            CrossSection {
+                station,
+                x: vec![0.0, 0.0, 10.0, 10.0],
+                y: vec![5.0 + z, z, z, 5.0 + z],
+                n_stations: vec![0.0],
+                n_values: vec![0.02],
+                unit_system: UnitSystem::Metric,
+                is_overbank: None,
+                blocked_obstructions: Some(vec![BlockedObstruction {
+                    stations: vec![3.0, 7.0],
+                    elevations: vec![1.5, 1.5],
+                }]),
+                ineffective_flow_areas: None,
+                guide_banks: None,
+            }
+        };
+
+        let sparse = UnsteadyInputs {
+            cross_sections: vec![section(200.0, 0.1), section(0.0, 0.0)],
+            initial_wsel: vec![2.0, 1.8],
+            initial_q: vec![14.0, 14.0],
+            dt: 10.0,
+            num_steps: 3,
+            upstream_q_hydrograph: vec![14.0; 3],
+            downstream_wsel_hydrograph: vec![1.8; 3],
+            theta: Some(0.6),
+            num_slices: Some(50),
+            max_spacing: Some(50.0),
+            densify_reach_modifier_policy: Some(1),
+            coeff_contraction: None,
+            coeff_expansion: None,
+            culvert: UnsteadyCulvertInputs::default(),
+            bridge: UnsteadyBridgeInputs::default(),
+            structure_coupling_order: None,
+        };
+        let dense = UnsteadyInputs {
+            cross_sections: vec![
+                section(200.0, 0.1),
+                section(150.0, 0.075),
+                section(100.0, 0.05),
+                section(50.0, 0.025),
+                section(0.0, 0.0),
+            ],
+            initial_wsel: vec![2.0, 1.9, 1.85, 1.82, 1.8],
+            initial_q: vec![14.0; 5],
+            dt: 10.0,
+            num_steps: 3,
+            upstream_q_hydrograph: vec![14.0; 3],
+            downstream_wsel_hydrograph: vec![1.8; 3],
+            theta: Some(0.6),
+            num_slices: Some(50),
+            max_spacing: None,
+            densify_reach_modifier_policy: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            culvert: UnsteadyCulvertInputs::default(),
+            bridge: UnsteadyBridgeInputs::default(),
+            structure_coupling_order: None,
+        };
+
+        let r_sparse = solve_unsteady(&sparse);
+        let r_dense = solve_unsteady(&dense);
+        let last = r_sparse.wsel.len() - 1;
+        assert!(
+            (r_sparse.wsel[last][0] - r_dense.wsel[last][0]).abs() < 0.05,
+            "unsteady upstream WSEL sparse {} vs explicit {}",
+            r_sparse.wsel[last][0],
+            r_dense.wsel[last][0]
+        );
+        assert!(
+            (r_sparse.wsel[last][1] - r_dense.wsel[last][4]).abs() < 0.05,
+            "unsteady downstream WSEL sparse {} vs explicit {}",
+            r_sparse.wsel[last][1],
+            r_dense.wsel[last][4]
+        );
     }
 
     #[test]

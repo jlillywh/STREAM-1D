@@ -1,8 +1,8 @@
 //! HEC-RAS BU / BD / internal bridge cross-section resolution (API v22).
 
 use crate::geometry::{
-    resolve_guide_banks, CrossSection, GeometryTable, GuideBanks, IneffectiveBlock,
-    IneffectiveFlowAreas,
+    apply_reach_modifier_policy, interpolate_cross_section, resolve_guide_banks, CrossSection,
+    DensifyReachModifierPolicy, GeometryTable, GuideBanks, IneffectiveBlock, IneffectiveFlowAreas,
 };
 use crate::solvers::bridge::BridgeSectionContext;
 use crate::utils::{structure_in_reach_interval, UnitSystem, FT_TO_M, STRUCTURE_STATION_TOL};
@@ -559,11 +559,29 @@ pub struct BridgeFaceStations {
     pub bd_station_m: f64,
 }
 
+/// BU / BD / internal role for a bridge layout insert.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BridgeLayoutCutKind {
+    Bu,
+    Bd,
+    Internal,
+}
+
+/// Metadata for interpolated BU/BD faces (no explicit `CrossSection` on the cut).
+#[derive(Debug, Clone)]
+pub struct BridgeFaceInsertMeta {
+    pub ineffective_opening: Option<IneffectiveFlowAreas>,
+    pub interior: BridgeInteriorInput,
+}
+
 /// One densification node to insert at a bridge layout river station.
 #[derive(Debug, Clone)]
 pub struct BridgeLayoutCut {
     pub station_m: f64,
     pub xs: Option<CrossSection>,
+    pub kind: BridgeLayoutCutKind,
+    /// When `xs` is omitted on BU/BD, opening-frame ineffective and anchor fields for reach shift.
+    pub face_meta: Option<BridgeFaceInsertMeta>,
 }
 
 fn user_length_to_metric(value: f64, raw_units: UnitSystem) -> f64 {
@@ -624,6 +642,8 @@ pub fn layout_cuts_for_bridge(
     interior: &BridgeInteriorInput,
     faces: BridgeFaceStations,
     raw_units: UnitSystem,
+    ineffective_up: Option<IneffectiveFlowAreas>,
+    ineffective_down: Option<IneffectiveFlowAreas>,
 ) -> Vec<BridgeLayoutCut> {
     let has_explicit = interior.bu.is_some()
         || interior.bd.is_some()
@@ -638,18 +658,153 @@ pub fn layout_cuts_for_bridge(
     cuts.push(BridgeLayoutCut {
         station_m: faces.bu_station_m,
         xs: interior.bu.clone(),
+        kind: BridgeLayoutCutKind::Bu,
+        face_meta: if interior.bu.is_none() {
+            Some(BridgeFaceInsertMeta {
+                ineffective_opening: ineffective_up,
+                interior: interior.clone(),
+            })
+        } else {
+            None
+        },
     });
     for xs in &interior.internal {
         cuts.push(BridgeLayoutCut {
             station_m: xs_river_station_to_metric(xs.station, xs.unit_system, raw_units),
             xs: Some(xs.clone()),
+            kind: BridgeLayoutCutKind::Internal,
+            face_meta: None,
         });
     }
     cuts.push(BridgeLayoutCut {
         station_m: faces.bd_station_m,
         xs: interior.bd.clone(),
+        kind: BridgeLayoutCutKind::Bd,
+        face_meta: if interior.bd.is_none() {
+            Some(BridgeFaceInsertMeta {
+                ineffective_opening: ineffective_down,
+                interior: interior.clone(),
+            })
+        } else {
+            None
+        },
     });
     cuts
+}
+
+fn bridge_face_ineffective_on_reach(
+    cut: &BridgeLayoutCut,
+    reach_xs_upstream: Option<&CrossSection>,
+    raw_units: UnitSystem,
+) -> Option<IneffectiveFlowAreas> {
+    let meta = cut.face_meta.as_ref()?;
+    let origin = resolve_opening_reach_station_origin(
+        meta.interior.opening_reach_station_origin,
+        meta.interior.opening_anchor_mode,
+        meta.interior.bu.as_ref(),
+        None,
+        reach_xs_upstream,
+    );
+    let opening = meta.ineffective_opening.clone()?;
+    let user_units = if raw_units == UnitSystem::USCustomary {
+        opening.to_metric(UnitSystem::USCustomary)
+    } else {
+        opening
+    };
+    opening_frame_ineffective_to_reach(Some(user_units.clone()), origin)
+        .or(Some(user_units))
+}
+
+fn apply_bridge_face_ineffective_to_section(
+    section: &mut CrossSection,
+    cut: &BridgeLayoutCut,
+    reach_xs_upstream: Option<&CrossSection>,
+    raw_units: UnitSystem,
+) {
+    if cut.xs.is_some() {
+        return;
+    }
+    match cut.kind {
+        BridgeLayoutCutKind::Bu | BridgeLayoutCutKind::Bd => {
+            section.ineffective_flow_areas =
+                bridge_face_ineffective_on_reach(cut, reach_xs_upstream, raw_units);
+        }
+        BridgeLayoutCutKind::Internal => {}
+    }
+}
+
+fn build_interpolated_layout_node(
+    cut: &BridgeLayoutCut,
+    i: usize,
+    t: f64,
+    station_m: f64,
+    tables: &[GeometryTable],
+    z_mins: &[f64],
+    xs: &[Option<CrossSection>],
+    num_slices: usize,
+    densify_policy: DensifyReachModifierPolicy,
+    raw_units: UnitSystem,
+) -> (GeometryTable, f64, Option<CrossSection>) {
+    let up_ref = xs.get(i).and_then(|o| o.as_ref());
+    let down_ref = xs.get(i + 1).and_then(|o| o.as_ref());
+
+    if let (Some(up), Some(down)) = (up_ref, down_ref) {
+        let up_m = up.to_metric();
+        let down_m = down.to_metric();
+        let mut synthetic = interpolate_cross_section(&up_m, &down_m, t, station_m);
+        match cut.kind {
+            BridgeLayoutCutKind::Bu | BridgeLayoutCutKind::Bd => {
+                apply_bridge_face_ineffective_to_section(
+                    &mut synthetic,
+                    cut,
+                    up_ref,
+                    raw_units,
+                );
+            }
+            BridgeLayoutCutKind::Internal => {
+                apply_reach_modifier_policy(&mut synthetic, &up_m, &down_m, t, densify_policy);
+            }
+        }
+        let z = cross_section_min_bed(&synthetic);
+        let table = synthetic.generate_lookup_table(num_slices);
+        return (table, z, Some(synthetic));
+    }
+
+    let (table_interp, z_interp) = crate::geometry::processor::interpolate_geometry_table(
+        &tables[i],
+        z_mins[i],
+        &tables[i + 1],
+        z_mins[i + 1],
+        t,
+        num_slices,
+    );
+    let mut xs_new = xs[i]
+        .clone()
+        .or_else(|| xs.get(i + 1).and_then(|x| x.clone()))
+        .map(|mut section| {
+            section.station = station_m;
+            section
+        });
+    if let Some(ref mut section) = xs_new {
+        if matches!(
+            cut.kind,
+            BridgeLayoutCutKind::Bu | BridgeLayoutCutKind::Bd
+        ) {
+            section.ineffective_flow_areas = None;
+            apply_bridge_face_ineffective_to_section(section, cut, up_ref, raw_units);
+            if section
+                .ineffective_flow_areas
+                .as_ref()
+                .is_some_and(|i| i.is_configured())
+            {
+                let metric = section.to_metric();
+                let z = cross_section_min_bed(&metric);
+                let table = metric.generate_lookup_table(num_slices);
+                return (table, z, Some(metric));
+            }
+        }
+    }
+    (table_interp, z_interp, xs_new)
 }
 
 fn station_exists(stations: &[f64], station_m: f64) -> bool {
@@ -681,6 +836,8 @@ pub fn insert_reach_layout_cuts(
     xs: &mut Vec<Option<CrossSection>>,
     cuts: &[BridgeLayoutCut],
     num_slices: usize,
+    densify_policy: DensifyReachModifierPolicy,
+    raw_units: UnitSystem,
     interpolated_fields: &mut [&mut Vec<f64>],
 ) {
     let mut ordered: Vec<&BridgeLayoutCut> = cuts.iter().collect();
@@ -723,22 +880,18 @@ pub fn insert_reach_layout_cuts(
                 Some(placed),
             )
         } else {
-            let (table_interp, z_interp) = crate::geometry::processor::interpolate_geometry_table(
-                &tables[i],
-                z_mins[i],
-                &tables[i + 1],
-                z_mins[i + 1],
+            build_interpolated_layout_node(
+                cut,
+                i,
                 t,
+                cut.station_m,
+                tables,
+                z_mins,
+                xs,
                 num_slices,
-            );
-            let xs_new = xs[i]
-                .clone()
-                .or_else(|| xs.get(i + 1).and_then(|x| x.clone()))
-                .map(|mut section| {
-                    section.station = cut.station_m;
-                    section
-                });
-            (table_interp, z_interp, xs_new)
+                densify_policy,
+                raw_units,
+            )
         };
 
         let insert_at = i + 1;
@@ -823,9 +976,17 @@ pub fn apply_bridge_reach_layout_steady(
             bridge_length_user_steady(inputs, b_idx),
         );
         face_list.push(faces);
-        all_cuts.extend(layout_cuts_for_bridge(&interior, faces, raw_units));
+        all_cuts.extend(layout_cuts_for_bridge(
+            &interior,
+            faces,
+            raw_units,
+            crate::solvers::steady::bridge_ineffective_upstream_for(inputs, b_idx),
+            crate::solvers::steady::bridge_ineffective_downstream_for(inputs, b_idx),
+        ));
     }
 
+    let densify_policy =
+        DensifyReachModifierPolicy::from_option(inputs.densify_reach_modifier_policy);
     insert_reach_layout_cuts(
         stations,
         tables,
@@ -833,6 +994,8 @@ pub fn apply_bridge_reach_layout_steady(
         xs,
         &all_cuts,
         num_slices,
+        densify_policy,
+        raw_units,
         &mut [],
     );
 
@@ -870,9 +1033,17 @@ pub fn apply_bridge_reach_layout_unsteady(
             bridge_length_user_unsteady(b, b_idx),
         );
         face_list.push(faces);
-        all_cuts.extend(layout_cuts_for_bridge(&interior, faces, raw_units));
+        all_cuts.extend(layout_cuts_for_bridge(
+            &interior,
+            faces,
+            raw_units,
+            crate::solvers::unsteady::bridge_ineffective_upstream_for(inputs, b_idx),
+            crate::solvers::unsteady::bridge_ineffective_downstream_for(inputs, b_idx),
+        ));
     }
 
+    let densify_policy =
+        DensifyReachModifierPolicy::from_option(inputs.densify_reach_modifier_policy);
     let mut xs_opt: Vec<Option<CrossSection>> = xs.iter().cloned().map(Some).collect();
     insert_reach_layout_cuts(
         stations,
@@ -881,6 +1052,8 @@ pub fn apply_bridge_reach_layout_unsteady(
         &mut xs_opt,
         &all_cuts,
         num_slices,
+        densify_policy,
+        raw_units,
         &mut [y_current, q_current],
     );
     xs.clear();
@@ -1146,6 +1319,8 @@ mod tests {
             },
             faces,
             UnitSystem::Metric,
+            None,
+            None,
         );
         insert_reach_layout_cuts(
             &mut stations,
@@ -1154,6 +1329,8 @@ mod tests {
             &mut xs,
             &cuts,
             20,
+            DensifyReachModifierPolicy::None,
+            UnitSystem::Metric,
             &mut [],
         );
         let interval = find_bridge_face_interval(faces, &stations).expect("BU/BD interval");
@@ -1248,6 +1425,101 @@ mod tests {
             .expect("BU section ineffective should apply");
         assert_eq!(up.left_blocks.len(), 1);
         assert!((up.left_blocks[0].station - 12.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn interpolated_bu_inherits_bridge_not_reach_ineffective() {
+        let mut reach_us = box_xs(0.0, 40.0, 0.0, 5.0);
+        reach_us.ineffective_flow_areas = Some(
+            IneffectiveFlowAreas::from_block_pairs(&[30.0], &[3.0], &[], &[]).unwrap(),
+        );
+        reach_us.station = 520.0;
+        let mut reach_ds = box_xs(0.0, 40.0, 0.0, 5.0);
+        reach_ds.station = 480.0;
+
+        let mut stations = vec![520.0, 480.0];
+        let table_us = reach_us.generate_lookup_table(20);
+        let table_ds = reach_ds.generate_lookup_table(20);
+        let mut tables = vec![table_us, table_ds];
+        let mut z_mins = vec![
+            cross_section_min_bed(&reach_us),
+            cross_section_min_bed(&reach_ds),
+        ];
+        let mut xs: Vec<Option<CrossSection>> = vec![Some(reach_us), Some(reach_ds)];
+
+        let faces = resolve_bridge_face_stations_metric(
+            500.0,
+            UnitSystem::Metric,
+            None,
+            None,
+            20.0,
+        );
+        let bridge_opening =
+            IneffectiveFlowAreas::from_block_pairs(&[5.0], &[3.0], &[], &[]).unwrap();
+        let interior = BridgeInteriorInput {
+            opening_reach_station_origin: Some(0.0),
+            ..Default::default()
+        };
+        let cuts = layout_cuts_for_bridge(
+            &interior,
+            faces,
+            UnitSystem::Metric,
+            Some(bridge_opening),
+            None,
+        );
+        insert_reach_layout_cuts(
+            &mut stations,
+            &mut tables,
+            &mut z_mins,
+            &mut xs,
+            &cuts,
+            20,
+            DensifyReachModifierPolicy::Upstream,
+            UnitSystem::Metric,
+            &mut [],
+        );
+
+        let bu_idx = stations
+            .iter()
+            .position(|&s| (s - faces.bu_station_m).abs() < 1e-6)
+            .expect("BU node");
+        let bu_xs = xs[bu_idx].as_ref().expect("BU synthetic xs");
+        let ineff = bu_xs
+            .ineffective_flow_areas
+            .as_ref()
+            .expect("bridge ineffective on BU");
+        assert_eq!(ineff.left_blocks.len(), 1);
+        assert!(
+            (ineff.left_blocks[0].station - 5.0).abs() < 1e-9,
+            "BU should use bridge ineffective (5), not reach (30)"
+        );
+
+        let geo = resolve_bridge_face_solve_geometry(
+            &interior,
+            None,
+            Some(bu_xs),
+            xs[bu_idx + 1].as_ref(),
+            &tables[bu_idx],
+            &tables[bu_idx + 1],
+            0.0,
+            0.0,
+            UnitSystem::Metric,
+            20,
+            Some(
+                IneffectiveFlowAreas::from_block_pairs(&[5.0], &[3.0], &[], &[]).unwrap(),
+            ),
+            None,
+            0.0,
+            None,
+            0.0,
+            0.0,
+            None,
+            None,
+            None,
+            None,
+        );
+        let up = geo.sections.ineffective_up.expect("BU bridge ineffective");
+        assert!((up.left_blocks[0].station - 5.0).abs() < 1e-9);
     }
 
     #[test]

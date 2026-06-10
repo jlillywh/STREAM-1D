@@ -1,7 +1,7 @@
 /**
  * STREAM-1D WASM API types (snake_case; matches Rust/Python JSON).
  * Copy into the web app. Version history: `docs/reference/api_changelog.md`.
- * Modifier semantics: `docs/reference/equations.md` §H0.
+ * Modifier semantics: `docs/reference/equations.md` §H0. Densified-node inheritance: §H1.
  */
 
 export type UnitSystem = 'USCustomary' | 'Metric';
@@ -239,6 +239,11 @@ export interface SteadyInputs extends CulvertArrays, BridgeArrays {
   downstream_wsel?: number;
   upstream_wsel?: number;
   max_spacing?: number;
+  /**
+   * Reach modifier inheritance on `max_spacing` interior nodes: 0 = none (default),
+   * 1 = upstream, 2 = downstream, 3 = nearest. See `equations.md` §H1.
+   */
+  densify_reach_modifier_policy?: number;
   downstream_bc_type?: number;
   downstream_bc_slope?: number;
   downstream_bc_rating_q?: number[];
@@ -449,6 +454,8 @@ export interface UnsteadyInputs extends UnsteadyCulvertInputs, BridgeArrays {
   theta?: number;
   num_slices?: number;
   max_spacing?: number;
+  /** Same as `SteadyInputs.densify_reach_modifier_policy` — `equations.md` §H1. */
+  densify_reach_modifier_policy?: number;
   coeff_contraction?: number;
   coeff_expansion?: number;
   /**

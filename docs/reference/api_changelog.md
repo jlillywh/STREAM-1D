@@ -1,9 +1,10 @@
 # API changelog
 
-JSON/Python input schema version (`api_version` in WASM metadata). Current version: **24**.
+JSON/Python input schema version (`api_version` in WASM metadata). Current version: **25**.
 
 | Version | Change |
 |---------|--------|
+| 25 | `densify_reach_modifier_policy` on steady/unsteady inputs (`0` none, `1` upstream, `2` downstream, `3` nearest); reach ineffective/blocked/guide banks on `max_spacing` interior nodes; interpolated bridge BU/BD inherit `bridge_ineffective_*` — see [`equations.md` §H1](equations.md) |
 | 24 | Guide banks on approach/departure cuts (`CrossSection.guide_banks`, `bridge_approach_*` / `bridge_departure_*` fields); resolved on `BridgeSectionContext`; guided active area in WSPRO/energy when guide banks configured |
 | 23 | Bridge opening anchor modes (`bridge_opening_anchor_modes`, `bridge_opening_anchor_reach_stations`); reach river station ↔ opening origin resolution; `validateSteadyInputs` returns `{ warnings }` (bridge opening vs parent XS width) |
 | 3 | Culvert extended diagnostics; culvert rating curve |

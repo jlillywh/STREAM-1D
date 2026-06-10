@@ -191,8 +191,8 @@ fn three_section_bridge_reach_matches_two_face_baseline() {
         0.0,
     );
 
-    let cuts_two = layout_cuts_for_bridge(&interior_two, faces, UnitSystem::Metric);
-    let cuts_three = layout_cuts_for_bridge(&interior_three, faces, UnitSystem::Metric);
+    let cuts_two = layout_cuts_for_bridge(&interior_two, faces, UnitSystem::Metric, None, None);
+    let cuts_three = layout_cuts_for_bridge(&interior_three, faces, UnitSystem::Metric, None, None);
     assert_eq!(cuts_two.len(), 2, "2-face layout: BU + BD only");
     assert_eq!(cuts_three.len(), 3, "3-section layout: BU + internal + BD");
 

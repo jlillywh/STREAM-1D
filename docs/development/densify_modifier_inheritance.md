@@ -2,6 +2,8 @@
 
 Design for how **reach** `ineffective_flow_areas`, `blocked_obstructions`, and `guide_banks` apply on **interior** nodes created by `max_spacing` densification (not explicit user cuts, BU/BD, or bridge layout inserts).
 
+**Shipped inheritance rules (canonical):** [`reference/equations.md`](../reference/equations.md) §H1.
+
 Modifier semantics: [`reference/equations.md`](../reference/equations.md) §H0.
 
 ---
@@ -20,7 +22,7 @@ Reach densification inserts nodes between user `cross_sections` when spacing exc
 
 1. After phase 2.1 reach ineffective, **steady** standard-step nodes between user sections ignore `ineffective_flow_areas` even when both parents carry the same blocks.
 2. **Steady vs unsteady** disagree on interior modifier handling.
-3. [`equations.md`](../reference/equations.md) H2 (“interior points do not inherit blockage”) is true for **polylines** but misleading: blocked **hydraulics** already leak via table interpolation.
+3. [`equations.md`](../reference/equations.md) H2 ("interior points do not inherit blockage") is true for **polylines** but misleading: blocked **hydraulics** already leak via table interpolation.
 4. There is no `interpolate_cross_section` — only table interpolation — so dynamic modifiers cannot be applied on a true mid-reach polyline today.
 
 ---
@@ -86,7 +88,7 @@ Rationale:
 
 - Ineffective is reach-lateral and stage-dependent; it must run through `geometry_row_at_elevation` on an interior cut, not table blend alone.
 - Blocked already affects interior conveyance through blended tables; copying polylines onto a synthetic XS risks **double application** once dynamic geometry is enabled.
-- Upstream inherit is the smallest change that fixes steady/unsteady parity and matches “modifier stays until redefined at next river station.”
+- Upstream inherit is the smallest change that fixes steady/unsteady parity and matches "modifier stays until redefined at next river station."
 
 ### API (proposed `API_VERSION` bump)
 
@@ -104,21 +106,20 @@ densify_reach_modifier_policy: u8
 
 ### Bridge / explicit cuts
 
-Unchanged:
-
 - Explicit BU/BD/approach/departure `CrossSection` values win on their station.
-- Bridge layout interpolated inserts without explicit XS keep today’s upstream-`Option` clone (bridge module), not the reach policy enum.
+- Interpolated **BU/BD** layout inserts (no explicit face polyline) inherit **bridge** `bridge_ineffective_*` on the synthetic cut (opening frame shifted to reach `x`), not reach `ineffective_flow_areas` from parent densified nodes.
+- Interpolated **internal** layout inserts follow `densify_reach_modifier_policy` for reach modifiers when both parent nodes have cross sections.
 
 ---
 
 ## Implementation outline (follow-on tasks)
 
-- [ ] **`interpolate_cross_section(up, down, t)`** — interpolate `x`/`y`, `n_stations`/`n_values`, `is_overbank`; set `station`; leave modifiers empty.
-- [ ] **`apply_reach_modifier_policy(synthetic, up, down, t, policy)`** — copy modifier fields per policy table above.
-- [ ] **`densify_reach_between(...)`** — shared helper; returns `(GeometryTable, z_min, Option<CrossSection>)`; replace duplicated loops in `steady.rs` and `unsteady.rs`.
-- [ ] **Steady:** push `Some(synthetic_xs)` when policy ≠ `none`.
-- [ ] **Tests:** two user XS, same upstream ineffective, `max_spacing` interior node — steady conveyance at interior matches user XS when policy = `upstream`; policy = `none` unchanged.
-- [ ] **Docs:** update §H2 footnote (blocked hydraulics vs polylines); `hecras_parity.md` one line; `api_changelog.md` when field ships.
+- [x] **`interpolate_cross_section(up, down, t)`** — `src/geometry/densify.rs`
+- [x] **`apply_reach_modifier_policy(synthetic, up, down, t, policy)`** — `src/geometry/densify.rs`
+- [x] **`densify_interior_node(...)`** — shared helper; steady + unsteady `max_spacing` loops
+- [x] **Steady:** push `Some(synthetic_xs)` when policy ≠ `none`
+- [x] **Tests:** profile continuity / no obstruction gap between user XS (`densify.rs` geometry + steady/unsteady vs explicit station grid)
+- [x] **Docs:** §H1 inheritance rules; §H2 cross-ref; `api_changelog` v25; README limitation line; `hecras_parity.md`
 
 ---
 
@@ -134,5 +135,6 @@ Unchanged:
 
 - [x] **Design** — policy above (`upstream` inherit for ineffective/guide; blocked via table only; API enum default `none`)
 - [x] **Implement** — shared densify helper + steady/unsteady wiring
-- [ ] **Test** — steady/unsteady parity on interior ineffective
-- [ ] **Document** — equations §H2, api_changelog, README limitation line
+- [x] **Test** — profile continuity across interpolated stations; no obstruction gap between user XS (geometry + steady/unsteady vs explicit grid)
+- [x] **Bridge faces** — BU/BD densified points inherit bridge ineffective (not reach modifiers from parents)
+- [x] **Document** — inheritance rules in equations §H1; api_changelog v25; README limitation line

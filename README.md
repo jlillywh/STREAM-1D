@@ -20,9 +20,10 @@ This repository is the solver only. It does not include a GUI, project database,
 | Topology | Single reach; one tributary junction (steady, subcritical) |
 | Unsteady | One reach; upstream *Q*(*t*) and downstream WSEL(*t*); no multi-reach networks |
 | Reach geometry | `blocked_obstructions`; `ineffective_flow_areas` on any cross section (steady and unsteady) |
-| Bridge cuts | `guide_banks`, `bridge_ineffective_*`, approach/departure ineffective on explicit cuts |
+| Reach densification | `max_spacing` inserts interior nodes; set `densify_reach_modifier_policy: 1` when reach ineffective or blocked must apply between user sections (default `0` = table blend only) |
+| Bridge cuts | `guide_banks`, `bridge_ineffective_*`, approach/departure ineffective on explicit cuts; interpolated BU/BD inherit bridge ineffective, not reach modifiers |
 
-Modifier semantics (blocked vs ineffective vs bridge ineffective): [`docs/reference/equations.md`](docs/reference/equations.md) §H0. Full HEC-RAS gap table: [`docs/reference/hecras_parity.md`](docs/reference/hecras_parity.md).
+Modifier semantics: [`docs/reference/equations.md`](docs/reference/equations.md) §H0. **Densified-node inheritance:** §H1. Full HEC-RAS gap table: [`docs/reference/hecras_parity.md`](docs/reference/hecras_parity.md).
 
 ## Python
 
@@ -110,9 +111,9 @@ Culvert, bridge, junction, and rating-curve examples: [`docs/python/getting_star
 
 **Cross sections** — river station; (*x*, *y*) polyline; Manning *n* zones; optional `is_overbank`, `blocked_obstructions`, `ineffective_flow_areas`, `guide_banks`. Modifier semantics: [`docs/reference/equations.md`](docs/reference/equations.md) §H0.
 
-**Steady** — `flow_rate`, `regime` (0 subcritical, 1 supercritical, 2 mixed), downstream boundary (`downstream_wsel`, normal depth, rating curve, etc.). Structure fields: `culvert_*`, `bridge_*`.
+**Steady** — `flow_rate`, `regime` (0 subcritical, 1 supercritical, 2 mixed), downstream boundary (`downstream_wsel`, normal depth, rating curve, etc.), optional `max_spacing` and `densify_reach_modifier_policy` (0 none, 1 upstream, 2 downstream, 3 nearest). Structure fields: `culvert_*`, `bridge_*`.
 
-**Unsteady** — `initial_wsel`, `initial_q`, `dt`, `num_steps`, `upstream_q_hydrograph`, `downstream_wsel_hydrograph`. Same structure fields as steady.
+**Unsteady** — `initial_wsel`, `initial_q`, `dt`, `num_steps`, `upstream_q_hydrograph`, `downstream_wsel_hydrograph`, same `max_spacing` / `densify_reach_modifier_policy` as steady. Same structure fields as steady.
 
 **Results** — `wsel`, `velocity`, `area`, `froude_number`, `critical_wsel`, `energy_grade_slope`. With culverts: control type, inlet/outlet HW, barrel and weir discharge. With bridges: flow regime, head loss. Unsteady structure outputs are `[time_step][structure_index]`.
 

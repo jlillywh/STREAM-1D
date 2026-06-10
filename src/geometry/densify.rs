@@ -308,6 +308,174 @@ mod tests {
     }
 
     #[test]
+    fn interior_blocked_obstruction_matches_upstream_no_gap() {
+        use crate::geometry::geometry_row_at_elevation;
+        use crate::geometry::BlockedObstruction;
+
+        let block = vec![BlockedObstruction {
+            stations: vec![8.0, 12.0],
+            elevations: vec![1.5, 1.5],
+        }];
+        let mut up = rect(200.0, 0.0, 20.0);
+        let mut down = rect(0.0, 0.0, 20.0);
+        up.blocked_obstructions = Some(block.clone());
+        down.blocked_obstructions = Some(block);
+
+        let table_up = up.generate_lookup_table(40);
+        let table_down = down.generate_lookup_table(40);
+        let (table_mid, _, xs) = densify_interior_node(
+            &up,
+            &down,
+            &table_up,
+            min_bed(&up),
+            &table_down,
+            min_bed(&down),
+            100.0,
+            0.5,
+            40,
+            DensifyReachModifierPolicy::Upstream,
+        );
+        let interior = xs.expect("upstream policy materializes interior xs");
+        assert_eq!(
+            interior.blocked_obstructions.as_ref().unwrap()[0].stations,
+            up.blocked_obstructions.as_ref().unwrap()[0].stations
+        );
+
+        let wsel = 2.0;
+        let row_up = geometry_row_at_elevation(&table_up, Some(&up), wsel, None, None);
+        let row_mid = geometry_row_at_elevation(&table_mid, Some(&interior), wsel, None, None);
+        assert!(
+            (row_mid.active_area - row_up.active_area).abs() < 1e-3,
+            "interior active area {} should match upstream {} (no obstruction gap)",
+            row_mid.active_area,
+            row_up.active_area
+        );
+        assert!((row_mid.area - row_up.area).abs() < 1e-3);
+    }
+
+    #[test]
+    fn upstream_only_blocked_copied_to_interior_no_gap() {
+        use crate::geometry::geometry_row_at_elevation;
+        use crate::geometry::BlockedObstruction;
+
+        let mut up = rect(200.0, 0.0, 20.0);
+        up.blocked_obstructions = Some(vec![BlockedObstruction {
+            stations: vec![8.0, 12.0],
+            elevations: vec![1.5, 1.5],
+        }]);
+        let down = rect(0.0, 0.0, 20.0);
+
+        let table_up = up.generate_lookup_table(40);
+        let table_down = down.generate_lookup_table(40);
+        let (table_mid, _, xs) = densify_interior_node(
+            &up,
+            &down,
+            &table_up,
+            min_bed(&up),
+            &table_down,
+            min_bed(&down),
+            100.0,
+            0.5,
+            40,
+            DensifyReachModifierPolicy::Upstream,
+        );
+        let interior = xs.expect("interior xs");
+        let wsel = 2.0;
+        let row_up = geometry_row_at_elevation(&table_up, Some(&up), wsel, None, None);
+        let row_down = geometry_row_at_elevation(&table_down, Some(&down), wsel, None, None);
+        let row_mid = geometry_row_at_elevation(&table_mid, Some(&interior), wsel, None, None);
+        assert!(
+            (row_mid.active_area - row_up.active_area).abs() < 1e-3,
+            "interior must inherit upstream blockage, not open downstream"
+        );
+        assert!(
+            row_mid.active_area + 1e-3 < row_down.active_area,
+            "downstream is unobstructed; interior should stay blocked"
+        );
+    }
+
+    #[test]
+    fn none_policy_table_blend_no_obstruction_gap_between_identical_parents() {
+        use crate::geometry::BlockedObstruction;
+
+        let block = vec![BlockedObstruction {
+            stations: vec![8.0, 12.0],
+            elevations: vec![1.5, 1.5],
+        }];
+        let mut up = rect(200.0, 0.0, 20.0);
+        let mut down = rect(0.0, 0.0, 20.0);
+        up.blocked_obstructions = Some(block.clone());
+        down.blocked_obstructions = Some(block);
+        let open = rect(200.0, 0.0, 20.0);
+
+        let table_up = up.generate_lookup_table(40);
+        let table_down = down.generate_lookup_table(40);
+        let (table_mid, _, xs) = densify_interior_node(
+            &up,
+            &down,
+            &table_up,
+            min_bed(&up),
+            &table_down,
+            min_bed(&down),
+            100.0,
+            0.5,
+            40,
+            DensifyReachModifierPolicy::None,
+        );
+        assert!(xs.is_none());
+
+        let wsel = 2.0;
+        let row_up = table_up.interpolate(wsel);
+        let row_mid = table_mid.interpolate(wsel);
+        let row_open = open.generate_lookup_table(40).interpolate(wsel);
+        assert!(
+            (row_mid.area - row_up.area).abs() < 1e-4,
+            "blended table should match identical blocked parents"
+        );
+        assert!(
+            row_mid.area < row_open.area - 0.5,
+            "interior must not revert to unobstructed area between blocked user XS"
+        );
+    }
+
+    #[test]
+    fn interior_ineffective_conveyance_matches_upstream_no_gap() {
+        use crate::geometry::geometry_row_at_elevation;
+
+        let mut up = rect(200.0, 0.0, 20.0);
+        up.ineffective_flow_areas = Some(
+            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[18.0], &[3.0]).unwrap(),
+        );
+        let mut down = rect(0.0, 0.0, 20.0);
+        down.ineffective_flow_areas = up.ineffective_flow_areas.clone();
+
+        let table_up = up.generate_lookup_table(40);
+        let table_down = down.generate_lookup_table(40);
+        let (table_mid, _, xs) = densify_interior_node(
+            &up,
+            &down,
+            &table_up,
+            min_bed(&up),
+            &table_down,
+            min_bed(&down),
+            100.0,
+            0.5,
+            40,
+            DensifyReachModifierPolicy::Upstream,
+        );
+        let interior = xs.expect("interior xs");
+        let wsel = 2.5;
+        let row_up = geometry_row_at_elevation(&table_up, Some(&up), wsel, None, None);
+        let row_mid = geometry_row_at_elevation(&table_mid, Some(&interior), wsel, None, None);
+        assert!(
+            (row_mid.conveyance - row_up.conveyance).abs() < 1e-2,
+            "ineffective conveyance at interior {} vs upstream {}",
+            row_mid.conveyance,
+            row_up.conveyance
+        );
+    }
+
+    #[test]
     fn none_policy_leaves_modifiers_empty_on_synthetic_xs() {
         let mut up = rect(100.0, 0.0, 10.0);
         up.ineffective_flow_areas = Some(
