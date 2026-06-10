@@ -369,6 +369,27 @@ fn cross_section_ineffective_flow_areas_deserialize() {
 }
 
 #[test]
+fn cross_section_ineffective_areas_alias_and_pair_arrays() {
+    let json = r#"{
+        "station": 100.0,
+        "x": [0.0, 0.0, 40.0, 40.0],
+        "y": [5.0, 0.0, 0.0, 5.0],
+        "n_stations": [0.0],
+        "n_values": [0.03],
+        "unit_system": "Metric",
+        "ineffective_areas": {
+            "left": [[8.0, 2.5], [12.0, 3.0]],
+            "right": [[32.0, 2.8]]
+        }
+    }"#;
+    let xs: CrossSection = serde_json::from_str(json).expect("ineffective_areas alias");
+    let areas = xs.ineffective_flow_areas.expect("parsed ineffective");
+    assert_eq!(areas.left_blocks.len(), 2);
+    assert_eq!(areas.right_blocks.len(), 1);
+    assert!((areas.left_blocks[1].elevation - 3.0).abs() < 1e-9);
+}
+
+#[test]
 fn wasm_steady_bridge_bu_bd_v22_fixture() {
     let json = include_str!("fixtures/wasm_steady_bridge_bu_bd_v22.json");
     let inputs: SteadyInputs = serde_json::from_str(json).expect("v22 bridge fixture");

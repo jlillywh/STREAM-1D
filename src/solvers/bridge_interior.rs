@@ -1626,6 +1626,48 @@ mod tests {
     }
 
     #[test]
+    fn resolve_approach_preserves_ineffective_overbank() {
+        let approach = CrossSection {
+            station: 60.0,
+            x: vec![0.0, 0.0, 10.0, 10.0, 30.0, 30.0, 40.0, 40.0],
+            y: vec![5.0, 0.0, 0.0, 5.0, 0.0, 5.0, 0.0, 5.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.03],
+            unit_system: UnitSystem::Metric,
+            is_overbank: Some(vec![
+                false, false, false, false, true, true, true, true,
+            ]),
+            blocked_obstructions: None,
+            ineffective_flow_areas: Some(
+                IneffectiveFlowAreas::from_block_pairs(&[30.0], &[3.0], &[], &[]).unwrap(),
+            ),
+            guide_banks: None,
+        };
+        let interior = BridgeInteriorInput {
+            approach: Some(approach),
+            ..Default::default()
+        };
+        let stations = vec![100.0, 50.0, 0.0];
+        let xs: Vec<Option<CrossSection>> = stations
+            .iter()
+            .map(|&st| {
+                let mut s = box_xs(0.0, 40.0, 0.0, 5.0);
+                s.station = st;
+                Some(s)
+            })
+            .collect();
+        let (resolved, _, _, _) =
+            resolve_approach_departure_sections(&interior, 1, &stations, &xs, UnitSystem::Metric);
+        let resolved = resolved.expect("explicit approach");
+        let areas = resolved
+            .ineffective_flow_areas
+            .as_ref()
+            .expect("ineffective on approach");
+        assert_eq!(areas.left_blocks.len(), 1);
+        assert!((areas.left_blocks[0].station - 30.0).abs() < 1e-9);
+    }
+
+    #[test]
     fn cross_section_lookup_at_reach_station() {
         let stations = vec![600.0, 400.0, 200.0];
         let xs: Vec<Option<CrossSection>> = stations

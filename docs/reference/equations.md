@@ -1,6 +1,6 @@
 # Equations and structure hydraulics
 
-Theory, culvert/bridge formulations, and input field tables. Field names match Python `stream1d` and [`docs/wasm_api.types.ts`](../wasm_api.types.ts). Release notes: [`api_changelog.md`](api_changelog.md).
+Theory and hydraulics. Field names: [`wasm_api.types.ts`](../wasm_api.types.ts). Versions: [`api_changelog.md`](api_changelog.md). Doc index: [`../README.md`](../README.md).
 
 ## Mathematical Formulations
 
@@ -194,6 +194,26 @@ Optional piecewise-linear deck/roadway profiles per bridge (HEC-RAS deck editor 
 
 When provided (≥ 2 points each), the solver uses profile extrema: **minimum** low chord for free-flow limits, **maximum** low chord for pressure-flow EGL trigger, **minimum** high chord for weir onset, and segment-wise **effective weir length** and **trapezoidal opening area** for pressure flow. Scalar `bridge_low_chords` / `bridge_high_chords` remain required fallbacks when profiles are omitted.
 
+#### H0. Geometry modifiers — blocked vs ineffective vs bridge ineffective
+
+Three HEC-RAS cross-section modifiers change how properties are computed. They are **not interchangeable**.
+
+| Modifier | Where defined | Coordinate frame | Below threshold | Storage `area` | Conveyance `active_area` / `conveyance` |
+|----------|---------------|------------------|-----------------|----------------|----------------------------------------|
+| **Blocked obstruction** | `blocked_obstructions` on `CrossSection` | Reach lateral `x` | WSEL below obstruction **crest** | **Removed** (raises effective bed) | **Removed** |
+| **Normal ineffective** | `ineffective_flow_areas` (alias `ineffective_areas`) on `CrossSection` | Reach lateral `x` | WSEL `<` block **activation elevation** | **Retained** (ponds storage) | **Removed** in ineffective zones |
+| **Bridge ineffective** | `bridge_ineffective_*` on steady/unsteady inputs; or `ineffective_flow_areas` on explicit BU/BD cuts | Opening station `s` (legacy fields, shifted by `bridge_opening_reach_station_origins`); reach `x` on BU/BD `CrossSection` | Same as normal ineffective | Same as normal ineffective | Same as normal ineffective |
+
+**Choosing a modifier**
+
+* Permanent fill, culvert embankment, or raised bed under a polyline → `blocked_obstructions`.
+* Overbank or floodplain that can pond but does not convey until a higher stage → `ineffective_flow_areas` on the reach cut (or BU/BD cut at a bridge face).
+* Ineffective tied to the bridge opening in HEC-RAS opening coordinates → `bridge_ineffective_*` (or explicit BU/BD `ineffective_flow_areas` in reach `x`).
+
+**OR logic (ineffective only):** multiple left/right blocks per side merge with OR semantics — a wetted segment is ineffective if **any** matching block triggers (`x < station` and WSEL `< elevation` on the left; `x > station` on the right).
+
+**`GeometryRow` fields:** `area` is total submerged storage; `active_area` and `conveyance` exclude ineffective zones and guide-bank clipping but include ponded ineffective volume in `area`. Blocked obstructions reduce both.
+
 #### H. Ineffective Flow Areas
 Optional HEC-RAS ineffective-flow blocks per bridge at the upstream and downstream bridge faces. Each side may have **multiple blocks** (OR logic: a segment is ineffective if any block on that side triggers).
 
@@ -203,18 +223,13 @@ Optional HEC-RAS ineffective-flow blocks per bridge at the upstream and downstre
 
 **Array shape:** flat `[s0, s1]` = one block per bridge (backward compatible); nested `[[s0, s1], [s2]]` = multiple blocks on bridge 0, one on bridge 1. The same pattern applies to elevations and per-face overrides.
 
-Per-face station/elevation values override the legacy shared fields on that face only. All area left/right of the station is ineffective when WSEL is below the activation elevation.
-
-Ineffective segments are excluded from **active area** and **conveyance** but still count toward total **storage area**. Bridge opening hydraulics and structure-adjacent Standard Step intervals use ineffective-aware geometry when the cross-section profile is available on the densified grid.
-
-**BU/BD cuts (API v22):** attach `ineffective_flow_areas` on `bridge_upstream_cross_sections` / `bridge_downstream_cross_sections` in reach lateral coordinates. Explicit BU/BD ineffective blocks apply only at that face and do not inherit from the adjacent reach cross section. When omitted on an explicit cut, `bridge_ineffective_*` opening-frame fields still apply (shifted by `bridge_opening_reach_station_origins`).
+Per-face values override legacy shared fields on that face only. Semantics: **§H0**. BU/BD resolution order: [`BRIDGE_INTERIOR_SECTIONS_API.md`](../BRIDGE_INTERIOR_SECTIONS_API.md).
 
 #### H2. Blocked Obstructions (Cross Sections)
-HEC-RAS **blocked obstructions** are permanent fill on any cross section — distinct from ineffective flow (which ponds storage until an activation elevation).
+Permanent fill on any `CrossSection`. Semantics: **§H0**.
 
-* **Field:** `blocked_obstructions` on each `CrossSection` — array of polylines `{ stations: number[], elevations: number[] }` (≥ 2 points, monotonic stations).
-* **Semantics:** obstruction crest raises the effective bed under each polyline; submerged area below the crest is removed from **both** total `area` and conveyance until WSEL overtops the blockage.
-* **Multiple polylines:** overlapping regions use the maximum obstruction elevation at each lateral station.
+* **Field:** `blocked_obstructions` — `{ stations, elevations }[]` (≥ 2 points, monotonic stations).
+* Overlapping polylines use the maximum crest elevation at each lateral station.
 
 Example — 2 m tall blockage across 12–18 m on a trapezoidal section:
 
@@ -241,7 +256,7 @@ HEC-RAS uses dedicated **BU** (bridge upstream face) and **BD** (bridge downstre
 
 **Reach layout:** after `max_spacing` densification, the solver inserts densified nodes at resolved BU/BD (and internal) river stations. Bridge hydraulics run on the interval `BU → BD`, not the wider reach interval around `bridge_stations`. Legacy models with only `bridge_stations` (no explicit faces, zero `bridge_lengths`) keep the prior center-station interval match.
 
-**HEC-RAS weighting:** low/high-flow classification and losses use BU and BD properties — critical-depth control picks the more constricted face; pressure/WSPRO net opening uses **min(BU, BD)** obstructed area at the low chord; friction length follows the BU → internal → BD path when explicit faces differ (overrides `bridge_lengths`); ineffective flow on BU/BD cuts uses `CrossSection.ineffective_flow_areas` before bridge opening-frame ineffective and reach fallback. Full design: [`docs/BRIDGE_INTERIOR_SECTIONS_API.md`](docs/BRIDGE_INTERIOR_SECTIONS_API.md).
+**HEC-RAS weighting & ineffective resolution:** [`BRIDGE_INTERIOR_SECTIONS_API.md`](../BRIDGE_INTERIOR_SECTIONS_API.md).
 
 Rating curve: `xs_up` / `xs_down` are BU/BD; optional `opening_reach_station_origin` and `xs_internal`.
 

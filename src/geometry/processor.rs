@@ -1,4 +1,4 @@
-use crate::utils::{UnitSystem, FT_TO_M};
+use crate::utils::{G_METRIC, UnitSystem, FT_TO_M};
 
 /// A raw cross-section definition.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -17,18 +17,23 @@ pub struct CrossSection {
     pub unit_system: UnitSystem,
     /// Optional overbank flags corresponding to each coordinate point.
     pub is_overbank: Option<Vec<bool>>,
-    /// HEC-RAS-style blocked obstructions (permanent fill; removes area from flow and storage).
+    /// Permanent fill — see `docs/reference/equations.md` §H0.
     #[serde(default)]
     pub blocked_obstructions: Option<Vec<BlockedObstruction>>,
-    /// HEC-RAS normal ineffective-flow blocks on this cut (reach lateral `x` frame).
-    #[serde(default)]
+    /// Normal ineffective flow (alias `ineffective_areas`) — see `docs/reference/equations.md` §H0.
+    #[serde(
+        default,
+        alias = "ineffective_areas",
+        deserialize_with = "crate::geometry::ineffective_serde::deserialize_ineffective_flow_areas_option",
+        serialize_with = "crate::geometry::ineffective_serde::serialize_ineffective_flow_areas_option"
+    )]
     pub ineffective_flow_areas: Option<IneffectiveFlowAreas>,
     /// Optional guide banks on this cut (approach / departure); reach lateral `x` frame.
     #[serde(default)]
     pub guide_banks: Option<crate::geometry::GuideBanks>,
 }
 
-/// One blocked-obstruction polyline across the section (station/elevation pairs, monotonic stations).
+/// Blocked-obstruction polyline. See `docs/reference/equations.md` §H0.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct BlockedObstruction {
     pub stations: Vec<f64>,
@@ -118,7 +123,7 @@ pub struct IneffectiveBlock {
     pub elevation: f64,
 }
 
-/// HEC-RAS-style normal ineffective flow areas on a cross section (multiple blocks per side).
+/// Ineffective-flow blocks per side (OR logic). See `docs/reference/equations.md` §H0.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct IneffectiveFlowAreas {
     pub left_blocks: Vec<IneffectiveBlock>,
@@ -128,6 +133,24 @@ pub struct IneffectiveFlowAreas {
 impl IneffectiveFlowAreas {
     pub fn is_configured(&self) -> bool {
         !self.left_blocks.is_empty() || !self.right_blocks.is_empty()
+    }
+
+    /// Combine two ineffective definitions with HEC-RAS OR semantics (any matching block applies).
+    pub fn merge_or(&self, other: &IneffectiveFlowAreas) -> Self {
+        Self {
+            left_blocks: self
+                .left_blocks
+                .iter()
+                .chain(other.left_blocks.iter())
+                .copied()
+                .collect(),
+            right_blocks: self
+                .right_blocks
+                .iter()
+                .chain(other.right_blocks.iter())
+                .copied()
+                .collect(),
+        }
     }
 
     fn blocks_from_pairs(stations: &[f64], elevations: &[f64]) -> Vec<IneffectiveBlock> {
@@ -631,6 +654,10 @@ impl CrossSection {
     }
 }
 
+/// True when a wetted segment is ineffective under HEC-RAS normal ineffective rules.
+///
+/// OR-logic: any left block with `x < station` and WSEL `< elevation`, or any right block with
+/// `x > station` and WSEL `< elevation`, marks the segment ineffective (no conveyance; storage kept).
 fn segment_is_ineffective(x_mid: f64, elev: f64, ineffective: &IneffectiveFlowAreas) -> bool {
     for block in &ineffective.left_blocks {
         if x_mid < block.station && elev < block.elevation {
@@ -645,6 +672,55 @@ fn segment_is_ineffective(x_mid: f64, elev: f64, ineffective: &IneffectiveFlowAr
     false
 }
 
+/// Resolve ineffective blocks for one cross section: optional face override plus `CrossSection` data.
+pub fn resolve_ineffective_for_section(
+    xs: &CrossSection,
+    override_ineffective: Option<&IneffectiveFlowAreas>,
+) -> Option<IneffectiveFlowAreas> {
+    let from_xs = xs
+        .ineffective_flow_areas
+        .as_ref()
+        .filter(|i| i.is_configured());
+    let from_override = override_ineffective.filter(|i| i.is_configured());
+    match (from_override, from_xs) {
+        (None, None) => None,
+        (Some(a), None) => Some(a.clone()),
+        (None, Some(b)) => Some(b.clone()),
+        (Some(a), Some(b)) => Some(a.merge_or(b)),
+    }
+}
+
+fn resolved_guide_banks<'a>(
+    xs: &'a CrossSection,
+    guide_banks: Option<&'a crate::geometry::GuideBanks>,
+) -> Option<&'a crate::geometry::GuideBanks> {
+    guide_banks
+        .or(xs.guide_banks.as_ref())
+        .filter(|g| g.is_configured())
+}
+
+/// Whether hydraulic properties must be recomputed at each WSEL (ineffective, blocked, guide banks).
+pub fn section_needs_dynamic_geometry(
+    xs: &CrossSection,
+    ineffective_override: Option<&IneffectiveFlowAreas>,
+) -> bool {
+    resolve_ineffective_for_section(xs, ineffective_override).is_some()
+        || xs
+            .blocked_obstructions
+            .as_ref()
+            .is_some_and(|b| b.iter().any(|poly| poly.is_valid()))
+        || xs.guide_banks.as_ref().is_some_and(|g| g.is_configured())
+}
+
+/// Flow area for velocity and momentum terms (active when conveyance is clipped).
+pub fn flow_area_for_row(row: &GeometryRow) -> f64 {
+    if row.active_area + 1e-6 < row.area {
+        row.active_area
+    } else {
+        row.area
+    }
+}
+
 /// Lookup hydraulic properties using ineffective areas when configured (bridge-adjacent sections).
 pub fn row_at_elevation(
     table: &GeometryTable,
@@ -653,18 +729,20 @@ pub fn row_at_elevation(
     ineffective: Option<&IneffectiveFlowAreas>,
     guide_banks: Option<&crate::geometry::GuideBanks>,
 ) -> GeometryRow {
-    let has_ineffective = ineffective.filter(|i| i.is_configured()).is_some();
-    let has_guide_banks = guide_banks.filter(|g| g.is_configured()).is_some();
+    let merged_ineffective = resolve_ineffective_for_section(xs, ineffective);
+    let ineffective_ref = merged_ineffective.as_ref();
+    let has_ineffective = ineffective_ref.is_some();
+    let guide = resolved_guide_banks(xs, guide_banks);
     let has_blocked = xs
         .blocked_obstructions
         .as_ref()
         .is_some_and(|b| b.iter().any(|poly| poly.is_valid()));
-    if has_ineffective || has_blocked || has_guide_banks {
+    if has_ineffective || has_blocked || guide.is_some() {
         xs.to_metric().compute_properties_at_elevation_with_modifiers(
             elev,
-            ineffective,
+            ineffective_ref,
             xs.blocked_obstructions.as_deref(),
-            guide_banks,
+            guide,
         )
     } else {
         let row = table.interpolate(elev);
@@ -674,6 +752,120 @@ pub fn row_at_elevation(
             ..row
         }
     }
+}
+
+/// Row lookup for solvers: static table interpolation or dynamic modifiers when configured.
+pub fn geometry_row_at_elevation(
+    table: &GeometryTable,
+    xs: Option<&CrossSection>,
+    elev: f64,
+    ineffective_override: Option<&IneffectiveFlowAreas>,
+    guide_banks: Option<&crate::geometry::GuideBanks>,
+) -> GeometryRow {
+    if let Some(xs) = xs {
+        let guide = resolved_guide_banks(xs, guide_banks);
+        if section_needs_dynamic_geometry(xs, ineffective_override) || guide.is_some() {
+            return row_at_elevation(table, xs, elev, ineffective_override, guide);
+        }
+    }
+    let row = table.interpolate(elev);
+    GeometryRow {
+        active_area: row.area,
+        active_channel_area: row.channel_area,
+        ..row
+    }
+}
+
+/// First moment of submerged area about the water surface, ineffective-aware when modifiers apply.
+pub fn area_moment_at_elevation(
+    table: &GeometryTable,
+    xs: Option<&CrossSection>,
+    elev: f64,
+    ineffective_override: Option<&IneffectiveFlowAreas>,
+    guide_banks: Option<&crate::geometry::GuideBanks>,
+) -> f64 {
+    let n_rows = table.rows.len();
+    if n_rows == 0 {
+        return 0.0;
+    }
+    let y_min = table.rows[0].elevation;
+    if elev <= y_min {
+        return 0.0;
+    }
+
+    let use_dynamic = xs.is_some_and(|section| {
+        section_needs_dynamic_geometry(section, ineffective_override)
+            || guide_banks.filter(|g| g.is_configured()).is_some()
+    });
+    if !use_dynamic {
+        return table.calculate_area_moment(elev);
+    }
+
+    let limit = elev.min(table.rows[n_rows - 1].elevation);
+    let mut moment = 0.0;
+    let mut y_prev = y_min;
+    let mut a_prev =
+        geometry_row_at_elevation(table, xs, y_prev, ineffective_override, guide_banks).area;
+
+    for i in 0..n_rows - 1 {
+        if limit <= y_prev {
+            break;
+        }
+        let y_next = limit.min(table.rows[i + 1].elevation);
+        let a_next =
+            geometry_row_at_elevation(table, xs, y_next, ineffective_override, guide_banks).area;
+        moment += 0.5 * (a_prev + a_next) * (y_next - y_prev);
+        if y_next >= limit {
+            break;
+        }
+        y_prev = y_next;
+        a_prev = a_next;
+    }
+
+    if elev > table.rows[n_rows - 1].elevation {
+        let last_y = table.rows[n_rows - 1].elevation;
+        let last_row =
+            geometry_row_at_elevation(table, xs, last_y, ineffective_override, guide_banks);
+        let top_row = geometry_row_at_elevation(table, xs, elev, ineffective_override, guide_banks);
+        let h = elev - last_y;
+        moment += 0.5 * (last_row.area + top_row.area) * h;
+    }
+
+    moment
+}
+
+/// Numerical derivative of conveyance with respect to WSEL (for unsteady friction linearization).
+pub fn conveyance_derivative_at_elevation(
+    table: &GeometryTable,
+    xs: Option<&CrossSection>,
+    elev: f64,
+    ineffective_override: Option<&IneffectiveFlowAreas>,
+    guide_banks: Option<&crate::geometry::GuideBanks>,
+    dy: f64,
+) -> f64 {
+    let k_plus =
+        geometry_row_at_elevation(table, xs, elev + dy, ineffective_override, guide_banks).conveyance;
+    let k_minus =
+        geometry_row_at_elevation(table, xs, elev - dy, ineffective_override, guide_banks).conveyance;
+    (k_plus - k_minus) / (2.0 * dy)
+}
+
+/// Specific force M = Q²/(g·A_flow) + ∫ A(y) dy (ineffective-aware when modifiers apply).
+pub fn specific_force_at_elevation(
+    table: &GeometryTable,
+    xs: Option<&CrossSection>,
+    elev: f64,
+    q: f64,
+    ineffective_override: Option<&IneffectiveFlowAreas>,
+    guide_banks: Option<&crate::geometry::GuideBanks>,
+) -> f64 {
+    let row = geometry_row_at_elevation(table, xs, elev, ineffective_override, guide_banks);
+    let flow_area = flow_area_for_row(&row);
+    if flow_area < 1e-6 {
+        return f64::INFINITY;
+    }
+    let area_moment = area_moment_at_elevation(table, xs, elev, ineffective_override, guide_banks);
+    (q * q) / (G_METRIC * flow_area) + area_moment
 }
 
 impl CrossSection {
@@ -996,6 +1188,124 @@ mod tests {
     }
 
     #[test]
+    fn row_at_elevation_uses_cross_section_ineffective_without_override() {
+        let xs = CrossSection {
+            station: 100.0,
+            x: vec![0.0, 0.0, 10.0, 10.0, 30.0, 30.0, 40.0, 40.0],
+            y: vec![5.0, 0.0, 0.0, 5.0, 0.0, 5.0, 0.0, 5.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.03],
+            unit_system: UnitSystem::Metric,
+            is_overbank: Some(vec![false, false, false, false, true, true, true, true]),
+            blocked_obstructions: None,
+            ineffective_flow_areas: Some(
+                IneffectiveFlowAreas::from_block_pairs(&[30.0], &[3.0], &[], &[]).unwrap(),
+            ),
+            guide_banks: None,
+        };
+        let table = xs.generate_lookup_table(50);
+        let row = super::row_at_elevation(&table, &xs, 2.0, None, None);
+        let plain = xs.compute_properties_at_elevation(2.0);
+        assert!((row.area - plain.area).abs() < 1e-3);
+        assert!(row.active_area < row.area);
+        assert!(row.conveyance < plain.conveyance);
+    }
+
+    #[test]
+    fn area_moment_and_specific_force_use_ineffective_storage() {
+        let xs = CrossSection {
+            station: 100.0,
+            x: vec![0.0, 0.0, 10.0, 10.0, 30.0, 30.0, 40.0, 40.0],
+            y: vec![5.0, 0.0, 0.0, 5.0, 0.0, 5.0, 0.0, 5.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.03],
+            unit_system: UnitSystem::Metric,
+            is_overbank: Some(vec![false, false, false, false, true, true, true, true]),
+            blocked_obstructions: None,
+            ineffective_flow_areas: Some(
+                IneffectiveFlowAreas::from_block_pairs(&[30.0], &[3.0], &[], &[]).unwrap(),
+            ),
+            guide_banks: None,
+        };
+        let table = xs.generate_lookup_table(50);
+        let wsel = 2.0;
+        let q = 25.0;
+        let static_moment = table.calculate_area_moment(wsel);
+        let dynamic_moment =
+            super::area_moment_at_elevation(&table, Some(&xs), wsel, None, None);
+        assert!(
+            (dynamic_moment - static_moment).abs() < 1e-2,
+            "ineffective storage should match total area moment at low stage"
+        );
+        let mut xs_plain = xs.clone();
+        xs_plain.ineffective_flow_areas = None;
+        let plain_force =
+            super::specific_force_at_elevation(&table, Some(&xs_plain), wsel, q, None, None);
+        let ineff_force =
+            super::specific_force_at_elevation(&table, Some(&xs), wsel, q, None, None);
+        assert!(
+            ineff_force > plain_force,
+            "smaller flow area should raise specific force at fixed Q"
+        );
+    }
+
+    #[test]
+    fn conveyance_derivative_reflects_ineffective_clipping() {
+        let xs = CrossSection {
+            station: 0.0,
+            x: vec![0.0, 0.0, 10.0, 10.0, 30.0, 30.0, 40.0, 40.0],
+            y: vec![5.0, 0.0, 0.0, 5.0, 0.0, 5.0, 0.0, 5.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.03],
+            unit_system: UnitSystem::Metric,
+            is_overbank: Some(vec![false, false, false, false, true, true, true, true]),
+            blocked_obstructions: None,
+            ineffective_flow_areas: Some(
+                IneffectiveFlowAreas::from_block_pairs(&[30.0], &[3.0], &[], &[]).unwrap(),
+            ),
+            guide_banks: None,
+        };
+        let table = xs.generate_lookup_table(50);
+        let wsel = 2.0;
+        let static_dk = {
+            let dy = 0.01;
+            let k_plus = table.interpolate(wsel + dy).conveyance;
+            let k_minus = table.interpolate(wsel - dy).conveyance;
+            (k_plus - k_minus) / (2.0 * dy)
+        };
+        let dynamic_dk =
+            super::conveyance_derivative_at_elevation(&table, Some(&xs), wsel, None, None, 0.01);
+        assert!(
+            dynamic_dk.abs() < static_dk.abs(),
+            "ineffective clipping should reduce conveyance sensitivity below activation"
+        );
+    }
+
+    #[test]
+    fn ineffective_merge_or_combines_blocks_for_any_match() {
+        let a = IneffectiveFlowAreas::from_block_pairs(&[20.0], &[3.0], &[], &[]).unwrap();
+        let b = IneffectiveFlowAreas::from_block_pairs(&[30.0], &[3.5], &[], &[]).unwrap();
+        let merged = a.merge_or(&b);
+        let xs = CrossSection {
+            station: 0.0,
+            x: vec![0.0, 0.0, 10.0, 10.0, 20.0, 20.0, 30.0, 30.0, 40.0, 40.0],
+            y: vec![5.0, 0.0, 0.0, 5.0, 0.0, 5.0, 0.0, 5.0, 0.0, 5.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.03],
+            unit_system: UnitSystem::Metric,
+            is_overbank: Some(vec![
+                false, false, false, false, true, true, true, true, true, true,
+            ]),
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let row_a = xs.compute_properties_at_elevation_with_ineffective(2.5, Some(&a));
+        let row_merged = xs.compute_properties_at_elevation_with_ineffective(2.5, Some(&merged));
+        assert!(row_merged.active_area <= row_a.active_area);
+    }
+
+    #[test]
     fn test_ineffective_flow_blocks_left_overbank_until_activation() {
         // Channel 0–10 m, left overbank 10–30 m (all at elev 0), right overbank 30–40 m.
         let xs = CrossSection {
@@ -1078,7 +1388,8 @@ mod tests {
     }
 
     #[test]
-    fn test_blocked_vs_ineffective_storage_at_low_stage() {
+    fn geometry_modifier_semantics_blocked_vs_ineffective() {
+        // Right overbank 30–40 m. At WSEL 2.5, compare plain / ineffective / blocked.
         let base = CrossSection {
             station: 100.0,
             x: vec![0.0, 0.0, 10.0, 10.0, 30.0, 30.0, 40.0, 40.0],
@@ -1088,8 +1399,8 @@ mod tests {
             unit_system: UnitSystem::Metric,
             is_overbank: Some(vec![false, false, false, false, true, true, true, true]),
             blocked_obstructions: None,
-        ineffective_flow_areas: None,
-        guide_banks: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
         };
         let blocked = CrossSection {
             blocked_obstructions: Some(vec![BlockedObstruction {
@@ -1099,14 +1410,34 @@ mod tests {
             ..base.clone()
         };
         let ineffective =
-            IneffectiveFlowAreas::from_block_pairs(&[30.0], &[3.0], &[], &[]).unwrap();
-        let row_ineff = base.compute_properties_at_elevation_with_ineffective(2.5, Some(&ineffective));
-        let row_blocked = blocked.compute_properties_at_elevation(2.5);
+            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[30.0], &[3.0]).unwrap();
+        let wsel = 2.5;
+        let row_plain = base.compute_properties_at_elevation(wsel);
+        let row_ineff = base.compute_properties_at_elevation_with_ineffective(wsel, Some(&ineffective));
+        let row_blocked = blocked.compute_properties_at_elevation(wsel);
+
+        // Plain: no clipping.
+        assert!((row_plain.area - row_plain.active_area).abs() < 1e-3);
+
+        // Ineffective: ponds storage, clips conveyance only.
+        assert!((row_ineff.area - row_plain.area).abs() < 1e-2, "ineffective retains storage");
         assert!(row_ineff.active_area < row_ineff.area);
+        assert!(row_ineff.conveyance < row_plain.conveyance);
+
+        // Blocked: removes both storage and conveyance below crest.
+        assert!(row_blocked.area < row_plain.area);
+        assert!(row_blocked.active_area < row_plain.active_area);
+        assert!((row_blocked.area - row_blocked.active_area).abs() < 1e-2);
         assert!(
-            (row_ineff.area - row_blocked.area).abs() > 1.0,
-            "ineffective keeps storage; blocked fill removes it"
+            row_blocked.area < row_ineff.area,
+            "blocked should remove more storage than ineffective ponding"
         );
+
+        // Bridge ineffective resolves to the same `IneffectiveFlowAreas` model.
+        let bridge_equiv = IneffectiveFlowAreas::from_block_pairs(&[], &[], &[30.0], &[3.0]).unwrap();
+        let row_bridge = base.compute_properties_at_elevation_with_ineffective(wsel, Some(&bridge_equiv));
+        assert!((row_bridge.area - row_ineff.area).abs() < 1e-6);
+        assert!((row_bridge.active_area - row_ineff.active_area).abs() < 1e-6);
     }
 
     #[test]

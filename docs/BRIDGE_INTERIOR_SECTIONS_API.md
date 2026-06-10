@@ -175,9 +175,41 @@ Parallel per-bridge arrays on **`SteadyInputs`**, nested under **`UnsteadyInputs
 
 `CrossSection.station` on BU/BD/internal cuts is **informational** (bridge face reach station); hydraulics use the polyline (`x`, `y`, `n_*`, `blocked_obstructions`, `is_overbank`, `ineffective_flow_areas`).
 
-### Ineffective flow on BU/BD cuts
+Modifier semantics (`blocked_obstructions` vs `ineffective_flow_areas` vs `bridge_ineffective_*`): [`reference/equations.md` §H0](reference/equations.md).
 
-Each `CrossSection` may carry **`ineffective_flow_areas`** (`left_blocks` / `right_blocks` with reach lateral `station` and activation `elevation`). When an explicit BU or BD cut is supplied:
+### Ineffective flow on reach / BU / BD cuts (API v22)
+
+Each `CrossSection` may carry normal ineffective-flow blocks. Field name: **`ineffective_flow_areas`** (alias **`ineffective_areas`**).
+
+#### Block model (HEC-RAS “normal ineffective”)
+
+| Concept | JSON | Frame |
+|---------|------|-------|
+| One block | `{ station, elevation }` | Reach lateral `x` + activation WSEL |
+| Left side (multiple blocks) | `left_blocks[]` | Flow with `x < station` is ineffective when WSEL `< elevation` |
+| Right side (multiple blocks) | `right_blocks[]` | Flow with `x > station` is ineffective when WSEL `< elevation` |
+
+**GUI-friendly alternate shapes** (deserialize to the same internal model):
+
+```json
+"ineffective_areas": {
+  "left_stations": [5, 10],
+  "left_elevations": [4.0, 4.5],
+  "right_stations": [35],
+  "right_elevations": [5.0]
+}
+```
+
+```json
+"ineffective_areas": {
+  "left": [[5, 4.0], [10, 4.5]],
+  "right": [[35, 5.0]]
+}
+```
+
+Canonical serialized form uses `left_blocks` / `right_blocks`. Ineffective blocks are **not** opening-frame `s`; on BU/BD they use reach `x` on that cut. Hydraulics (OR logic, storage vs conveyance): §H0 in [`equations.md`](reference/equations.md).
+
+**BU/BD ineffective resolution** (bridge-specific):
 
 | Source | Used for bridge hydraulics |
 |--------|----------------------------|

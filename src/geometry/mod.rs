@@ -7,6 +7,9 @@ pub use guide_banks::{
     segment_outside_guided_channel, GuideBankPolyline, GuideBankToe, GuideBanks,
 };
 pub use processor::{
-    row_at_elevation, BlockedObstruction, CrossSection, GeometryRow, GeometryTable,
-    IneffectiveBlock, IneffectiveFlowAreas, obstruction_top_at,
+    area_moment_at_elevation, conveyance_derivative_at_elevation, flow_area_for_row,
+    geometry_row_at_elevation, resolve_ineffective_for_section, row_at_elevation,
+    section_needs_dynamic_geometry, specific_force_at_elevation, BlockedObstruction,
+    CrossSection, GeometryRow, GeometryTable, IneffectiveBlock, IneffectiveFlowAreas,
+    obstruction_top_at,
 };

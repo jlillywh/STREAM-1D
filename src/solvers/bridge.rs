@@ -1,5 +1,6 @@
 use crate::geometry::{
-    row_at_elevation, CrossSection, GeometryRow, GeometryTable, GuideBanks, IneffectiveFlowAreas,
+    flow_area_for_row, row_at_elevation, CrossSection, GeometryRow, GeometryTable, GuideBanks,
+    IneffectiveFlowAreas,
 };
 use crate::solvers::bridge_abutment::{
     resolve_abutments, BridgeAbutmentUserInput, BridgeAbutments,
@@ -720,8 +721,13 @@ fn base_flow_area(
     ineffective: Option<&IneffectiveFlowAreas>,
     guide_banks: Option<&GuideBanks>,
 ) -> f64 {
-    let clip_active = ineffective.filter(|i| i.is_configured()).is_some()
-        || guide_banks.filter(|g| g.is_configured()).is_some();
+    let has_ineffective = ineffective.filter(|i| i.is_configured()).is_some()
+        || row.active_area + 1e-6 < row.area;
+    let has_guide = guide_banks.filter(|g| g.is_configured()).is_some();
+    if has_ineffective && !has_guide {
+        return flow_area_for_row(row);
+    }
+    let clip_active = has_ineffective || has_guide;
     if row.channel_area > 1e-6 {
         if clip_active {
             row.active_channel_area
@@ -752,9 +758,21 @@ fn guide_banks_configured_on_side(geom: &BridgeGeometry, is_approach: bool) -> b
     }
 }
 
-/// Active flow area on approach or departure cut when guide banks clip the guided channel.
+fn approach_departure_cut_modifiers_active(geom: &BridgeGeometry, is_approach: bool) -> bool {
+    if guide_banks_configured_on_side(geom, is_approach) {
+        return true;
+    }
+    let xs = if is_approach {
+        geom.xs_approach.as_ref()
+    } else {
+        geom.xs_departure.as_ref()
+    };
+    ineffective_on_cut(xs).is_some()
+}
+
+/// Active flow area on approach or departure cut (guide banks and/or ineffective on that cut).
 fn reach_cut_flow_area(geom: &BridgeGeometry, is_approach: bool, wsel: f64) -> Option<f64> {
-    if !guide_banks_configured_on_side(geom, is_approach) {
+    if !approach_departure_cut_modifiers_active(geom, is_approach) {
         return None;
     }
     let (xs, table, guide_banks) = if is_approach {
@@ -1025,8 +1043,8 @@ fn solve_low_flow_energy_or_wspro(
                 geom.wspro_coeff_c,
             )
             .max(0.0)
-        } else if guide_banks_configured_on_side(geom, true)
-            || guide_banks_configured_on_side(geom, false)
+        } else if approach_departure_cut_modifiers_active(geom, true)
+            || approach_departure_cut_modifiers_active(geom, false)
         {
             let opening_wsel = wsel_up.min(tw_m).min(geom.low_chord_m);
             let (props_opening, _) =

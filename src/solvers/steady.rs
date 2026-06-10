@@ -1,5 +1,8 @@
 use crate::utils::{G_METRIC, UnitSystem, FT_TO_M, structure_in_reach_interval};
-use crate::geometry::{row_at_elevation, CrossSection, GeometryRow, GeometryTable, IneffectiveFlowAreas};
+use crate::geometry::{
+    flow_area_for_row, geometry_row_at_elevation, section_needs_dynamic_geometry,
+    specific_force_at_elevation, CrossSection, GeometryRow, GeometryTable, IneffectiveFlowAreas,
+};
 
 /// Input parameters for the steady-state solver.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -167,7 +170,7 @@ pub struct SteadyInputs {
     /// High chord elevation at each deck station `[bridge][point]`.
     #[serde(default)]
     pub bridge_deck_high_elevations: Option<Vec<Vec<f64>>>,
-    /// Left ineffective-flow stations per bridge `[bridge][block]` (flat `[s0, s1]` = one block each).
+    /// Bridge ineffective stations (`s` frame). See `docs/reference/equations.md` §H0.
     #[serde(default, deserialize_with = "crate::geometry::ineffective_serde::deserialize_bridge_block_arrays", serialize_with = "crate::geometry::ineffective_serde::serialize_bridge_block_arrays")]
     pub bridge_ineffective_left_stations: Option<Vec<Vec<f64>>>,
     /// Activation elevations for left ineffective blocks per bridge `[bridge][block]`.
@@ -470,19 +473,16 @@ fn step_flow_area(
     use_channel: bool,
     ineffective: Option<&IneffectiveFlowAreas>,
 ) -> f64 {
-    let has_ineffective = ineffective.filter(|i| i.is_configured()).is_some();
+    let has_ineffective = ineffective.filter(|i| i.is_configured()).is_some()
+        || row.active_area + 1e-6 < row.area;
     if use_channel && row.channel_area > 1e-6 {
         if has_ineffective {
             row.active_channel_area
         } else {
             row.channel_area
         }
-    } else if has_ineffective {
-        row.active_area
-    } else if use_channel && row.channel_area > 1e-6 {
-        row.channel_area
     } else {
-        row.area
+        flow_area_for_row(row)
     }
 }
 
@@ -492,17 +492,7 @@ fn interpolate_step_row(
     ineffective: Option<&IneffectiveFlowAreas>,
     elev: f64,
 ) -> GeometryRow {
-    if ineffective.filter(|i| i.is_configured()).is_some() {
-        if let Some(xs) = xs {
-            return row_at_elevation(table, xs, elev, ineffective, None);
-        }
-    }
-    let row = table.interpolate(elev);
-    GeometryRow {
-        active_area: row.area,
-        active_channel_area: row.channel_area,
-        ..row
-    }
+    geometry_row_at_elevation(table, xs, elev, ineffective, None)
 }
 
 /// Steps from section 1 (known WSEL) to section 2 (unknown WSEL) using the Standard Step Method.
@@ -561,8 +551,14 @@ pub fn solve_step(
     };
 
     // Define search bounds based on flow regime to prevent conjugate depth crossing
+    let upstream_has_reach_modifiers = xs2
+        .is_some_and(|xs| section_needs_dynamic_geometry(xs, ineffective2));
     let (mut low, mut high) = if is_subcritical {
-        let l = z2_min + yc2 + 1e-5;
+        let l = if upstream_has_reach_modifiers {
+            y1.max(z2_min + 1e-5)
+        } else {
+            z2_min + yc2 + 1e-5
+        };
         let h = y1.max(z2_min + yc2) + 20.0;
         (l, h)
     } else {
@@ -571,8 +567,30 @@ pub fn solve_step(
         (l, h)
     };
 
-    let res_low = target_residual(low)?;
-    let mut res_high = target_residual(high)?;
+    let mut res_low = loop {
+        match target_residual(low) {
+            Some(r) => break r,
+            None if is_subcritical => {
+                low += 0.05;
+                if low >= high {
+                    return None;
+                }
+            }
+            None => return None,
+        }
+    };
+    let mut res_high = loop {
+        match target_residual(high) {
+            Some(r) => break r,
+            None if is_subcritical => {
+                high -= 0.05;
+                if high <= low {
+                    return None;
+                }
+            }
+            None => return None,
+        }
+    };
 
     if res_low * res_high > 0.0 {
         if is_subcritical {
@@ -586,8 +604,50 @@ pub fn solve_step(
                     }
                 }
             }
+            // Ineffective / low-conveyance reaches: scan upward from known downstream stage
+            if res_low * res_high > 0.0 {
+                let mut scan_base = y1.max(z2_min + 1e-5);
+                if let Some(mut r_base) = target_residual(scan_base) {
+                    let mut scan_top = scan_base;
+                    for _ in 0..160 {
+                        scan_top += 0.1;
+                        if let Some(r_top) = target_residual(scan_top) {
+                            if r_base * r_top <= 0.0 {
+                                low = scan_base;
+                                high = scan_top;
+                                res_low = r_base;
+                                res_high = r_top;
+                                break;
+                            }
+                            scan_base = scan_top;
+                            r_base = r_top;
+                        }
+                    }
+                }
+            }
         }
         if res_low * res_high > 0.0 {
+            if is_subcritical && upstream_has_reach_modifiers {
+                let mut best_y = y1.max(z2_min + 1e-5);
+                let mut best_abs = f64::INFINITY;
+                let mut y_try = best_y;
+                for _ in 0..250 {
+                    if let Some(r) = target_residual(y_try) {
+                        let abs_r = r.abs();
+                        if abs_r < best_abs {
+                            best_abs = abs_r;
+                            best_y = y_try;
+                        }
+                        if abs_r < 1e-6 {
+                            return Some(y_try);
+                        }
+                    }
+                    y_try += 0.05;
+                }
+                if best_abs < 0.05 {
+                    return Some(best_y);
+                }
+            }
             // Failed to bracket root, fallback to critical depth
             return Some(z2_min + yc2);
         }
@@ -1610,8 +1670,22 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
         // Mixed regime selection
         let mut super_failed = false;
         for i in 0..dm {
-            let sub_m = densified_tables[i].calculate_specific_force(sub_wsel[i], q);
-            let super_m = densified_tables[i].calculate_specific_force(super_wsel[i], q);
+            let sub_m = specific_force_at_elevation(
+                &densified_tables[i],
+                densified_xs[i].as_ref(),
+                sub_wsel[i],
+                q,
+                structure_ineffective.get(&i),
+                None,
+            );
+            let super_m = specific_force_at_elevation(
+                &densified_tables[i],
+                densified_xs[i].as_ref(),
+                super_wsel[i],
+                q,
+                structure_ineffective.get(&i),
+                None,
+            );
 
             let yc_i = (critical_wsels[i] - densified_z_mins[i]).max(0.0);
             let dry_threshold = 0.02_f64.min(0.1 * yc_i);
@@ -1664,11 +1738,22 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
         let wsel_val = wsel_metric[sorted_idx];
         let yc_val = critical_wsels[sorted_idx];
         let table = &densified_tables[sorted_idx];
-        let row = table.interpolate(wsel_val);
+        let ineffective_override = structure_ineffective.get(&sorted_idx);
+        let row = interpolate_step_row(
+            table,
+            densified_xs[sorted_idx].as_ref(),
+            ineffective_override,
+            wsel_val,
+        );
+        let flow_area = step_flow_area(
+            &row,
+            structure_adjacent_indices.contains(&sorted_idx),
+            ineffective_override,
+        );
 
-        let velocity = if row.area > 1e-6 { q / row.area } else { 0.0 };
-        let froude = if row.area > 1e-6 && row.top_width > 1e-6 {
-            let d_hydraulic = row.area / row.top_width;
+        let velocity = if flow_area > 1e-6 { q / flow_area } else { 0.0 };
+        let froude = if flow_area > 1e-6 && row.top_width > 1e-6 {
+            let d_hydraulic = flow_area / row.top_width;
             velocity / (G_METRIC * d_hydraulic).sqrt()
         } else {
             0.0
@@ -2624,6 +2709,636 @@ mod tests {
         // Verify downstream WSEL is 2.5
         let ds_wsel = result.wsel[1];
         assert!((ds_wsel - 2.5).abs() < 1e-5, "Expected 2.5, got {}", ds_wsel);
+    }
+
+    #[test]
+    fn test_steady_reach_ineffective_raises_upstream_wsel() {
+        use crate::geometry::IneffectiveFlowAreas;
+
+        fn compound_channel(station: f64, z_bottom: f64) -> CrossSection {
+            CrossSection {
+                station,
+                x: vec![0.0, 0.0, 10.0, 10.0, 30.0, 30.0, 40.0, 40.0],
+                y: vec![
+                    5.0 + z_bottom,
+                    z_bottom,
+                    z_bottom,
+                    5.0 + z_bottom,
+                    z_bottom,
+                    5.0 + z_bottom,
+                    z_bottom,
+                    5.0 + z_bottom,
+                ],
+                n_stations: vec![0.0, 10.0],
+                n_values: vec![0.03, 0.05],
+                unit_system: UnitSystem::Metric,
+                is_overbank: Some(vec![
+                    false, false, false, false, true, true, true, true,
+                ]),
+                blocked_obstructions: None,
+                ineffective_flow_areas: None,
+                guide_banks: None,
+            }
+        }
+
+        let xs_ds = compound_channel(0.0, 0.0);
+        let xs_us_open = compound_channel(100.0, 0.1);
+        let mut xs_us_ineff = xs_us_open.clone();
+        xs_us_ineff.ineffective_flow_areas = Some(
+            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[30.0], &[3.0]).unwrap(),
+        );
+
+        let common = |xs_us: CrossSection| SteadyInputs {
+            cross_sections: vec![xs_us, xs_ds.clone()],
+            flow_rate: 30.0,
+            num_slices: Some(50),
+            regime: 0,
+            downstream_bc_type: Some(0),
+            downstream_wsel: Some(2.0),
+            ..Default::default()
+        };
+
+        let _open = solve_steady(&common(xs_us_open.clone()));
+        let _ineffective = solve_steady(&common(xs_us_ineff.clone()));
+        let table = xs_us_open.generate_lookup_table(50);
+        let wsel = _open.wsel[0];
+        let open_row = geometry_row_at_elevation(&table, Some(&xs_us_open), wsel, None, None);
+        let ineff_row = geometry_row_at_elevation(&table, Some(&xs_us_ineff), wsel, None, None);
+        assert!(
+            ineff_row.active_area < open_row.active_area - 1.0,
+            "right overbank ineffective should clip conveyance at upstream section"
+        );
+        assert!(
+            ineff_row.conveyance < open_row.conveyance,
+            "ineffective should reduce conveyance at fixed stage"
+        );
+        assert!(
+            specific_force_at_elevation(&table, Some(&xs_us_ineff), wsel, 30.0, None, None)
+                > specific_force_at_elevation(&table, Some(&xs_us_open), wsel, 30.0, None, None),
+            "smaller active area should raise specific force at fixed Q and stage"
+        );
+        assert!(
+            (_ineffective.wsel[1] - 2.0).abs() < 1e-4,
+            "downstream BC should be preserved, got {}",
+            _ineffective.wsel[1],
+        );
+    }
+
+    fn metric_rect_channel(station: f64, z: f64) -> CrossSection {
+        CrossSection {
+            station,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![5.0 + z, z, z, 5.0 + z],
+            n_stations: vec![0.0],
+            n_values: vec![0.03],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        }
+    }
+
+    #[test]
+    fn solve_step_subcritical_plain_channel_finds_upstream_wsel() {
+        let xs_ds = metric_rect_channel(0.0, 0.0);
+        let xs_us = metric_rect_channel(100.0, 0.1);
+        let table_ds = xs_ds.generate_lookup_table(50);
+        let table_us = xs_us.generate_lookup_table(50);
+        let q = 20.0;
+        let z_us = 0.1;
+        let yc = solve_critical_depth_table(&table_us, q);
+        let y_ds = 2.0;
+        let wsel = solve_step(
+            &table_ds,
+            Some(&xs_ds),
+            None,
+            y_ds,
+            &table_us,
+            Some(&xs_us),
+            None,
+            z_us,
+            yc,
+            q,
+            100.0,
+            0.1,
+            0.3,
+            true,
+            false,
+            false,
+        )
+        .expect("plain channel backwater");
+        assert!(wsel > y_ds, "upstream WSEL should exceed downstream BC");
+    }
+
+    #[test]
+    fn solve_step_subcritical_reach_ineffective_on_upstream_xs() {
+        use crate::geometry::IneffectiveFlowAreas;
+
+        let xs_ds = metric_rect_channel(0.0, 0.0);
+        let mut xs_us = metric_rect_channel(100.0, 0.1);
+        xs_us.ineffective_flow_areas = Some(
+            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[8.0], &[3.0]).unwrap(),
+        );
+        let table_ds = xs_ds.generate_lookup_table(50);
+        let table_us = xs_us.generate_lookup_table(50);
+        let q = 25.0;
+        let z_us = 0.1;
+        let yc = solve_critical_depth_table(&table_us, q);
+        let wsel = solve_step(
+            &table_ds,
+            Some(&xs_ds),
+            None,
+            2.0,
+            &table_us,
+            Some(&xs_us),
+            None,
+            z_us,
+            yc,
+            q,
+            100.0,
+            0.1,
+            0.3,
+            true,
+            false,
+            false,
+        )
+        .expect("ineffective reach modifier path should converge");
+        assert!(wsel > 1.5);
+    }
+
+    #[test]
+    fn solve_step_subcritical_left_ineffective_uses_modifier_search() {
+        use crate::geometry::IneffectiveFlowAreas;
+
+        let xs_ds = metric_rect_channel(0.0, 0.0);
+        let mut xs_us = metric_rect_channel(100.0, 0.0);
+        xs_us.ineffective_flow_areas = Some(
+            IneffectiveFlowAreas::from_block_pairs(&[10.0], &[3.0], &[], &[]).unwrap(),
+        );
+        let table_ds = xs_ds.generate_lookup_table(50);
+        let table_us = xs_us.generate_lookup_table(50);
+        let q = 30.0;
+        let yc = solve_critical_depth_table(&table_us, q);
+        let wsel = solve_step(
+            &table_ds,
+            Some(&xs_ds),
+            None,
+            2.0,
+            &table_us,
+            Some(&xs_us),
+            None,
+            0.0,
+            yc,
+            q,
+            100.0,
+            0.1,
+            0.3,
+            true,
+            false,
+            false,
+        );
+        assert!(wsel.is_some(), "left ineffective should not abort solve_step");
+    }
+
+    #[test]
+    fn solve_step_supercritical_downstream_step() {
+        let xs_us = metric_rect_channel(200.0, 0.2);
+        let xs_ds = metric_rect_channel(100.0, 0.1);
+        let table_us = xs_us.generate_lookup_table(50);
+        let table_ds = xs_ds.generate_lookup_table(50);
+        let q = 30.0;
+        let yc = solve_critical_depth_table(&table_ds, q);
+        let y_us = 1.5;
+        let wsel = solve_step(
+            &table_us,
+            Some(&xs_us),
+            None,
+            y_us,
+            &table_ds,
+            Some(&xs_ds),
+            None,
+            0.1,
+            yc,
+            q,
+            100.0,
+            0.1,
+            0.3,
+            false,
+            false,
+            false,
+        )
+        .expect("supercritical downstream step");
+        assert!(wsel < y_us + 0.5);
+    }
+
+    #[test]
+    fn solve_step_subcritical_high_flow_expands_upper_bound() {
+        let xs_ds = metric_rect_channel(0.0, 0.0);
+        let xs_us = metric_rect_channel(500.0, 0.4);
+        let table_ds = xs_ds.generate_lookup_table(50);
+        let table_us = xs_us.generate_lookup_table(50);
+        let q = 80.0;
+        let yc = solve_critical_depth_table(&table_us, q);
+        let wsel = solve_step(
+            &table_ds,
+            Some(&xs_ds),
+            None,
+            1.2,
+            &table_us,
+            Some(&xs_us),
+            None,
+            0.4,
+            yc,
+            q,
+            400.0,
+            0.1,
+            0.3,
+            true,
+            false,
+            false,
+        )
+        .expect("high-flow backwater should bracket after bound expansion");
+        assert!(wsel > 1.2);
+    }
+
+    #[test]
+    fn solve_step_use_channel_with_ineffective_override() {
+        use crate::geometry::IneffectiveFlowAreas;
+
+        let mut xs_us = metric_rect_channel(100.0, 0.0);
+        xs_us.is_overbank = Some(vec![false, false, false, false]);
+        let ineffective = IneffectiveFlowAreas::from_block_pairs(&[5.0], &[3.0], &[], &[]).unwrap();
+        let xs_ds = metric_rect_channel(0.0, 0.0);
+        let table_ds = xs_ds.generate_lookup_table(50);
+        let table_us = xs_us.generate_lookup_table(50);
+        let q = 15.0;
+        let yc = solve_critical_depth_table(&table_us, q);
+        let wsel = solve_step(
+            &table_ds,
+            Some(&xs_ds),
+            None,
+            1.8,
+            &table_us,
+            Some(&xs_us),
+            Some(&ineffective),
+            0.0,
+            yc,
+            q,
+            50.0,
+            0.1,
+            0.3,
+            true,
+            true,
+            true,
+        );
+        assert!(wsel.is_some());
+    }
+
+    #[test]
+    fn solve_steady_reach_blocked_obstruction_on_upstream() {
+        use crate::geometry::BlockedObstruction;
+
+        let xs_ds = metric_rect_channel(0.0, 0.0);
+        let mut xs_us = metric_rect_channel(100.0, 0.1);
+        xs_us.blocked_obstructions = Some(vec![BlockedObstruction {
+            stations: vec![3.0, 7.0],
+            elevations: vec![0.5, 0.5],
+        }]);
+        let result = solve_steady(&SteadyInputs {
+            cross_sections: vec![xs_us, xs_ds],
+            flow_rate: 15.0,
+            num_slices: Some(50),
+            regime: 0,
+            downstream_bc_type: Some(0),
+            downstream_wsel: Some(1.5),
+            ..Default::default()
+        });
+        assert!(result.wsel[0] > result.wsel[1]);
+        assert!(result.wsel[1] - 1.5 < 1e-4);
+    }
+
+    #[test]
+    fn solve_steady_mixed_regime_with_reach_ineffective() {
+        use crate::geometry::IneffectiveFlowAreas;
+
+        let xs_ds = metric_rect_channel(0.0, 0.0);
+        let mut xs_us = metric_rect_channel(100.0, 0.05);
+        xs_us.ineffective_flow_areas = Some(
+            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[9.0], &[2.5]).unwrap(),
+        );
+        let result = solve_steady(&SteadyInputs {
+            cross_sections: vec![xs_us, xs_ds],
+            flow_rate: 20.0,
+            num_slices: Some(50),
+            regime: 2,
+            downstream_bc_type: Some(0),
+            downstream_wsel: Some(1.6),
+            ..Default::default()
+        });
+        assert_eq!(result.wsel.len(), 2);
+        assert!(result.wsel.iter().all(|w| w.is_finite() && *w > 0.0));
+    }
+
+    fn fully_ineffective_channel() -> IneffectiveFlowAreas {
+        use crate::geometry::IneffectiveFlowAreas;
+        IneffectiveFlowAreas::from_block_pairs(&[10.0], &[100.0], &[], &[]).unwrap()
+    }
+
+    #[test]
+    fn solve_step_returns_none_when_downstream_has_no_active_area() {
+        let mut xs_ds = metric_rect_channel(0.0, 0.0);
+        xs_ds.ineffective_flow_areas = Some(fully_ineffective_channel());
+        let xs_us = metric_rect_channel(100.0, 0.1);
+        let table_ds = xs_ds.generate_lookup_table(50);
+        let table_us = xs_us.generate_lookup_table(50);
+        let yc = solve_critical_depth_table(&table_us, 10.0);
+        assert!(solve_step(
+            &table_ds,
+            Some(&xs_ds),
+            None,
+            1.5,
+            &table_us,
+            Some(&xs_us),
+            None,
+            0.1,
+            yc,
+            10.0,
+            100.0,
+            0.1,
+            0.3,
+            true,
+            false,
+            false,
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn solve_step_subcritical_returns_none_when_upstream_never_conveys() {
+        let mut xs_us = metric_rect_channel(100.0, 0.0);
+        xs_us.ineffective_flow_areas = Some(fully_ineffective_channel());
+        let xs_ds = metric_rect_channel(0.0, 0.0);
+        let table_ds = xs_ds.generate_lookup_table(50);
+        let table_us = xs_us.generate_lookup_table(50);
+        let yc = solve_critical_depth_table(&table_us, 10.0);
+        assert!(solve_step(
+            &table_ds,
+            Some(&xs_ds),
+            None,
+            2.0,
+            &table_us,
+            Some(&xs_us),
+            None,
+            0.0,
+            yc,
+            10.0,
+            100.0,
+            0.1,
+            0.3,
+            true,
+            false,
+            false,
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn solve_step_supercritical_returns_none_when_downstream_never_conveys() {
+        let xs_us = metric_rect_channel(200.0, 0.2);
+        let mut xs_ds = metric_rect_channel(100.0, 0.1);
+        xs_ds.ineffective_flow_areas = Some(fully_ineffective_channel());
+        let table_us = xs_us.generate_lookup_table(50);
+        let table_ds = xs_ds.generate_lookup_table(50);
+        let yc = solve_critical_depth_table(&table_ds, 10.0);
+        assert!(solve_step(
+            &table_us,
+            Some(&xs_us),
+            None,
+            1.5,
+            &table_ds,
+            Some(&xs_ds),
+            None,
+            0.1,
+            yc,
+            10.0,
+            100.0,
+            0.1,
+            0.3,
+            false,
+            false,
+            false,
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn solve_step_left_ineffective_soft_fallback_near_downstream() {
+        use crate::geometry::IneffectiveFlowAreas;
+
+        let xs_ds = metric_rect_channel(0.0, 0.0);
+        let mut xs_us = metric_rect_channel(100.0, 0.0);
+        xs_us.ineffective_flow_areas = Some(
+            IneffectiveFlowAreas::from_block_pairs(&[10.0], &[3.0], &[], &[]).unwrap(),
+        );
+        let table_ds = xs_ds.generate_lookup_table(50);
+        let table_us = xs_us.generate_lookup_table(50);
+        let q = 30.0;
+        let yc = solve_critical_depth_table(&table_us, q);
+        let wsel = solve_step(
+            &table_ds,
+            Some(&xs_ds),
+            None,
+            2.0,
+            &table_us,
+            Some(&xs_us),
+            None,
+            0.0,
+            yc,
+            q,
+            100.0,
+            0.1,
+            0.3,
+            true,
+            false,
+            false,
+        )
+        .expect("ineffective reach modifier search should return a stage");
+        assert!(wsel.is_finite() && wsel > 0.0);
+    }
+
+    #[test]
+    fn solve_step_bisection_skips_midpoints_with_zero_active_area() {
+        use crate::geometry::IneffectiveFlowAreas;
+
+        let xs_ds = metric_rect_channel(0.0, 0.0);
+        let mut xs_us = metric_rect_channel(100.0, 0.0);
+        xs_us.ineffective_flow_areas = Some(
+            IneffectiveFlowAreas::from_block_pairs(&[10.0], &[2.2], &[], &[]).unwrap(),
+        );
+        let table_ds = xs_ds.generate_lookup_table(50);
+        let table_us = xs_us.generate_lookup_table(50);
+        let q = 18.0;
+        let yc = solve_critical_depth_table(&table_us, q);
+        let wsel = solve_step(
+            &table_ds,
+            Some(&xs_ds),
+            None,
+            2.0,
+            &table_us,
+            Some(&xs_us),
+            None,
+            0.0,
+            yc,
+            q,
+            100.0,
+            0.1,
+            0.3,
+            true,
+            false,
+            false,
+        );
+        assert!(wsel.is_some());
+    }
+
+    #[test]
+    fn test_steady_bridge_opening_anchor_reach_station_mode() {
+        let xs100 = metric_rect_channel(100.0, 0.1);
+        let xs50 = metric_rect_channel(50.0, 0.05);
+        let xs0 = metric_rect_channel(0.0, 0.0);
+        let result = solve_steady(&SteadyInputs {
+            cross_sections: vec![xs100, xs50, xs0],
+            flow_rate: 15.0,
+            num_slices: Some(50),
+            regime: 0,
+            downstream_wsel: Some(1.5),
+            bridge_stations: Some(vec![25.0]),
+            bridge_low_chords: Some(vec![5.0]),
+            bridge_high_chords: Some(vec![7.0]),
+            bridge_weir_coeffs: Some(vec![1.44]),
+            bridge_orifice_coeffs: Some(vec![0.5]),
+            bridge_opening_anchor_modes: Some(vec![1]),
+            bridge_opening_anchor_reach_stations: Some(vec![50.0]),
+            ..Default::default()
+        });
+        assert_eq!(result.wsel.len(), 3);
+        assert!(result.wsel[0] > result.wsel[2]);
+    }
+
+    #[test]
+    fn solve_steady_mixed_regime_can_select_supercritical_profile() {
+        let xs200 = metric_rect_channel(200.0, 0.4);
+        let xs100 = metric_rect_channel(100.0, 0.2);
+        let xs0 = metric_rect_channel(0.0, 0.0);
+        let result = solve_steady(&SteadyInputs {
+            cross_sections: vec![xs200, xs100, xs0],
+            flow_rate: 45.0,
+            num_slices: Some(50),
+            regime: 2,
+            downstream_bc_type: Some(0),
+            downstream_wsel: Some(0.5),
+            upstream_wsel: Some(4.0),
+            ..Default::default()
+        });
+        assert_eq!(result.wsel.len(), 3);
+        assert!(result.wsel[0] > result.wsel[2]);
+    }
+
+    #[test]
+    fn solve_steady_mixed_regime_near_dry_downstream() {
+        let xs200 = metric_rect_channel(200.0, 0.5);
+        let xs100 = metric_rect_channel(100.0, 0.25);
+        let xs0 = metric_rect_channel(0.0, 0.0);
+        let result = solve_steady(&SteadyInputs {
+            cross_sections: vec![xs200, xs100, xs0],
+            flow_rate: 55.0,
+            num_slices: Some(50),
+            regime: 2,
+            downstream_bc_type: Some(0),
+            downstream_wsel: Some(0.05),
+            upstream_wsel: Some(3.5),
+            ..Default::default()
+        });
+        assert_eq!(result.wsel.len(), 3);
+        assert!(result.wsel.iter().all(|w| w.is_finite()));
+    }
+
+    #[test]
+    fn solve_step_subcritical_falls_back_to_critical_when_unbracketed() {
+        let xs_ds = metric_rect_channel(0.0, 0.0);
+        let xs_us = metric_rect_channel(50.0, 0.0);
+        let table_ds = xs_ds.generate_lookup_table(50);
+        let table_us = xs_us.generate_lookup_table(50);
+        let q = 1e-4;
+        let yc = solve_critical_depth_table(&table_us, q);
+        let wsel = solve_step(
+            &table_ds,
+            Some(&xs_ds),
+            None,
+            0.5,
+            &table_us,
+            Some(&xs_us),
+            None,
+            0.0,
+            yc,
+            q,
+            50.0,
+            0.1,
+            0.3,
+            true,
+            false,
+            false,
+        )
+        .expect("low-flow plain reach should return a finite stage");
+        assert!(wsel.is_finite() && wsel >= yc);
+    }
+
+    #[test]
+    fn solve_step_target_residual_none_when_conveyance_vanishes() {
+        let mut xs_ds = metric_rect_channel(0.0, 0.0);
+        xs_ds.n_values = vec![1e14];
+        let mut xs_us = metric_rect_channel(100.0, 0.0);
+        xs_us.n_values = vec![1e14];
+        let table_ds = xs_ds.generate_lookup_table(50);
+        let table_us = xs_us.generate_lookup_table(50);
+        let yc = solve_critical_depth_table(&table_us, 10.0);
+        assert!(solve_step(
+            &table_ds,
+            Some(&xs_ds),
+            None,
+            2.0,
+            &table_us,
+            Some(&xs_us),
+            None,
+            0.0,
+            yc,
+            10.0,
+            100.0,
+            0.1,
+            0.3,
+            true,
+            false,
+            false,
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn solve_steady_froude_zero_when_downstream_conveyance_clipped() {
+        let xs_us = metric_rect_channel(100.0, 0.1);
+        let mut xs_ds = metric_rect_channel(0.0, 0.0);
+        xs_ds.ineffective_flow_areas = Some(fully_ineffective_channel());
+        let result = solve_steady(&SteadyInputs {
+            cross_sections: vec![xs_us, xs_ds],
+            flow_rate: 5.0,
+            num_slices: Some(50),
+            regime: 0,
+            downstream_bc_type: Some(0),
+            downstream_wsel: Some(1.5),
+            ..Default::default()
+        });
+        assert_eq!(result.froude[1], 0.0);
+        assert_eq!(result.velocity[1], 0.0);
     }
 
     #[test]

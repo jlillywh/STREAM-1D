@@ -137,7 +137,13 @@ const GEOM_SLICES: usize = 64;
 
 /// Pipe-arch crown depth (spring line to crown) from span and rise.
 fn pipe_arch_crown_depth(span: f64, rise: f64) -> f64 {
-    (rise * 0.375).clamp(span / 16.0, rise * 0.5)
+    let min = span / 16.0;
+    let max = rise * 0.5;
+    if min > max {
+        max
+    } else {
+        (rise * 0.375).clamp(min, max)
+    }
 }
 
 /// Horseshoe invert and crown arc depths derived from span/rise.
@@ -146,7 +152,13 @@ fn horseshoe_invert_depth(span: f64, rise: f64) -> f64 {
 }
 
 fn horseshoe_crown_depth(span: f64, rise: f64, invert_depth: f64) -> f64 {
-    ((rise - invert_depth) * 0.35).clamp(span / 8.0, rise - invert_depth - 0.01)
+    let min = span / 8.0;
+    let max = rise - invert_depth - 0.01;
+    if min > max {
+        max.max(0.0)
+    } else {
+        ((rise - invert_depth) * 0.35).clamp(min, max)
+    }
 }
 
 /// Top water width at depth `y` (ft above invert) for extended shapes.
