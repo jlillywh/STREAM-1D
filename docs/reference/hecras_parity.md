@@ -78,6 +78,18 @@ HEC-RAS models piers in the **Bridge** editor: centerline placement, a **width v
 
 **Importer guidance:** From HEC-RAS geometry, export each pier’s width–elevation table to `bridge_pier_width_elevations` / `_values`, or to top/bottom widths plus optional `bridge_pier_footing_*` when the host detects a footing band. Map RAS nose shape to `bridge_pier_shapes`. Do **not** duplicate pier blockage on BU/BD `blocked_obstructions` if pier loss is already in Yarnell/momentum — use pier fields so $A_{pier}$ and $\alpha$ stay consistent.
 
+### Bridge deck vents / slotted openings
+
+HEC-RAS 1D has **no** separate deck-vent or slotted-drain fields — pressure flow uses net area under the deck **low chord** and a single orifice coefficient. STREAM-1D **3.3** (design: [`deck_vents_slotted_openings.md`](../development/deck_vents_slotted_openings.md)) adds optional per-segment openings with invert/soffit and $C_d$ for supplemental pressure-flow paths through the deck slab.
+
+| Concept | HEC-RAS 1D | STREAM-1D 3.3 (design) |
+|---------|------------|-------------------------|
+| Main opening under deck soffit | Deck low chord profile | `bridge_deck_*` (unchanged) |
+| Relief grate / slot in deck | Lower low chord locally or external culvert | `bridge_deck_vent_*` segments |
+| Submerged orifice $C_d$ | One per opening | Global `bridge_orifice_coeffs` + per-segment override |
+
+**Parity:** omit vent fields for pure RAS imports; supply when as-built grate/slot data should not distort the main deck profile.
+
 ### Practical guidance
 
 * Supply reach geometry as `cross_sections` arrays (Python or JSON). No built-in HEC-RAS `.g01` importer in this repository.

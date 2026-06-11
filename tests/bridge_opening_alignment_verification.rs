@@ -4,6 +4,7 @@ use stream1d::geometry::CrossSection;
 use stream1d::solvers::bridge::{solve_bridge_wsel, BridgeCouplingParams};
 use stream1d::solvers::bridge_interior::{
     interior_from_steady, opening_station_to_reach_x, resolve_bridge_face_solve_geometry,
+    BridgeFaceSolveParams,
 };
 use stream1d::solvers::{solve_steady, validate_steady_inputs, SteadyInputs};
 use stream1d::utils::UnitSystem;
@@ -90,35 +91,22 @@ fn face_geometry_for(inputs: &SteadyInputs) -> stream1d::solvers::bridge_interio
         .and_then(|v| v.get(0))
         .copied()
         .unwrap_or(0.0);
-    resolve_bridge_face_solve_geometry(
-        &interior,
-        None,
-        None,
-        None,
-        &table_up,
-        &table_down,
-        0.05,
-        0.0,
-        UnitSystem::Metric,
-        50,
-        None,
-        None,
-        skew,
-        inputs
+    resolve_bridge_face_solve_geometry(BridgeFaceSolveParams {
+        interior: &interior,
+        reach_table_up: &table_up,
+        reach_table_down: &table_down,
+        reach_z_up_user: 0.05,
+        raw_units: UnitSystem::Metric,
+        num_slices: 50,
+        skew_deg: skew,
+        pier_stations: inputs
             .bridge_pier_stations
             .as_ref()
             .and_then(|v| v.get(0))
             .cloned(),
-        4.0,
-        0.0,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-    )
+        interval_length_m: 4.0,
+        ..BridgeFaceSolveParams::new(&interior, &table_up, &table_down)
+    })
 }
 
 #[test]

@@ -111,13 +111,37 @@ Culvert, bridge, junction, and rating-curve examples: [`docs/python/getting_star
 
 **Cross sections** — river station; (*x*, *y*) polyline; Manning *n* zones; optional `is_overbank`, `blocked_obstructions`, `ineffective_flow_areas`, `guide_banks`. Modifier semantics: [`docs/reference/equations.md`](docs/reference/equations.md) §H0.
 
-**Steady** — `flow_rate`, `regime` (0 subcritical, 1 supercritical, 2 mixed), downstream boundary (`downstream_wsel`, normal depth, rating curve, etc.), optional `max_spacing` and `densify_reach_modifier_policy` (0 none, 1 upstream, 2 downstream, 3 nearest). Structure fields: `culvert_*`, `bridge_*`. Tapered piers: legacy `bridge_pier_widths`, or `bridge_pier_top_widths` / `bridge_pier_bottom_widths` per pier, or piecewise `bridge_pier_width_elevations` / `bridge_pier_width_values` — see [`docs/development/pier_tapered_width.md`](docs/development/pier_tapered_width.md). Pier footings and nosing (API v28): `bridge_pier_footing_*`, `bridge_pier_nosing_*` — see [`docs/development/pier_footings_nosing.md`](docs/development/pier_footings_nosing.md).
+**Steady** — `flow_rate`, `regime` (0 subcritical, 1 supercritical, 2 mixed), downstream boundary (`downstream_wsel`, normal depth, rating curve, etc.), optional `max_spacing` and `densify_reach_modifier_policy` (0 none, 1 upstream, 2 downstream, 3 nearest). Structure fields: `culvert_*`, `bridge_*`. Tapered piers: legacy `bridge_pier_widths`, or `bridge_pier_top_widths` / `bridge_pier_bottom_widths` per pier, or piecewise `bridge_pier_width_elevations` / `bridge_pier_width_values` — see [`docs/development/pier_tapered_width.md`](docs/development/pier_tapered_width.md). Pier footings and nosing (API v28): `bridge_pier_footing_*`, `bridge_pier_nosing_*` — see [`docs/development/pier_footings_nosing.md`](docs/development/pier_footings_nosing.md). Deck vents (API v29): `bridge_deck_vent_*` — see [Bridge high flow](#bridge-high-flow) and [`docs/development/deck_vents_slotted_openings.md`](docs/development/deck_vents_slotted_openings.md).
 
 **Unsteady** — `initial_wsel`, `initial_q`, `dt`, `num_steps`, `upstream_q_hydrograph`, `downstream_wsel_hydrograph`, same `max_spacing` / `densify_reach_modifier_policy` as steady. Same structure fields as steady.
 
 **Results** — `wsel`, `velocity`, `area`, `froude_number`, `critical_wsel`, `energy_grade_slope`. With culverts: control type, inlet/outlet HW, barrel and weir discharge. With bridges: flow regime, head loss. Unsteady structure outputs are `[time_step][structure_index]`.
 
 Field reference: [`python/stream1d/__init__.py`](python/stream1d/__init__.py), [`docs/wasm_api.types.ts`](docs/wasm_api.types.ts). Equations: [`docs/reference/equations.md`](docs/reference/equations.md).
+
+## Bridge high flow
+
+When upstream energy exceeds the **low chord** (`bridge_low_chords` or piecewise `bridge_deck_low_elevations`), the bridge solver leaves low-flow Class A/B/C and evaluates **pressure flow** through the net opening under the deck (piers and abutments subtracted). When energy exceeds the **high chord**, **roadway weir** overtopping is added. Low-flow and high-flow answers are compared; the governing headwater is the higher of the two.
+
+| Regime | Typical condition | Discharge model |
+|--------|-------------------|-----------------|
+| Pressure only | Low chord &lt; EGL ≤ high chord | Main opening + optional deck vents |
+| Combined overtopping | EGL &gt; high chord | *Q* = *Q*<sub>opening</sub> + *Q*<sub>vents</sub> + *Q*<sub>weir</sub> |
+
+**Main opening** — Trapezoidal area under the deck low chord. If downstream tailwater is **below** the low chord, FHWA **sluice-gate** form applies (`bridge_pressure_flow_coeffs_inlet` optional). If tailwater is **at or above** the low chord, **submerged orifice**: *Q* = *C* *A*<sub>net</sub> √(2*g*(*E*<sub>up</sub> − TW)) with `bridge_orifice_coeffs` (typical 0.8).
+
+**Deck vents** (optional) — Localized grate/slot segments **above** the main soffit but **below** the roadway crest. Per-segment invert, soffit, width, and discharge coefficient (`bridge_deck_vent_*`). Submerged vent area grows with WSEL up to each segment soffit; vent flow uses the same drive head as the main submerged orifice and is summed in parallel. Type `0` = orifice (default); type `1` = slotted weir until the slot is submerged, then full-slot orifice. HEC-RAS 1D has no separate vent fields — this is a STREAM-1D extension. Full API: [`docs/development/deck_vents_slotted_openings.md`](docs/development/deck_vents_slotted_openings.md).
+
+**Weir overtopping** — Bradley (1978) form on effective deck length when EGL clears the high chord, with submergence factor from downstream tailwater. If submergence exceeds `bridge_max_weir_submergence` (default 0.98), the solver falls back to the **energy** method through the opening instead of pressure/weir.
+
+**Method selection** — `bridge_high_flow_methods` per bridge:
+
+| Value | Behavior |
+|-------|----------|
+| `0` (default) | Pressure + weir; energy only on high weir submergence |
+| `1` | Always energy balance through the obstructed opening |
+
+Piecewise deck profiles (`bridge_deck_stations`, `bridge_deck_low_elevations`, `bridge_deck_high_elevations`) set local low/high chords for opening area, weir length, and vent placement. Equations: [`docs/reference/equations.md`](docs/reference/equations.md) §E–§F.
 
 ## Verification
 
@@ -156,6 +180,7 @@ WASM API: [`docs/web/wasm_integration.md`](docs/web/wasm_integration.md).
 | [`docs/reference/api_changelog.md`](docs/reference/api_changelog.md) | Input schema versions |
 | [`docs/development/pier_tapered_width.md`](docs/development/pier_tapered_width.md) | Tapered pier width API (v27) |
 | [`docs/development/pier_footings_nosing.md`](docs/development/pier_footings_nosing.md) | Pier footings, nosing (API v28); plan polygons and wing walls (design) |
+| [`docs/development/deck_vents_slotted_openings.md`](docs/development/deck_vents_slotted_openings.md) | Deck vents & slotted openings (API design, v29) |
 | [`docs/BRIDGE_INTERIOR_SECTIONS_API.md`](docs/BRIDGE_INTERIOR_SECTIONS_API.md) | Advanced: BU/BD, opening alignment, guide banks |
 | [`docs/web/wasm_integration.md`](docs/web/wasm_integration.md) | WASM build and JavaScript usage |
 | [`docs/development/testing.md`](docs/development/testing.md) | Test suites and CI |

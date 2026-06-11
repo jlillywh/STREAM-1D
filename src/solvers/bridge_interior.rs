@@ -131,6 +131,71 @@ pub struct BridgeFaceSolveGeometry {
     pub z_down_user: f64,
 }
 
+/// Named inputs for [`resolve_bridge_face_solve_geometry`] (steady/unsteady bridge interval).
+#[derive(Debug)]
+pub struct BridgeFaceSolveParams<'a> {
+    pub interior: &'a BridgeInteriorInput,
+    pub anchor_reach_xs: Option<&'a CrossSection>,
+    pub reach_xs_up: Option<&'a CrossSection>,
+    pub reach_xs_down: Option<&'a CrossSection>,
+    pub reach_table_up: &'a GeometryTable,
+    pub reach_table_down: &'a GeometryTable,
+    pub reach_z_up_user: f64,
+    pub reach_z_down_user: f64,
+    pub raw_units: UnitSystem,
+    pub num_slices: usize,
+    pub ineffective_up: Option<IneffectiveFlowAreas>,
+    pub ineffective_down: Option<IneffectiveFlowAreas>,
+    pub skew_deg: f64,
+    pub pier_stations: Option<Vec<f64>>,
+    pub interval_length_m: f64,
+    pub bridge_length_user: f64,
+    pub approach_xs: Option<CrossSection>,
+    pub departure_xs: Option<CrossSection>,
+    pub guide_banks_approach: Option<GuideBanks>,
+    pub guide_banks_departure: Option<GuideBanks>,
+    pub pier_widths: Option<crate::solvers::pier_geometry::PierWidthUserInput>,
+    pub pier_attachments: Option<crate::solvers::pier_geometry::PierAttachmentsUserInput>,
+    pub deck_vents: Option<crate::solvers::deck_vent_geometry::DeckVentUserInput>,
+    pub embankment_blocked: Option<&'a crate::solvers::bridge_roadway_compose::ComposedEmbankmentBlocked>,
+}
+
+impl<'a> BridgeFaceSolveParams<'a> {
+    /// Minimal constructor; optional fields default to unset / zero.
+    pub fn new(
+        interior: &'a BridgeInteriorInput,
+        reach_table_up: &'a GeometryTable,
+        reach_table_down: &'a GeometryTable,
+    ) -> Self {
+        Self {
+            interior,
+            anchor_reach_xs: None,
+            reach_xs_up: None,
+            reach_xs_down: None,
+            reach_table_up,
+            reach_table_down,
+            reach_z_up_user: 0.0,
+            reach_z_down_user: 0.0,
+            raw_units: UnitSystem::Metric,
+            num_slices: 50,
+            ineffective_up: None,
+            ineffective_down: None,
+            skew_deg: 0.0,
+            pier_stations: None,
+            interval_length_m: 0.0,
+            bridge_length_user: 0.0,
+            approach_xs: None,
+            departure_xs: None,
+            guide_banks_approach: None,
+            guide_banks_departure: None,
+            pier_widths: None,
+            pier_attachments: None,
+            deck_vents: None,
+            embankment_blocked: None,
+        }
+    }
+}
+
 /// Minimum ground elevation from a cross-section polyline (user units of the section).
 pub fn cross_section_min_bed(xs: &CrossSection) -> f64 {
     xs.y.iter().copied().fold(f64::INFINITY, f64::min)
@@ -374,30 +439,35 @@ pub fn resolve_approach_departure_sections(
 
 /// Build geometry tables and section context for a bridge interval.
 pub fn resolve_bridge_face_solve_geometry(
-    interior: &BridgeInteriorInput,
-    anchor_reach_xs: Option<&CrossSection>,
-    reach_xs_up: Option<&CrossSection>,
-    reach_xs_down: Option<&CrossSection>,
-    reach_table_up: &GeometryTable,
-    reach_table_down: &GeometryTable,
-    reach_z_up_user: f64,
-    reach_z_down_user: f64,
-    raw_units: UnitSystem,
-    num_slices: usize,
-    ineffective_up: Option<crate::geometry::IneffectiveFlowAreas>,
-    ineffective_down: Option<crate::geometry::IneffectiveFlowAreas>,
-    skew_deg: f64,
-    pier_stations: Option<Vec<f64>>,
-    interval_length_m: f64,
-    bridge_length_user: f64,
-    approach_xs: Option<CrossSection>,
-    departure_xs: Option<CrossSection>,
-    guide_banks_approach: Option<GuideBanks>,
-    guide_banks_departure: Option<GuideBanks>,
-    pier_widths: Option<crate::solvers::pier_geometry::PierWidthUserInput>,
-    pier_attachments: Option<crate::solvers::pier_geometry::PierAttachmentsUserInput>,
-    embankment_blocked: Option<&crate::solvers::bridge_roadway_compose::ComposedEmbankmentBlocked>,
+    params: BridgeFaceSolveParams<'_>,
 ) -> BridgeFaceSolveGeometry {
+    let BridgeFaceSolveParams {
+        interior,
+        anchor_reach_xs,
+        reach_xs_up,
+        reach_xs_down,
+        reach_table_up,
+        reach_table_down,
+        reach_z_up_user,
+        reach_z_down_user,
+        raw_units,
+        num_slices,
+        ineffective_up,
+        ineffective_down,
+        skew_deg,
+        pier_stations,
+        interval_length_m,
+        bridge_length_user,
+        approach_xs,
+        departure_xs,
+        guide_banks_approach,
+        guide_banks_departure,
+        pier_widths,
+        pier_attachments,
+        deck_vents,
+        embankment_blocked,
+    } = params;
+
     let mut xs_up = interior
         .bu
         .clone()
@@ -489,6 +559,7 @@ pub fn resolve_bridge_face_solve_geometry(
         pier_stations,
         pier_widths,
         pier_attachments,
+        deck_vents,
         friction_length_m,
         xs_approach: approach_xs,
         xs_departure: departure_xs,
@@ -1262,6 +1333,17 @@ mod tests {
         box_xs(0.0, 20.0, 0.0, 5.0).generate_lookup_table(20)
     }
 
+    fn resolve_face<'a>(
+        interior: &'a BridgeInteriorInput,
+        reach_table_up: &'a GeometryTable,
+        reach_table_down: &'a GeometryTable,
+        configure: impl FnOnce(&mut BridgeFaceSolveParams<'a>),
+    ) -> BridgeFaceSolveGeometry {
+        let mut params = BridgeFaceSolveParams::new(interior, reach_table_up, reach_table_down);
+        configure(&mut params);
+        resolve_bridge_face_solve_geometry(params)
+    }
+
     #[test]
     fn explicit_bu_overrides_reach_table() {
         let bu = box_xs(50.0, 10.0, 2.0, 8.0);
@@ -1273,31 +1355,12 @@ mod tests {
             ..Default::default()
         };
         let reach = box_xs(0.0, 30.0, 0.0, 6.0);
-        let geo = resolve_bridge_face_solve_geometry(
-            &interior,
-            None,
-            Some(&reach),
-            Some(&reach),
-            &flat_table(),
-            &flat_table(),
-            0.0,
-            0.0,
-            UnitSystem::Metric,
-            30,
-            None,
-            None,
-            0.0,
-            None,
-            0.0,
-            0.0,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        );
+        let table = flat_table();
+        let geo = resolve_face(&interior, &table, &table, |p| {
+            p.reach_xs_up = Some(&reach);
+            p.reach_xs_down = Some(&reach);
+            p.num_slices = 30;
+        });
         assert!((geo.z_up_user - 2.0).abs() < 1e-9);
         assert_eq!(geo.sections.opening_reach_station_origin, Some(50.0));
         let a_bu = geo
@@ -1424,31 +1487,10 @@ mod tests {
             internal: vec![],
             ..Default::default()
         };
-        let geo = resolve_bridge_face_solve_geometry(
-            &interior,
-            None,
-            None,
-            None,
-            &flat_table(),
-            &flat_table(),
-            0.0,
-            0.0,
-            UnitSystem::Metric,
-            20,
-            None,
-            None,
-            0.0,
-            None,
-            0.0,
-            0.0,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        );
+        let table = flat_table();
+        let geo = resolve_face(&interior, &table, &table, |p| {
+            p.num_slices = 20;
+        });
         assert_eq!(geo.sections.opening_reach_station_origin, Some(42.5));
     }
 
@@ -1475,31 +1517,13 @@ mod tests {
         };
         let bridge_opening = IneffectiveFlowAreas::from_block_pairs(&[20.0], &[3.0], &[], &[]).unwrap();
 
-        let geo = resolve_bridge_face_solve_geometry(
-            &interior,
-            None,
-            Some(&reach),
-            Some(&reach),
-            &flat_table(),
-            &flat_table(),
-            0.0,
-            0.0,
-            UnitSystem::Metric,
-            30,
-            Some(bridge_opening),
-            None,
-            0.0,
-            None,
-            0.0,
-            0.0,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        );
+        let table = flat_table();
+        let geo = resolve_face(&interior, &table, &table, |p| {
+            p.reach_xs_up = Some(&reach);
+            p.reach_xs_down = Some(&reach);
+            p.num_slices = 30;
+            p.ineffective_up = Some(bridge_opening);
+        });
 
         let up = geo
             .sections
@@ -1577,32 +1601,18 @@ mod tests {
             "BU should use bridge ineffective (5), not reach (30)"
         );
 
-        let geo = resolve_bridge_face_solve_geometry(
+        let geo = resolve_face(
             &interior,
-            None,
-            Some(bu_xs),
-            xs[bu_idx + 1].as_ref(),
             &tables[bu_idx],
             &tables[bu_idx + 1],
-            0.0,
-            0.0,
-            UnitSystem::Metric,
-            20,
-            Some(
-                IneffectiveFlowAreas::from_block_pairs(&[5.0], &[3.0], &[], &[]).unwrap(),
-            ),
-            None,
-            0.0,
-            None,
-            0.0,
-            0.0,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
+            |p| {
+                p.reach_xs_up = Some(bu_xs);
+                p.reach_xs_down = xs[bu_idx + 1].as_ref();
+                p.num_slices = 20;
+                p.ineffective_up = Some(
+                    IneffectiveFlowAreas::from_block_pairs(&[5.0], &[3.0], &[], &[]).unwrap(),
+                );
+            },
         );
         let up = geo.sections.ineffective_up.expect("BU bridge ineffective");
         assert!((up.left_blocks[0].station - 5.0).abs() < 1e-9);
@@ -1615,31 +1625,13 @@ mod tests {
             IneffectiveFlowAreas::from_block_pairs(&[25.0], &[3.0], &[], &[]).unwrap(),
         );
 
-        let geo = resolve_bridge_face_solve_geometry(
-            &BridgeInteriorInput::default(),
-            None,
-            Some(&reach),
-            Some(&reach),
-            &flat_table(),
-            &flat_table(),
-            0.0,
-            0.0,
-            UnitSystem::Metric,
-            30,
-            None,
-            None,
-            0.0,
-            None,
-            0.0,
-            0.0,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        );
+        let interior = BridgeInteriorInput::default();
+        let table = flat_table();
+        let geo = resolve_face(&interior, &table, &table, |p| {
+            p.reach_xs_up = Some(&reach);
+            p.reach_xs_down = Some(&reach);
+            p.num_slices = 30;
+        });
 
         let up = geo.sections.ineffective_up.expect("reach ineffective");
         assert!((up.left_blocks[0].station - 25.0).abs() < 1e-9);
@@ -1650,34 +1642,16 @@ mod tests {
         let reach = box_xs(100.0, 40.0, 0.0, 5.0);
         let bridge_opening = IneffectiveFlowAreas::from_block_pairs(&[5.0], &[3.0], &[], &[]).unwrap();
 
-        let geo = resolve_bridge_face_solve_geometry(
-            &BridgeInteriorInput {
-                opening_reach_station_origin: Some(100.0),
-                ..Default::default()
-            },
-            None,
-            Some(&reach),
-            None,
-            &flat_table(),
-            &flat_table(),
-            0.0,
-            0.0,
-            UnitSystem::Metric,
-            30,
-            Some(bridge_opening),
-            None,
-            0.0,
-            None,
-            0.0,
-            0.0,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        );
+        let interior = BridgeInteriorInput {
+            opening_reach_station_origin: Some(100.0),
+            ..Default::default()
+        };
+        let table = flat_table();
+        let geo = resolve_face(&interior, &table, &table, |p| {
+            p.reach_xs_up = Some(&reach);
+            p.num_slices = 30;
+            p.ineffective_up = Some(bridge_opening);
+        });
 
         let up = geo.sections.ineffective_up.expect("shifted ineffective");
         assert!((up.left_blocks[0].station - 105.0).abs() < 1e-9);
@@ -1729,31 +1703,12 @@ mod tests {
             internal: vec![],
             ..Default::default()
         };
-        let geo = resolve_bridge_face_solve_geometry(
-            &interior,
-            None,
-            None,
-            None,
-            &flat_table(),
-            &flat_table(),
-            0.0,
-            0.0,
-            UnitSystem::Metric,
-            20,
-            None,
-            None,
-            0.0,
-            None,
-            6.0,
-            50.0,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        );
+        let table = flat_table();
+        let geo = resolve_face(&interior, &table, &table, |p| {
+            p.num_slices = 20;
+            p.interval_length_m = 6.0;
+            p.bridge_length_user = 50.0;
+        });
         assert!((geo.sections.friction_length_m - 6.0).abs() < 1e-9);
     }
 
@@ -1769,31 +1724,11 @@ mod tests {
             opening_anchor_reach_station: Some(600.0),
             ..Default::default()
         };
-        let geo = resolve_bridge_face_solve_geometry(
-            &interior,
-            Some(&approach),
-            None,
-            None,
-            &flat_table(),
-            &flat_table(),
-            0.0,
-            0.0,
-            UnitSystem::Metric,
-            20,
-            None,
-            None,
-            0.0,
-            None,
-            0.0,
-            0.0,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        );
+        let table = flat_table();
+        let geo = resolve_face(&interior, &table, &table, |p| {
+            p.anchor_reach_xs = Some(&approach);
+            p.num_slices = 20;
+        });
         assert_eq!(geo.sections.opening_reach_station_origin, Some(80.0));
     }
 
@@ -1881,31 +1816,11 @@ mod tests {
             opening_reach_station_origin: Some(100.0),
             ..Default::default()
         };
-        let geo = resolve_bridge_face_solve_geometry(
-            &interior,
-            None,
-            None,
-            None,
-            &flat_table(),
-            &flat_table(),
-            0.0,
-            0.0,
-            UnitSystem::Metric,
-            20,
-            None,
-            None,
-            0.0,
-            Some(vec![5.0, 20.0]),
-            0.0,
-            0.0,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        );
+        let table = flat_table();
+        let geo = resolve_face(&interior, &table, &table, |p| {
+            p.num_slices = 20;
+            p.pier_stations = Some(vec![5.0, 20.0]);
+        });
         let piers = geo.sections.pier_stations.expect("piers");
         assert!((piers[0] - 105.0).abs() < 1e-9);
         assert!((piers[1] - 120.0).abs() < 1e-9);

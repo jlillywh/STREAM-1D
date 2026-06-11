@@ -5,6 +5,9 @@ use crate::geometry::{
 use crate::solvers::bridge_abutment::{
     resolve_abutments, BridgeAbutmentUserInput, BridgeAbutments,
 };
+use crate::solvers::deck_vent_geometry::{
+    resolve_deck_vents, total_deck_vent_discharge_m3s, DeckVentUserInput, ResolvedDeckVent,
+};
 use crate::solvers::pier_geometry::{
     evenly_spaced_pier_stations, resolve_pier_width_specs, PierAttachmentsUserInput,
     PierWidthUserInput, ResolvedPier,
@@ -45,6 +48,8 @@ pub struct BridgeSectionContext {
     pub pier_widths: Option<PierWidthUserInput>,
     /// Optional per-pier footing and nosing (user units; converted in `build_bridge_geometry`).
     pub pier_attachments: Option<PierAttachmentsUserInput>,
+    /// Optional deck vent / slotted-opening segments (user units; converted in `build_bridge_geometry`).
+    pub deck_vents: Option<DeckVentUserInput>,
 }
 
 /// HEC-RAS-style bridge skew: projected opening width × cos(θ), friction length ÷ cos(θ).
@@ -283,6 +288,22 @@ pub struct BridgeSolveParams {
     #[serde(default)]
     pub pier_nosing_widths: Option<Vec<f64>>,
     #[serde(default)]
+    pub deck_vent_left_stations: Option<Vec<f64>>,
+    #[serde(default)]
+    pub deck_vent_right_stations: Option<Vec<f64>>,
+    #[serde(default)]
+    pub deck_vent_stations: Option<Vec<f64>>,
+    #[serde(default)]
+    pub deck_vent_widths: Option<Vec<f64>>,
+    #[serde(default)]
+    pub deck_vent_invert_elevations: Option<Vec<f64>>,
+    #[serde(default)]
+    pub deck_vent_soffit_elevations: Option<Vec<f64>>,
+    #[serde(default)]
+    pub deck_vent_discharge_coefficients: Option<Vec<f64>>,
+    #[serde(default)]
+    pub deck_vent_types: Option<Vec<i32>>,
+    #[serde(default)]
     pub deck_stations: Option<Vec<f64>>,
     #[serde(default)]
     pub deck_low_elevations: Option<Vec<f64>>,
@@ -434,6 +455,14 @@ impl Default for BridgeSolveParams {
             pier_footing_bottom_elevations: None,
             pier_nosing_lengths: None,
             pier_nosing_widths: None,
+            deck_vent_left_stations: None,
+            deck_vent_right_stations: None,
+            deck_vent_stations: None,
+            deck_vent_widths: None,
+            deck_vent_invert_elevations: None,
+            deck_vent_soffit_elevations: None,
+            deck_vent_discharge_coefficients: None,
+            deck_vent_types: None,
             deck_stations: None,
             deck_low_elevations: None,
             deck_high_elevations: None,
@@ -724,6 +753,8 @@ pub struct BridgeGeometry {
     pub guide_banks_departure: Option<GuideBanks>,
     pub table_approach: Option<GeometryTable>,
     pub table_departure: Option<GeometryTable>,
+    /// Supplemental pressure-flow paths through deck vents / slots (metric).
+    pub deck_vents: Vec<ResolvedDeckVent>,
 }
 
 const APPROACH_DEPARTURE_TABLE_SLICES: usize = 50;
@@ -1483,7 +1514,7 @@ fn weir_submergence_ratio(tw_m: f64, e_upstream: f64, crest_m: f64) -> f64 {
     (tail_above / head_above).clamp(0.0, 1.5)
 }
 
-fn pressure_flow_discharge(
+fn main_pressure_flow_discharge(
     wsel_up: f64,
     tw_m: f64,
     q_metric: f64,
@@ -1508,6 +1539,86 @@ fn pressure_flow_discharge(
         let drive = (y3 - 0.5 * z + v_head).max(0.0);
         cd * a_net * (2.0 * G_METRIC * drive).sqrt()
     }
+}
+
+fn deck_vents_active_at_wsel(geom: &BridgeGeometry, wsel_m: f64) -> bool {
+    geom.deck_vents
+        .iter()
+        .any(|v| wsel_m > v.invert_m + 1e-9)
+}
+
+fn deck_vent_pressure_discharge_m3s(
+    wsel_up: f64,
+    tw_m: f64,
+    q_metric: f64,
+    geom: &BridgeGeometry,
+    table_up: &GeometryTable,
+) -> f64 {
+    if !deck_vents_active_at_wsel(geom, wsel_up) {
+        return 0.0;
+    }
+    let e_up = upstream_energy_grade(wsel_up, q_metric, geom, table_up, geom.z_up_m, true);
+    total_deck_vent_discharge_m3s(&geom.deck_vents, wsel_up, e_up, tw_m)
+}
+
+/// High-flow discharge split: main opening under low chord, deck vents/slots, roadway weir.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub(crate) struct HighFlowDischargeComponents {
+    pub q_opening_m3s: f64,
+    pub q_vents_m3s: f64,
+    pub q_weir_m3s: f64,
+}
+
+impl HighFlowDischargeComponents {
+    pub fn total_m3s(self) -> f64 {
+        self.q_opening_m3s + self.q_vents_m3s + self.q_weir_m3s
+    }
+
+    pub fn pressure_paths_m3s(self) -> f64 {
+        self.q_opening_m3s + self.q_vents_m3s
+    }
+}
+
+/// Combined high flow: $Q = Q_{opening} + Q_{vents} + Q_{weir}$.
+///
+/// Pass `weir_length_m = None` for pressure paths only (opening + vents).
+pub(crate) fn combined_high_flow_discharge(
+    wsel_up: f64,
+    tw_m: f64,
+    q_metric: f64,
+    geom: &BridgeGeometry,
+    table_up: &GeometryTable,
+    a_net: f64,
+    weir_length_m: Option<f64>,
+) -> HighFlowDischargeComponents {
+    let q_opening = if wsel_up > geom.low_chord_m + 1e-6 {
+        main_pressure_flow_discharge(wsel_up, tw_m, q_metric, geom, table_up, a_net)
+    } else {
+        0.0
+    };
+    let q_vents = deck_vent_pressure_discharge_m3s(wsel_up, tw_m, q_metric, geom, table_up);
+    let q_weir = weir_length_m
+        .filter(|&l| l > 1e-6)
+        .map(|l| weir_flow_discharge(wsel_up, tw_m, q_metric, geom, table_up, l))
+        .unwrap_or(0.0);
+    HighFlowDischargeComponents {
+        q_opening_m3s: q_opening,
+        q_vents_m3s: q_vents,
+        q_weir_m3s: q_weir,
+    }
+}
+
+/// Main opening pressure flow plus parallel vent/slot paths when the deck blocks the primary opening.
+fn pressure_flow_discharge(
+    wsel_up: f64,
+    tw_m: f64,
+    q_metric: f64,
+    geom: &BridgeGeometry,
+    table_up: &GeometryTable,
+    a_net: f64,
+) -> f64 {
+    combined_high_flow_discharge(wsel_up, tw_m, q_metric, geom, table_up, a_net, None)
+        .pressure_paths_m3s()
 }
 
 fn weir_flow_discharge(
@@ -1826,9 +1937,17 @@ fn solve_high_flow(
             return -1.0;
         }
         let l_weir = effective_weir_length_m(geom, e_up, fallback_weir_width);
-        let q_pressure = pressure_flow_discharge(h_up, tw_clamped, q_metric, geom, table_up, a_net);
-        let q_weir = weir_flow_discharge(h_up, tw_clamped, q_metric, geom, table_up, l_weir);
-        (q_pressure + q_weir) - q_metric
+        let q_total = combined_high_flow_discharge(
+            h_up,
+            tw_clamped,
+            q_metric,
+            geom,
+            table_up,
+            a_net,
+            Some(l_weir),
+        )
+        .total_m3s();
+        q_total - q_metric
     };
 
     let mut low = geom.high_chord_m;
@@ -2323,6 +2442,16 @@ pub fn solve_bridge_from_params(params: &BridgeSolveParams) -> BridgeSolveResult
             &params.pier_nosing_lengths,
             &params.pier_nosing_widths,
         ),
+        deck_vents: crate::solvers::deck_vent_geometry::deck_vents_from_rating_params(
+            &params.deck_vent_left_stations,
+            &params.deck_vent_right_stations,
+            &params.deck_vent_stations,
+            &params.deck_vent_widths,
+            &params.deck_vent_invert_elevations,
+            &params.deck_vent_soffit_elevations,
+            &params.deck_vent_discharge_coefficients,
+            &params.deck_vent_types,
+        ),
         friction_length_m,
         xs_approach: None,
         xs_departure: None,
@@ -2753,6 +2882,11 @@ fn build_bridge_geometry(
         pier_attachments_user.as_ref(),
     );
 
+    let deck_vents = sections
+        .and_then(|s| s.deck_vents.as_ref())
+        .map(|u| resolve_deck_vents(u, skew_cos, units, submerged_c))
+        .unwrap_or_default();
+
     if units == UnitSystem::USCustomary {
         BridgeGeometry {
             low_chord_m: low_min,
@@ -2791,6 +2925,7 @@ fn build_bridge_geometry(
             guide_banks_departure: guide_banks_departure.clone(),
             table_approach: table_approach.clone(),
             table_departure: table_departure.clone(),
+            deck_vents: deck_vents.clone(),
         }
     } else {
         BridgeGeometry {
@@ -2830,6 +2965,7 @@ fn build_bridge_geometry(
             guide_banks_departure,
             table_approach,
             table_departure,
+            deck_vents,
         }
     }
 }
@@ -2927,9 +3063,17 @@ fn solve_high_flow_tailwater(
             return -1.0;
         }
         let l_weir = effective_weir_length_m(geom, e_up, fallback_weir_width);
-        let q_pressure = pressure_flow_discharge(hw_m, tw, q_metric, geom, table_up, a_net);
-        let q_weir = weir_flow_discharge(hw_m, tw, q_metric, geom, table_up, l_weir);
-        (q_pressure + q_weir) - q_metric
+        let q_total = combined_high_flow_discharge(
+            hw_m,
+            tw,
+            q_metric,
+            geom,
+            table_up,
+            a_net,
+            Some(l_weir),
+        )
+        .total_m3s();
+        q_total - q_metric
     };
 
     let mut low = geom.z_down_m + 1e-4;

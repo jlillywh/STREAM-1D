@@ -238,6 +238,23 @@ pub struct SteadyInputs {
     pub bridge_pier_nosing_lengths: Option<Vec<Vec<f64>>>,
     #[serde(default)]
     pub bridge_pier_nosing_widths: Option<Vec<Vec<f64>>>,
+    /// Deck vent left station per bridge `[bridge][vent]` (opening `s` frame).
+    #[serde(default)]
+    pub bridge_deck_vent_left_stations: Option<Vec<Vec<f64>>>,
+    #[serde(default)]
+    pub bridge_deck_vent_right_stations: Option<Vec<Vec<f64>>>,
+    #[serde(default)]
+    pub bridge_deck_vent_stations: Option<Vec<Vec<f64>>>,
+    #[serde(default)]
+    pub bridge_deck_vent_widths: Option<Vec<Vec<f64>>>,
+    #[serde(default)]
+    pub bridge_deck_vent_invert_elevations: Option<Vec<Vec<f64>>>,
+    #[serde(default)]
+    pub bridge_deck_vent_soffit_elevations: Option<Vec<Vec<f64>>>,
+    #[serde(default)]
+    pub bridge_deck_vent_discharge_coefficients: Option<Vec<Vec<f64>>>,
+    #[serde(default)]
+    pub bridge_deck_vent_types: Option<Vec<Vec<i32>>>,
     /// HEC-RAS BU (bridge upstream face) cross section per bridge. Overrides reach US geometry.
     #[serde(default)]
     pub bridge_upstream_cross_sections: Option<Vec<CrossSection>>,
@@ -882,61 +899,74 @@ fn bridge_face_geometry_for(
             raw_units,
         );
     crate::solvers::bridge_interior::resolve_bridge_face_solve_geometry(
-        &interior,
-        anchor_reach_xs.as_ref(),
-        densified_xs[i].as_ref(),
-        densified_xs[i + 1].as_ref(),
-        &densified_tables[i],
-        &densified_tables[i + 1],
-        reach_z_up_user,
-        reach_z_down_user,
-        raw_units,
-        num_slices,
-        bridge_ineffective_upstream_for(inputs, b_idx),
-        bridge_ineffective_downstream_for(inputs, b_idx),
-        inputs
-            .bridge_skew_angles
-            .as_ref()
-            .and_then(|v| v.get(b_idx))
-            .copied()
-            .unwrap_or(0.0),
-        inputs
-            .bridge_pier_stations
-            .as_ref()
-            .and_then(|v| v.get(b_idx))
-            .cloned(),
-        interval_length_m,
-        inputs
-            .bridge_lengths
-            .as_ref()
-            .and_then(|v| v.get(b_idx))
-            .copied()
-            .unwrap_or(0.0),
-        approach_xs,
-        departure_xs,
-        guide_banks_approach,
-        guide_banks_departure,
-        crate::solvers::pier_geometry::pier_width_user_for_bridge_index(
-            &inputs.bridge_pier_top_widths,
-            &inputs.bridge_pier_bottom_widths,
-            &inputs.bridge_pier_width_elevations,
-            &inputs.bridge_pier_width_values,
-            &inputs.bridge_pier_top_elevations,
-            &inputs.bridge_pier_base_elevations,
-            b_idx,
-        ),
-        crate::solvers::pier_geometry::pier_attachments_user_for_bridge_index(
-            &inputs.bridge_pier_footing_top_elevations,
-            &inputs.bridge_pier_footing_widths,
-            &inputs.bridge_pier_footing_bottom_elevations,
-            &inputs.bridge_pier_nosing_lengths,
-            &inputs.bridge_pier_nosing_widths,
-            b_idx,
-        ),
-        crate::solvers::bridge_roadway_compose::composed_embankment_blocked_for(
-            &inputs.bridge_composed_embankment_blocked,
-            b_idx,
-        ),
+        crate::solvers::bridge_interior::BridgeFaceSolveParams {
+            interior: &interior,
+            anchor_reach_xs: anchor_reach_xs.as_ref(),
+            reach_xs_up: densified_xs[i].as_ref(),
+            reach_xs_down: densified_xs[i + 1].as_ref(),
+            reach_table_up: &densified_tables[i],
+            reach_table_down: &densified_tables[i + 1],
+            reach_z_up_user,
+            reach_z_down_user,
+            raw_units,
+            num_slices,
+            ineffective_up: bridge_ineffective_upstream_for(inputs, b_idx),
+            ineffective_down: bridge_ineffective_downstream_for(inputs, b_idx),
+            skew_deg: inputs
+                .bridge_skew_angles
+                .as_ref()
+                .and_then(|v| v.get(b_idx))
+                .copied()
+                .unwrap_or(0.0),
+            pier_stations: inputs
+                .bridge_pier_stations
+                .as_ref()
+                .and_then(|v| v.get(b_idx))
+                .cloned(),
+            interval_length_m,
+            bridge_length_user: inputs
+                .bridge_lengths
+                .as_ref()
+                .and_then(|v| v.get(b_idx))
+                .copied()
+                .unwrap_or(0.0),
+            approach_xs,
+            departure_xs,
+            guide_banks_approach,
+            guide_banks_departure,
+            pier_widths: crate::solvers::pier_geometry::pier_width_user_for_bridge_index(
+                &inputs.bridge_pier_top_widths,
+                &inputs.bridge_pier_bottom_widths,
+                &inputs.bridge_pier_width_elevations,
+                &inputs.bridge_pier_width_values,
+                &inputs.bridge_pier_top_elevations,
+                &inputs.bridge_pier_base_elevations,
+                b_idx,
+            ),
+            pier_attachments: crate::solvers::pier_geometry::pier_attachments_user_for_bridge_index(
+                &inputs.bridge_pier_footing_top_elevations,
+                &inputs.bridge_pier_footing_widths,
+                &inputs.bridge_pier_footing_bottom_elevations,
+                &inputs.bridge_pier_nosing_lengths,
+                &inputs.bridge_pier_nosing_widths,
+                b_idx,
+            ),
+            deck_vents: crate::solvers::deck_vent_geometry::deck_vents_user_for_bridge_index(
+                &inputs.bridge_deck_vent_left_stations,
+                &inputs.bridge_deck_vent_right_stations,
+                &inputs.bridge_deck_vent_stations,
+                &inputs.bridge_deck_vent_widths,
+                &inputs.bridge_deck_vent_invert_elevations,
+                &inputs.bridge_deck_vent_soffit_elevations,
+                &inputs.bridge_deck_vent_discharge_coefficients,
+                &inputs.bridge_deck_vent_types,
+                b_idx,
+            ),
+            embankment_blocked: crate::solvers::bridge_roadway_compose::composed_embankment_blocked_for(
+                &inputs.bridge_composed_embankment_blocked,
+                b_idx,
+            ),
+        },
     )
 }
 
