@@ -52,31 +52,30 @@ fn skew_offset_inputs(
     skew_deg: f64,
     pier_opening_stations: Option<Vec<f64>>,
 ) -> SteadyInputs {
-    SteadyInputs {
-        cross_sections: vec![approach_xs(100.0), approach_xs(0.0)],
-        flow_rate: 15.0,
-        num_slices: Some(50),
-        regime: 0,
-        downstream_wsel: Some(3.0),
-        bridge_stations: Some(vec![50.0]),
-        bridge_low_chords: Some(vec![5.0]),
-        bridge_high_chords: Some(vec![7.0]),
-        bridge_pier_widths: Some(vec![0.5]),
-        bridge_num_piers: Some(vec![2]),
-        bridge_pier_shapes: Some(vec![0]),
-        bridge_weir_coeffs: Some(vec![1.44]),
-        bridge_orifice_coeffs: Some(vec![0.5]),
-        bridge_low_flow_methods: Some(vec![1]),
-        bridge_deck_stations: Some(vec![vec![0.0, OPENING_WIDTH_M]]),
-        bridge_deck_low_elevations: Some(vec![vec![5.0, 5.0]]),
-        bridge_deck_high_elevations: Some(vec![vec![7.0, 7.0]]),
-        bridge_opening_reach_station_origins: opening_origin.map(|o| vec![o]),
-        bridge_skew_angles: Some(vec![skew_deg]),
-        bridge_pier_stations: pier_opening_stations.map(|v| vec![v]),
-        bridge_upstream_cross_sections: Some(vec![bu_face(52.0, 0.05)]),
-        bridge_downstream_cross_sections: Some(vec![bd_face(48.0, 0.0)]),
-        ..Default::default()
-    }
+    let mut inputs = SteadyInputs::default();
+    inputs.cross_sections = vec![approach_xs(100.0), approach_xs(0.0)];
+    inputs.flow_rate = 15.0;
+    inputs.num_slices = Some(50);
+    inputs.regime = 0;
+    inputs.downstream_wsel = Some(3.0);
+    inputs.bridge_stations = Some(vec![50.0]);
+    inputs.bridge_low_chords = Some(vec![5.0]);
+    inputs.bridge_high_chords = Some(vec![7.0]);
+    inputs.bridge_pier_widths = Some(vec![0.5]);
+    inputs.bridge_num_piers = Some(vec![2]);
+    inputs.bridge_pier_shapes = Some(vec![0]);
+    inputs.bridge_weir_coeffs = Some(vec![1.44]);
+    inputs.bridge_orifice_coeffs = Some(vec![0.5]);
+    inputs.bridge_low_flow_methods = Some(vec![1]);
+    inputs.bridge_deck_stations = Some(vec![vec![0.0, OPENING_WIDTH_M]]);
+    inputs.bridge_deck_low_elevations = Some(vec![vec![5.0, 5.0]]);
+    inputs.bridge_deck_high_elevations = Some(vec![vec![7.0, 7.0]]);
+    inputs.bridge_opening_reach_station_origins = opening_origin.map(|o| vec![o]);
+    inputs.bridge_skew_angles = Some(vec![skew_deg]);
+    inputs.bridge_pier_stations = pier_opening_stations.map(|v| vec![v]);
+    inputs.bridge_upstream_cross_sections = Some(vec![bu_face(52.0, 0.05)]);
+    inputs.bridge_downstream_cross_sections = Some(vec![bd_face(48.0, 0.0)]);
+    inputs
 }
 
 fn face_geometry_for(inputs: &SteadyInputs) -> stream1d::solvers::bridge_interior::BridgeFaceSolveGeometry {
@@ -249,20 +248,18 @@ fn offset_origin_equivalent_pier_reach_position_matches_headwater() {
 #[test]
 fn skew_offset_validation_passes_when_opening_inside_parent_bu() {
     // Deck-only span: opening 20–35 → reach 115–130 inside BU x 110–140 (no pier extent in validation).
-    let inputs = SteadyInputs {
-        cross_sections: vec![approach_xs(100.0), approach_xs(0.0)],
-        flow_rate: 15.0,
-        bridge_stations: Some(vec![50.0]),
-        bridge_low_chords: Some(vec![5.0]),
-        bridge_high_chords: Some(vec![7.0]),
-        bridge_deck_stations: Some(vec![vec![20.0, 35.0]]),
-        bridge_deck_low_elevations: Some(vec![vec![5.0, 5.0]]),
-        bridge_deck_high_elevations: Some(vec![vec![7.0, 7.0]]),
-        bridge_opening_reach_station_origins: Some(vec![ORIGIN_OFFSET_M]),
-        bridge_skew_angles: Some(vec![SKEW_DEG]),
-        bridge_upstream_cross_sections: Some(vec![bu_face(52.0, 0.05)]),
-        ..Default::default()
-    };
+    let mut inputs = SteadyInputs::default();
+    inputs.cross_sections = vec![approach_xs(100.0), approach_xs(0.0)];
+    inputs.flow_rate = 15.0;
+    inputs.bridge_stations = Some(vec![50.0]);
+    inputs.bridge_low_chords = Some(vec![5.0]);
+    inputs.bridge_high_chords = Some(vec![7.0]);
+    inputs.bridge_deck_stations = Some(vec![vec![20.0, 35.0]]);
+    inputs.bridge_deck_low_elevations = Some(vec![vec![5.0, 5.0]]);
+    inputs.bridge_deck_high_elevations = Some(vec![vec![7.0, 7.0]]);
+    inputs.bridge_opening_reach_station_origins = Some(vec![ORIGIN_OFFSET_M]);
+    inputs.bridge_skew_angles = Some(vec![SKEW_DEG]);
+    inputs.bridge_upstream_cross_sections = Some(vec![bu_face(52.0, 0.05)]);
     let result = validate_steady_inputs(&inputs);
     assert!(
         result.warnings.is_empty(),

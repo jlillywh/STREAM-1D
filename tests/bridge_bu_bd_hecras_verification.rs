@@ -86,38 +86,37 @@ fn yarnell_reach_inputs(
     low_flow_method: i32,
     use_explicit_faces: bool,
 ) -> SteadyInputs {
-    SteadyInputs {
-        cross_sections: vec![
-            channel_xs(200.0, 0.2, 10.0),
-            channel_xs(100.0, 0.1, 10.0),
-            channel_xs(0.0, 0.0, 10.0),
-        ],
-        flow_rate: 15.0,
-        num_slices: Some(50),
-        regime: 0,
-        downstream_wsel: Some(3.0),
-        bridge_stations: Some(vec![50.0]),
-        bridge_low_chords: Some(vec![5.0]),
-        bridge_high_chords: Some(vec![7.0]),
-        bridge_pier_widths: Some(vec![0.5]),
-        bridge_num_piers: Some(vec![2]),
-        bridge_pier_shapes: Some(vec![0]),
-        bridge_weir_coeffs: Some(vec![1.44]),
-        bridge_orifice_coeffs: Some(vec![0.5]),
-        bridge_low_flow_methods: Some(vec![low_flow_method]),
-        bridge_upstream_cross_sections: if use_explicit_faces {
-            Some(vec![bu])
-        } else {
-            None
-        },
-        bridge_downstream_cross_sections: if use_explicit_faces {
-            Some(vec![bd])
-        } else {
-            None
-        },
-        bridge_internal_cross_sections: internal.map(|v| vec![v]),
-        ..Default::default()
-    }
+    let mut inputs = SteadyInputs::default();
+    inputs.cross_sections = vec![
+        channel_xs(200.0, 0.2, 10.0),
+        channel_xs(100.0, 0.1, 10.0),
+        channel_xs(0.0, 0.0, 10.0),
+    ];
+    inputs.flow_rate = 15.0;
+    inputs.num_slices = Some(50);
+    inputs.regime = 0;
+    inputs.downstream_wsel = Some(3.0);
+    inputs.bridge_stations = Some(vec![50.0]);
+    inputs.bridge_low_chords = Some(vec![5.0]);
+    inputs.bridge_high_chords = Some(vec![7.0]);
+    inputs.bridge_pier_widths = Some(vec![0.5]);
+    inputs.bridge_num_piers = Some(vec![2]);
+    inputs.bridge_pier_shapes = Some(vec![0]);
+    inputs.bridge_weir_coeffs = Some(vec![1.44]);
+    inputs.bridge_orifice_coeffs = Some(vec![0.5]);
+    inputs.bridge_low_flow_methods = Some(vec![low_flow_method]);
+    inputs.bridge_upstream_cross_sections = if use_explicit_faces {
+        Some(vec![bu])
+    } else {
+        None
+    };
+    inputs.bridge_downstream_cross_sections = if use_explicit_faces {
+        Some(vec![bd])
+    } else {
+        None
+    };
+    inputs.bridge_internal_cross_sections = internal.map(|v| vec![v]);
+    inputs
 }
 
 #[test]
