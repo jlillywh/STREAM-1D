@@ -156,6 +156,15 @@ pub struct SteadyInputs {
     /// Reach length through each bridge for friction (user units). 0 uses interval spacing.
     #[serde(default)]
     pub bridge_lengths: Option<Vec<f64>>,
+    /// Friction weighting per bridge: 0 = opening only (default), 1 = HEC-RAS approach + opening + departure.
+    #[serde(default)]
+    pub bridge_friction_weighting: Option<Vec<i32>>,
+    /// Override approach friction length per bridge (user units). 0 = auto from river stations.
+    #[serde(default)]
+    pub bridge_approach_friction_lengths: Option<Vec<f64>>,
+    /// Override departure friction length per bridge (user units). 0 = auto from river stations.
+    #[serde(default)]
+    pub bridge_departure_friction_lengths: Option<Vec<f64>>,
     /// WSPRO contracted-opening discharge coefficient C per bridge (typical 0.7–0.9).
     #[serde(default)]
     pub bridge_wspro_coeffs: Option<Vec<f64>>,
@@ -930,6 +939,26 @@ fn bridge_face_geometry_for(
                 .and_then(|v| v.get(b_idx))
                 .copied()
                 .unwrap_or(0.0),
+            friction_weighting: crate::solvers::bridge::BridgeFrictionWeighting::from_i32(
+                inputs
+                    .bridge_friction_weighting
+                    .as_ref()
+                    .and_then(|v| v.get(b_idx))
+                    .copied()
+                    .unwrap_or(0),
+            ),
+            approach_friction_length_user: inputs
+                .bridge_approach_friction_lengths
+                .as_ref()
+                .and_then(|v| v.get(b_idx))
+                .copied()
+                .unwrap_or(0.0),
+            departure_friction_length_user: inputs
+                .bridge_departure_friction_lengths
+                .as_ref()
+                .and_then(|v| v.get(b_idx))
+                .copied()
+                .unwrap_or(0.0),
             approach_xs,
             departure_xs,
             guide_banks_approach,
@@ -1030,6 +1059,26 @@ fn bridge_coupling_for(inputs: &SteadyInputs, b_idx: usize) -> crate::solvers::b
             .and_then(|v| v.get(b_idx))
             .copied()
             .unwrap_or(0.98),
+        friction_weighting: crate::solvers::bridge::BridgeFrictionWeighting::from_i32(
+            inputs
+                .bridge_friction_weighting
+                .as_ref()
+                .and_then(|v| v.get(b_idx))
+                .copied()
+                .unwrap_or(0),
+        ),
+        approach_friction_length: inputs
+            .bridge_approach_friction_lengths
+            .as_ref()
+            .and_then(|v| v.get(b_idx))
+            .copied()
+            .unwrap_or(0.0),
+        departure_friction_length: inputs
+            .bridge_departure_friction_lengths
+            .as_ref()
+            .and_then(|v| v.get(b_idx))
+            .copied()
+            .unwrap_or(0.0),
     }
 }
 

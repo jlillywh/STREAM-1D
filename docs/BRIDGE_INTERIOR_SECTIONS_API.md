@@ -281,7 +281,7 @@ Geometry tables for the bridge solve are regenerated from BU/BD polylines when e
 | **Energy / WSPRO** | ✓ | ✓ | Approach on BU; departure on BD; **contracted opening** = min obstructed area at opening elevation |
 | **Pressure / orifice** | ✓ | ✓ | Net opening at low chord = **min(BU, BD)**; sluice opening height = min vertical gap below deck |
 | **Weir overtopping** | ✓ | — | Upstream energy grade on BU; effective weir length from deck profile |
-| **Friction** ($h_f = L (Q/\bar K)^2$) | ✓ | ✓ | $L$ = sum of reach segments BU → internal cuts → BD; $\bar K = (K_{BU} + K_{BD})/2$ at respective WSELs; skew applies $L' = L/\cos\theta$ |
+| **Friction** ($h_f = L (Q/\bar K)^2$) | ✓ | ✓ | Default: $L$ = BU → internal → BD opening only; optional HEC-RAS three-segment weighting (API v30, §4.2 below) |
 
 ## Host application mapping (e.g. stream1d.com / HEC-RAS import)
 
@@ -335,6 +335,48 @@ Lateral limits at each WSEL come from `lateral_limits_at_wsel` (polylines over t
 
 Omitting guide banks preserves pre-v24 BU/BD contraction behavior.
 
+## Friction weighting (API v30, HEC-RAS §4.2)
+
+Energy and WSPRO low-flow friction can use the bridge opening only (HEC-RAS default) or HEC-RAS three reach segments.
+
+### Parameter meaning
+
+| Question | Answer |
+|----------|--------|
+| **What does this control?** | How much Manning friction ($h_f = L (Q/\bar K)^2$) is applied in **energy** (`bridge_low_flow_methods: 3`), **WSPRO** (`4`), and **Class B energy fallback** — not Yarnell, Class C momentum, or high-flow weir paths. |
+| **HEC-RAS default** | Omit `bridge_friction_weighting` or set `0`. Matches HEC-RAS when the bridge model does **not** enable *“Weight friction between the approach/departure sections and the bridge opening”* — friction uses the **opening** reach only (BU → internal → BD). |
+| **When to use `1`** | Set when the HEC-RAS bridge has that friction-weighting option **enabled**. Adds approach→BU and BD→departure friction using approach/departure geometry (wider channel, different $n$, guide banks, etc.). |
+| **Approach / departure cuts** | Resolved from `bridge_approach_cross_sections` / `bridge_departure_cross_sections`, reach-station lookup, or the nearest densified node upstream of BU / downstream of BD. Required for meaningful segment lengths when weighting is `1`. |
+| **Length overrides** | `bridge_approach_friction_lengths[b]` / `bridge_departure_friction_lengths[b]` (or rating-curve keys) in **user units**. `0` = auto: $|station(approach) - station(BU)|$ and $|station(BD) - station(departure)|$. Positive values replace auto spacing. |
+| **Not the same as** | `coeff_contraction` / `coeff_expansion` (velocity-head loss), `guide_banks` (area clipping), or `bridge_lengths` (legacy opening length when BU/BD stations coincide). |
+
+| Field | Steady / unsteady | Rating curve |
+|-------|-------------------|--------------|
+| Weighting | `bridge_friction_weighting[b]` | `friction_weighting` |
+| Approach $L$ override | `bridge_approach_friction_lengths[b]` | `approach_friction_length` |
+| Departure $L$ override | `bridge_departure_friction_lengths[b]` | `departure_friction_length` |
+
+| `bridge_friction_weighting` | Behavior |
+|-----------------------------|----------|
+| omit or `0` (default) | Opening friction only: $L_{open}$ = BU → internal → BD (same as pre-v30) |
+| `1` | HEC-RAS segments: $h_f = h_{ap\to BU} + h_{BU\to BD} + h_{BD\to dep}$ |
+
+**Auto segment lengths** (when override is `0`):
+
+- $L_{open}$ — `resolve_bridge_friction_length_metric` (face stations, interval, or `bridge_lengths`)
+- $L_{approach}$ — $|station(approach) - station(BU)|$ on resolved approach cut
+- $L_{departure}$ — $|station(BD) - station(departure)|$ on resolved departure cut
+
+**Conveyance pairs** (energy / WSPRO, weighting `1`):
+
+| Segment | $K_1$ | $K_2$ |
+|---------|-------|-------|
+| Approach → BU | $K_{approach}(WSEL_{up})$ | $K_{BU}$ |
+| BU → BD | $K_{BD}(TW)$ | $K_{BU}$ |
+| BD → departure | $K_{departure}(TW)$ | $K_{BD}$ |
+
+Skew applies $L' = L/\cos\theta$ to each segment. **Energy / WSPRO** and **Class B energy fallback** (including high-flow energy) use `bridge_energy_friction_loss`. With interior cuts, opening friction is split BU → internal → BD with interpolated WSEL and conveyance at each node. **Class B** uses the momentum path only when weighting is `0` and method is auto/momentum; `bridge_friction_weighting: 1` or methods `3`/`4` route Class B through energy/WSPRO so approach/departure friction applies. Yarnell and Class C momentum are unchanged.
+
 ### Guide banks vs `coeff_contraction` / WSPRO
 
 Three separate knobs — not interchangeable:
@@ -347,7 +389,7 @@ Three separate knobs — not interchangeable:
 
 Pick energy or WSPRO for the loss formula; add guide banks only when the RAS model has them. Without banks, $A_1$ is BU obstructed area (legacy). With banks, $A_1$ is guided approach active area — $K_c$ and $C$ are unchanged. Tune losses with $K_c$ / $C$, not fake toe stations. Banks belong on approach/departure cuts, not BU/BD. Yarnell ignores guide banks.
 
-Example fixture: [`bridge_guide_bank_contraction.json`](../verification/fixtures/bridge_guide_bank_contraction.json). Formulas: [`equations.md`](reference/equations.md) §6C.
+Example fixtures: [`bridge_friction_weighting_hecras.json`](../verification/fixtures/bridge_friction_weighting_hecras.json) (weighting 0 vs 1 at same $Q$), [`bridge_guide_bank_contraction.json`](../verification/fixtures/bridge_guide_bank_contraction.json) (guide banks). Formulas: [`equations.md`](reference/equations.md) §6C.
 
 ## Tests
 

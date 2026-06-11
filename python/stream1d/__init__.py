@@ -120,6 +120,9 @@ class SteadyInputs:
         bridge_low_flow_methods: Optional[List[int]] = None,
         bridge_high_flow_methods: Optional[List[int]] = None,
         bridge_lengths: Optional[List[float]] = None,
+        bridge_friction_weighting: Optional[List[int]] = None,
+        bridge_approach_friction_lengths: Optional[List[float]] = None,
+        bridge_departure_friction_lengths: Optional[List[float]] = None,
         bridge_wspro_coeffs: Optional[List[float]] = None,
         bridge_pressure_flow_coeffs_inlet: Optional[List[float]] = None,
         bridge_max_weir_submergence: Optional[List[float]] = None,
@@ -219,6 +222,9 @@ class SteadyInputs:
         self.bridge_low_flow_methods = bridge_low_flow_methods or []
         self.bridge_high_flow_methods = bridge_high_flow_methods or []
         self.bridge_lengths = bridge_lengths or []
+        self.bridge_friction_weighting = bridge_friction_weighting or []
+        self.bridge_approach_friction_lengths = bridge_approach_friction_lengths or []
+        self.bridge_departure_friction_lengths = bridge_departure_friction_lengths or []
         self.bridge_wspro_coeffs = bridge_wspro_coeffs or []
         self.bridge_pressure_flow_coeffs_inlet = bridge_pressure_flow_coeffs_inlet or []
         self.bridge_max_weir_submergence = bridge_max_weir_submergence or []
@@ -318,6 +324,9 @@ class SteadyInputs:
             'bridge_low_flow_methods': self.bridge_low_flow_methods,
             'bridge_high_flow_methods': self.bridge_high_flow_methods,
             'bridge_lengths': self.bridge_lengths,
+            'bridge_friction_weighting': self.bridge_friction_weighting,
+            'bridge_approach_friction_lengths': self.bridge_approach_friction_lengths,
+            'bridge_departure_friction_lengths': self.bridge_departure_friction_lengths,
             'bridge_wspro_coeffs': self.bridge_wspro_coeffs,
             'bridge_pressure_flow_coeffs_inlet': self.bridge_pressure_flow_coeffs_inlet,
             'bridge_max_weir_submergence': self.bridge_max_weir_submergence,
@@ -434,6 +443,9 @@ class UnsteadyInputs:
         bridge_low_flow_methods: Optional[List[int]] = None,
         bridge_high_flow_methods: Optional[List[int]] = None,
         bridge_lengths: Optional[List[float]] = None,
+        bridge_friction_weighting: Optional[List[int]] = None,
+        bridge_approach_friction_lengths: Optional[List[float]] = None,
+        bridge_departure_friction_lengths: Optional[List[float]] = None,
         bridge_wspro_coeffs: Optional[List[float]] = None,
         bridge_pressure_flow_coeffs_inlet: Optional[List[float]] = None,
         bridge_max_weir_submergence: Optional[List[float]] = None,
@@ -524,6 +536,9 @@ class UnsteadyInputs:
         self.bridge_low_flow_methods = bridge_low_flow_methods or []
         self.bridge_high_flow_methods = bridge_high_flow_methods or []
         self.bridge_lengths = bridge_lengths or []
+        self.bridge_friction_weighting = bridge_friction_weighting or []
+        self.bridge_approach_friction_lengths = bridge_approach_friction_lengths or []
+        self.bridge_departure_friction_lengths = bridge_departure_friction_lengths or []
         self.bridge_wspro_coeffs = bridge_wspro_coeffs or []
         self.bridge_pressure_flow_coeffs_inlet = bridge_pressure_flow_coeffs_inlet or []
         self.bridge_max_weir_submergence = bridge_max_weir_submergence or []
@@ -616,6 +631,9 @@ class UnsteadyInputs:
             'bridge_low_flow_methods': self.bridge_low_flow_methods,
             'bridge_high_flow_methods': self.bridge_high_flow_methods,
             'bridge_lengths': self.bridge_lengths,
+            'bridge_friction_weighting': self.bridge_friction_weighting,
+            'bridge_approach_friction_lengths': self.bridge_approach_friction_lengths,
+            'bridge_departure_friction_lengths': self.bridge_departure_friction_lengths,
             'bridge_wspro_coeffs': self.bridge_wspro_coeffs,
             'bridge_pressure_flow_coeffs_inlet': self.bridge_pressure_flow_coeffs_inlet,
             'bridge_max_weir_submergence': self.bridge_max_weir_submergence,

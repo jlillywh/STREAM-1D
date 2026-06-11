@@ -100,6 +100,15 @@ pub struct UnsteadyBridgeInputs {
     pub bridge_high_flow_methods: Option<Vec<i32>>,
     #[serde(default)]
     pub bridge_lengths: Option<Vec<f64>>,
+    /// Friction weighting per bridge: 0 = opening only (default), 1 = HEC-RAS approach + opening + departure.
+    #[serde(default)]
+    pub bridge_friction_weighting: Option<Vec<i32>>,
+    /// Override approach friction length per bridge (user units). 0 = auto from river stations.
+    #[serde(default)]
+    pub bridge_approach_friction_lengths: Option<Vec<f64>>,
+    /// Override departure friction length per bridge (user units). 0 = auto from river stations.
+    #[serde(default)]
+    pub bridge_departure_friction_lengths: Option<Vec<f64>>,
     #[serde(default)]
     pub bridge_wspro_coeffs: Option<Vec<f64>>,
     #[serde(default)]
@@ -354,6 +363,25 @@ fn bridge_face_geometry_for(
                 .and_then(|v| v.get(b_idx))
                 .copied()
                 .unwrap_or(0.0),
+            friction_weighting: crate::solvers::bridge::BridgeFrictionWeighting::from_i32(
+                b.bridge_friction_weighting
+                    .as_ref()
+                    .and_then(|v| v.get(b_idx))
+                    .copied()
+                    .unwrap_or(0),
+            ),
+            approach_friction_length_user: b
+                .bridge_approach_friction_lengths
+                .as_ref()
+                .and_then(|v| v.get(b_idx))
+                .copied()
+                .unwrap_or(0.0),
+            departure_friction_length_user: b
+                .bridge_departure_friction_lengths
+                .as_ref()
+                .and_then(|v| v.get(b_idx))
+                .copied()
+                .unwrap_or(0.0),
             approach_xs,
             departure_xs,
             guide_banks_approach,
@@ -497,6 +525,29 @@ fn bridge_coupling_for(inputs: &UnsteadyInputs, b_idx: usize) -> crate::solvers:
             .and_then(|v| v.get(b_idx))
             .copied()
             .unwrap_or(0.98),
+        friction_weighting: crate::solvers::bridge::BridgeFrictionWeighting::from_i32(
+            inputs
+                .bridge
+                .bridge_friction_weighting
+                .as_ref()
+                .and_then(|v| v.get(b_idx))
+                .copied()
+                .unwrap_or(0),
+        ),
+        approach_friction_length: inputs
+            .bridge
+            .bridge_approach_friction_lengths
+            .as_ref()
+            .and_then(|v| v.get(b_idx))
+            .copied()
+            .unwrap_or(0.0),
+        departure_friction_length: inputs
+            .bridge
+            .bridge_departure_friction_lengths
+            .as_ref()
+            .and_then(|v| v.get(b_idx))
+            .copied()
+            .unwrap_or(0.0),
     }
 }
 
@@ -1467,6 +1518,9 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
             bridge_low_flow_methods: inputs.bridge.bridge_low_flow_methods.clone(),
             bridge_high_flow_methods: inputs.bridge.bridge_high_flow_methods.clone(),
             bridge_lengths: inputs.bridge.bridge_lengths.clone(),
+            bridge_friction_weighting: inputs.bridge.bridge_friction_weighting.clone(),
+            bridge_approach_friction_lengths: inputs.bridge.bridge_approach_friction_lengths.clone(),
+            bridge_departure_friction_lengths: inputs.bridge.bridge_departure_friction_lengths.clone(),
             bridge_wspro_coeffs: inputs.bridge.bridge_wspro_coeffs.clone(),
             bridge_pressure_flow_coeffs_inlet: inputs
                 .bridge
