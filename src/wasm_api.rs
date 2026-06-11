@@ -3,7 +3,7 @@
 use serde::Serialize;
 
 /// API contract version — increment when SteadyInputs / SteadyResult fields change.
-pub const API_VERSION: u32 = 30;
+pub const API_VERSION: u32 = 31;
 
 /// Engine package version (keep in sync with `Cargo.toml`).
 pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -304,6 +304,7 @@ pub fn build_api_metadata() -> WasmApiMetadata {
                 "z_up".to_string(),
                 "z_down".to_string(),
                 "tw_wsel".to_string(),
+                "tw_wsel_reverse".to_string(),
                 "units".to_string(),
                 "pier_width".to_string(),
                 "num_piers".to_string(),
@@ -398,7 +399,7 @@ mod tests {
     fn test_api_metadata_serializes() {
         let json = serde_json::to_string(&build_api_metadata()).unwrap();
         assert!(json.contains("culvert_inlet_types"));
-        assert!(json.contains("\"api_version\":30"));
+        assert!(json.contains("\"api_version\":31"));
         assert!(json.contains("structure_coupling_orders"));
     }
 

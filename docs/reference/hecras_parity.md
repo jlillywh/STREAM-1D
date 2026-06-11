@@ -18,8 +18,8 @@ The hosted product at [stream1d.com](https://stream1d.com) provides cross-sectio
 | **Main stem + tributary (steady)** | One tributary joining one main channel at a shared WSEL node — main stem above/below the junction plus tributary inflow (`tributary_cross_sections`, `tributary_flow_rate`, `junction_main_station`); subcritical only |
 | **Culverts (steady, main stem)** | Circular, box, arch, ConSpan, **pipe-arch**, **elliptical**, and **horseshoe**; FHWA-style inlet/outlet control with signed barrel slope (adverse grade supported). Explicit inlet types, invert elevations, roadway overtopping, composite bottom roughness, sediment blockage, control reporting (`inlet` / `outlet` / `overtopping`), extended diagnostics (inlet/outlet HW, barrel vs weir $Q$, barrel depth/velocity/Froude), `computeCulvertRatingCurve`, barrel **skew** (`culvert_skew_angles`), **active barrel count** (`culvert_active_barrels`), **per-barrel geometry** (`culvert_barrel_spans` / `culvert_barrel_rises`) with capacity-based flow split, and **supercritical culvert routing** (`regime` 1/2) via headwater inversion |
 | **Culverts (unsteady, single reach)** | Same culvert input fields as steady on `UnsteadyInputs`; **iterated post-step headwater coupling** (tolerance-based convergence, up to 5 passes per step); returns culvert diagnostics each time step |
-| **Bridges (steady, main stem)** | HEC-RAS **Class A/B/C** low-flow (`bridge_low_flow_methods`: Yarnell, momentum, energy, WSPRO); high-flow **pressure** (sluice-gate / submerged orifice) and **Bradley weir** overtopping with submergence fallback to energy; **piecewise deck profiles** (`bridge_deck_*`); **per-side abutments** (`bridge_abutment_left_*` / `bridge_abutment_right_*`, API v21); **BU/BD interior cuts** (`bridge_upstream_cross_sections`, `bridge_downstream_cross_sections`, `bridge_internal_cross_sections`, `bridge_opening_reach_station_origins`, API v22); **guide banks** (v24); **skew** (`bridge_skew_angles`); **pier spacing** (`bridge_pier_stations`); **tapered pier widths** (v27); **pier footings and nosing** (v28); HEC-RAS **ineffective flow** (`bridge_ineffective_*` and `ineffective_flow_areas` on BU/BD cuts); **supercritical tailwater coupling** (`regime` 1/2); `computeBridgeRatingCurve` |
-| **Bridges (unsteady, single reach)** | Same bridge input fields as steady on `UnsteadyInputs` (including BU/BD interior cuts, API v22); BU/BD reach layout densification; **iterated post-step headwater coupling** (up to 5 passes per step); returns per-step bridge flow regime, upstream/downstream WSEL, and head-loss diagnostics |
+| **Bridges (steady, main stem)** | HEC-RAS **Class A/B/C** low-flow (`bridge_low_flow_methods`: Yarnell, momentum, energy, WSPRO); high-flow **pressure** (sluice-gate / submerged orifice) and **Bradley weir** overtopping with submergence fallback to energy; **piecewise deck profiles** (`bridge_deck_*`); **per-side abutments** (`bridge_abutment_left_*` / `bridge_abutment_right_*`, API v21); **BU/BD interior cuts** (`bridge_upstream_cross_sections`, `bridge_downstream_cross_sections`, `bridge_internal_cross_sections`, `bridge_opening_reach_station_origins`, API v22); **guide banks** (v24); **skew** (`bridge_skew_angles`); **pier spacing** (`bridge_pier_stations`); **tapered pier widths** (v27); **pier footings and nosing** (v28); HEC-RAS **ineffective flow** (`bridge_ineffective_*` and `ineffective_flow_areas` on BU/BD cuts); **supercritical tailwater coupling** (`regime` 1/2); **bi-directional** `computeBridgeRatingCurve` and negative `flow_rate` (v31) |
+| **Bridges (unsteady, single reach)** | Same bridge input fields as steady on `UnsteadyInputs` (including BU/BD interior cuts, API v22); BU/BD reach layout densification; **iterated post-step headwater coupling** (up to 5 passes per step); **direction-aware mirror when section `Q < 0`** (v31); returns per-step bridge flow regime, upstream/downstream WSEL, and head-loss diagnostics |
 | **Unsteady flow** | Preissmann Saint-Venant on a **single reach**; upstream $Q(t)$ and downstream WSEL($t$) hydrographs; optional **inline culverts** and **inline bridges** (see rows above) |
 | **Outputs** | WSEL, critical WSEL, velocity, area, top width, Froude number, energy grade slope (+ `tributary_wsel`, `tributary_velocity`, `tributary_froude` when a junction is modeled; + `culvert_control_types` and culvert diagnostic arrays when culverts are modeled; + bridge flow regime and head-loss arrays on **`solve_steady`** and **`solve_unsteady`** when bridges are modeled) |
 
@@ -109,6 +109,31 @@ Canonical list: [`pressure_weir_combined_flow_audit.md` § Intentional remaining
 | **Out of scope** | Standalone weirs, multi-reach unsteady bridges | Full RAS | Product scope |
 
 **Phase 4.2 closed:** segment-wise weir onset, low/high-flow reconcile, segment submergence cap, solver-derived `flow_regime`.
+
+### Reverse flow / bi-directional rating (Phase 4.3)
+
+**API v31:** bi-directional `computeBridgeRatingCurve` (`tw_wsel_reverse`), mirrored bridge coupling, steady negative `flow_rate` (regime 0/1/2). Spec: [`bridge_reverse_flow_rating.md`](../development/bridge_reverse_flow_rating.md).
+
+| Capability | HEC-RAS | STREAM-1D (v31) |
+|------------|---------|-----------------|
+| Rating curve negative $Q$ | Unsteady / special table workflows | Mirror solve; `tw_wsel_reverse` optional |
+| Steady reach $Q < 0$ | Limited / unsteady-focused | Reversed sweeps + bridge mirror |
+| Unsteady section $Q < 0$ at bridge | Supported in network solve | Post-step mirror coupling (API v31) |
+
+**Limitations (incomplete or approximate):**
+
+| Topic | STREAM-1D (v31) |
+|-------|-----------------|
+| **Culvert reversal** | Not modeled — culvert post-step coupling assumes forward `Q` |
+| **Network / junction reversal** | Single reach + optional one tributary junction (steady); not validated for negative reach `flow_rate` |
+| **Infer direction from stages** | Host must supply signed `q_values` or section `Q`; inverted WSEL gradient does not flip bridge direction |
+| **Rating `Q = 0`** | Omitted from `computeBridgeRatingCurve` output |
+| **Asymmetric BU/BD geometry** | Mirror swap is an approximation when approach ≠ departure cuts or deck slopes differ |
+| **Reverse high-flow weir / deck vents** | Not separately benchmarked vs HEC-RAS |
+| **HEC-RAS reverse rating table** | No automatic import — set `tw_wsel_reverse` (or reuse `tw_wsel`) in the host app |
+| **Unsteady rapid reversal** | May need smaller `dt`; explicit structure coupling (≤5 passes per step) |
+
+Full spec: [`bridge_reverse_flow_rating.md`](../development/bridge_reverse_flow_rating.md).
 
 ### Practical guidance
 

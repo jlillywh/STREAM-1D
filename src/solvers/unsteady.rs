@@ -997,6 +997,7 @@ fn apply_structure_internal_boundaries(
     }
 
     let step_tol = culvert_step_tolerance(raw_units);
+    let dm = densified_tables.len();
     let mut culvert_results = if num_culverts > 0 {
         empty_culvert_step_results(num_culverts)
     } else {
@@ -1013,16 +1014,8 @@ fn apply_structure_internal_boundaries(
 
         for structure in &coupled {
             let i = structure.interval_i;
-            let tw_wsel_user = if raw_units == UnitSystem::USCustomary {
-                y_metric[i + 1] / FT_TO_M
-            } else {
-                y_metric[i + 1]
-            };
-            let prev_hw_user = if raw_units == UnitSystem::USCustomary {
-                y_metric[i] / FT_TO_M
-            } else {
-                y_metric[i]
-            };
+            let tw_wsel_user = wsel_metric_to_user(y_metric[i + 1], raw_units);
+            let prev_hw_user = wsel_metric_to_user(y_metric[i], raw_units);
 
             match structure.kind {
                 StructureKind::Culvert => {
@@ -1048,27 +1041,21 @@ fn apply_structure_internal_boundaries(
                     culvert_results[structure.idx] = result;
                 }
                 StructureKind::Bridge => {
-                    let interval_length_m = densified_stations[i] - densified_stations[i + 1];
-                    let result = converge_bridge_headwater(
+                    let (result, update_face, delta, updated_user) = couple_bridge_interval(
                         inputs,
                         structure.idx,
                         i,
+                        dm,
                         raw_units,
                         densified_stations,
                         densified_tables,
                         densified_xs,
                         densified_z_mins,
+                        y_metric,
                         q_metric,
-                        tw_wsel_user,
-                        prev_hw_user,
-                        interval_length_m,
                     );
-                    max_delta = max_delta.max((result.wsel_up - prev_hw_user).abs());
-                    y_metric[i] = if raw_units == UnitSystem::USCustomary {
-                        result.wsel_up * FT_TO_M
-                    } else {
-                        result.wsel_up
-                    };
+                    max_delta = max_delta.max(delta);
+                    y_metric[update_face] = wsel_user_to_metric(updated_user, raw_units);
                     bridge_results[structure.idx] = result;
                 }
             }
@@ -1095,6 +1082,72 @@ fn apply_structure_internal_boundaries(
 
 fn bridge_hw_tolerance(raw_units: UnitSystem) -> f64 {
     culvert_hw_tolerance(raw_units)
+}
+
+fn wsel_metric_to_user(y_metric: f64, raw_units: UnitSystem) -> f64 {
+    if raw_units == UnitSystem::USCustomary {
+        y_metric / FT_TO_M
+    } else {
+        y_metric
+    }
+}
+
+fn wsel_user_to_metric(y_user: f64, raw_units: UnitSystem) -> f64 {
+    if raw_units == UnitSystem::USCustomary {
+        y_user * FT_TO_M
+    } else {
+        y_user
+    }
+}
+
+fn q_metric_to_user(q_metric: f64, raw_units: UnitSystem) -> f64 {
+    if raw_units == UnitSystem::USCustomary {
+        q_metric / crate::utils::CFS_TO_CMS
+    } else {
+        q_metric
+    }
+}
+
+/// Which reach faces supply tailwater vs receive solved headwater for post-step bridge coupling.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+struct BridgeIntervalCoupling {
+    tw_face: usize,
+    hw_face: usize,
+    /// `Q < 0` and headwater sits on the reach downstream BC node — solve TW at BU, hold BD fixed.
+    invert_tailwater: bool,
+}
+
+fn bridge_interval_coupling(i: usize, q_user: f64, dm: usize) -> BridgeIntervalCoupling {
+    let reverses = q_user < -1e-12;
+    if reverses {
+        if i + 1 == dm - 1 {
+            BridgeIntervalCoupling {
+                tw_face: i,
+                hw_face: i + 1,
+                invert_tailwater: true,
+            }
+        } else {
+            BridgeIntervalCoupling {
+                tw_face: i,
+                hw_face: i + 1,
+                invert_tailwater: false,
+            }
+        }
+    } else {
+        BridgeIntervalCoupling {
+            tw_face: i + 1,
+            hw_face: i,
+            invert_tailwater: false,
+        }
+    }
+}
+
+fn bridge_headwater_user(result: &crate::solvers::bridge::BridgeSolveResult, q_user: f64) -> f64 {
+    if q_user < -1e-12 {
+        result.wsel_down
+    } else {
+        result.wsel_up
+    }
 }
 
 fn converge_bridge_headwater(
@@ -1150,14 +1203,10 @@ fn converge_bridge_headwater(
         interval_length_m,
     );
 
-    let q_user = if raw_units == UnitSystem::USCustomary {
-        q_metric[i] / crate::utils::CFS_TO_CMS
-    } else {
-        q_metric[i]
-    };
+    let q_user = q_metric_to_user(q_metric[i], raw_units);
 
     let tol = bridge_hw_tolerance(raw_units);
-    let mut wsel_up_user = initial_hw;
+    let mut hw_user = initial_hw;
     let mut result = crate::solvers::bridge::solve_bridge_coupled(
         q_user,
         low_chord,
@@ -1200,12 +1249,142 @@ fn converge_bridge_headwater(
             deck_ref,
             Some(&face_geo.sections),
         );
-        if (result.wsel_up - wsel_up_user).abs() <= tol {
+        let hw_new = bridge_headwater_user(&result, q_user);
+        if (hw_new - hw_user).abs() <= tol {
             break;
         }
-        wsel_up_user = result.wsel_up;
+        hw_user = hw_new;
     }
     result
+}
+
+fn couple_bridge_interval(
+    inputs: &UnsteadyInputs,
+    b_idx: usize,
+    i: usize,
+    dm: usize,
+    raw_units: UnitSystem,
+    densified_stations: &[f64],
+    densified_tables: &[GeometryTable],
+    densified_xs: &[CrossSection],
+    densified_z_mins: &[f64],
+    y_metric: &[f64],
+    q_metric: &[f64],
+) -> (crate::solvers::bridge::BridgeSolveResult, usize, f64, f64) {
+    let q_user = q_metric_to_user(q_metric[i], raw_units);
+    let coupling = bridge_interval_coupling(i, q_user, dm);
+    let interval_length_m = densified_stations[i] - densified_stations[i + 1];
+    let prev_tw_user = wsel_metric_to_user(y_metric[coupling.tw_face], raw_units);
+    let prev_hw_user = wsel_metric_to_user(y_metric[coupling.hw_face], raw_units);
+
+    if coupling.invert_tailwater {
+        let b = &inputs.bridge;
+        let low_chord = b.bridge_low_chords.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0.0);
+        let high_chord = b.bridge_high_chords.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0.0);
+        let pier_width = b.bridge_pier_widths.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0.0);
+        let num_piers = b.bridge_num_piers.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0);
+        let pier_shape = b.bridge_pier_shapes.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0);
+        let weir_coeff = b
+            .bridge_weir_coeffs
+            .as_ref()
+            .and_then(|v| v.get(b_idx))
+            .copied()
+            .unwrap_or(if raw_units == UnitSystem::USCustomary {
+                2.6
+            } else {
+                1.44
+            });
+        let orifice_coeff = b
+            .bridge_orifice_coeffs
+            .as_ref()
+            .and_then(|v| v.get(b_idx))
+            .copied()
+            .unwrap_or(0.5);
+        let bridge_coupling = bridge_coupling_for(inputs, b_idx);
+        let deck = bridge_deck_profile_for(inputs, b_idx, raw_units);
+        let deck_ref = deck.as_ref();
+        let num_slices = inputs.num_slices.unwrap_or(100);
+        let face_geo = bridge_face_geometry_for(
+            inputs,
+            b_idx,
+            i,
+            raw_units,
+            num_slices,
+            densified_stations,
+            densified_tables,
+            densified_xs,
+            densified_z_mins,
+            interval_length_m,
+        );
+        let tw_user = crate::solvers::bridge::solve_bridge_tailwater(
+            q_user,
+            low_chord,
+            high_chord,
+            pier_width,
+            num_piers,
+            pier_shape,
+            weir_coeff,
+            orifice_coeff,
+            face_geo.z_down_user,
+            face_geo.z_up_user,
+            prev_hw_user,
+            raw_units,
+            &face_geo.table_up,
+            &face_geo.table_down,
+            &bridge_coupling,
+            interval_length_m,
+            deck_ref,
+            Some(&face_geo.sections),
+        );
+        let result = crate::solvers::bridge::solve_bridge_coupled(
+            q_user,
+            low_chord,
+            high_chord,
+            pier_width,
+            num_piers,
+            pier_shape,
+            weir_coeff,
+            orifice_coeff,
+            face_geo.z_down_user,
+            face_geo.z_up_user,
+            tw_user,
+            raw_units,
+            &face_geo.table_up,
+            &face_geo.table_down,
+            &bridge_coupling,
+            interval_length_m,
+            deck_ref,
+            Some(&face_geo.sections),
+        );
+        (
+            result,
+            coupling.tw_face,
+            (tw_user - prev_tw_user).abs(),
+            tw_user,
+        )
+    } else {
+        let result = converge_bridge_headwater(
+            inputs,
+            b_idx,
+            i,
+            raw_units,
+            densified_stations,
+            densified_tables,
+            densified_xs,
+            densified_z_mins,
+            q_metric,
+            prev_tw_user,
+            prev_hw_user,
+            interval_length_m,
+        );
+        let hw_user = bridge_headwater_user(&result, q_user);
+        (
+            result,
+            coupling.hw_face,
+            (hw_user - prev_hw_user).abs(),
+            hw_user,
+        )
+    }
 }
 
 /// Helper to compute numerical derivative of conveyance K with respect to elevation y.
@@ -2755,6 +2934,166 @@ mod tests {
         assert!(hl > 0.0, "expected positive pier head loss, got {hl}");
         assert!(hw > tw, "upstream bridge WSEL {hw} should exceed tailwater {tw}");
         assert!((hw - tw - hl).abs() < 1e-4);
+    }
+
+    #[test]
+    fn test_unsteady_inline_bridge_negative_q() {
+        let xs1000 = CrossSection {
+            station: 1000.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![6.0, 1.0, 1.0, 6.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let xs500 = CrossSection {
+            station: 500.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![5.5, 0.5, 0.5, 5.5],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let xs0 = CrossSection {
+            station: 0.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![5.0, 0.0, 0.0, 5.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+
+        let base = UnsteadyInputs {
+            cross_sections: vec![xs1000.clone(), xs500.clone(), xs0.clone()],
+            initial_wsel: vec![2.5, 2.0, 1.5],
+            initial_q: vec![15.0, 15.0, 15.0],
+            dt: 60.0,
+            num_steps: 3,
+            upstream_q_hydrograph: vec![15.0; 3],
+            downstream_wsel_hydrograph: vec![1.5; 3],
+            theta: Some(0.6),
+            num_slices: Some(50),
+            max_spacing: None,
+            densify_reach_modifier_policy: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            culvert: UnsteadyCulvertInputs::default(),
+            bridge: UnsteadyBridgeInputs {
+                bridge_stations: Some(vec![250.0]),
+                bridge_low_chords: Some(vec![5.0]),
+                bridge_high_chords: Some(vec![7.0]),
+                bridge_low_flow_methods: Some(vec![3]),
+                ..Default::default()
+            },
+            structure_coupling_order: None,
+        };
+        let forward = solve_unsteady(&base);
+        let reverse = solve_unsteady(&UnsteadyInputs {
+            initial_q: vec![-15.0, -15.0, -15.0],
+            upstream_q_hydrograph: vec![-15.0; 3],
+            cross_sections: vec![xs1000, xs500, xs0],
+            ..base
+        });
+
+        assert!(reverse.wsel.iter().flatten().all(|w| w.is_finite()));
+        let rev_hl = reverse
+            .bridge_head_losses
+            .as_ref()
+            .expect("bridge diagnostics")[2][0];
+        let fwd_hl = forward
+            .bridge_head_losses
+            .as_ref()
+            .expect("bridge diagnostics")[2][0];
+        assert!(rev_hl > 0.0, "reverse-flow bridge head loss should be positive");
+        assert!(
+            (fwd_hl - rev_hl).abs() < 0.02,
+            "symmetric |Q|=15 should yield similar head loss, got forward {fwd_hl} reverse {rev_hl}"
+        );
+    }
+
+    #[test]
+    fn test_unsteady_inline_bridge_q_reversal_hydrograph() {
+        let xs1000 = CrossSection {
+            station: 1000.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![6.0, 1.0, 1.0, 6.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let xs500 = CrossSection {
+            station: 500.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![5.5, 0.5, 0.5, 5.5],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let xs0 = CrossSection {
+            station: 0.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![5.0, 0.0, 0.0, 5.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+
+        let result = solve_unsteady(&UnsteadyInputs {
+            cross_sections: vec![xs1000, xs500, xs0],
+            initial_wsel: vec![2.5, 2.0, 1.5],
+            initial_q: vec![15.0, 15.0, 15.0],
+            dt: 60.0,
+            num_steps: 4,
+            upstream_q_hydrograph: vec![15.0, 15.0, -15.0, -15.0],
+            downstream_wsel_hydrograph: vec![1.5; 4],
+            theta: Some(0.6),
+            num_slices: Some(50),
+            max_spacing: None,
+            densify_reach_modifier_policy: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            culvert: UnsteadyCulvertInputs::default(),
+            bridge: UnsteadyBridgeInputs {
+                bridge_stations: Some(vec![250.0]),
+                bridge_low_chords: Some(vec![5.0]),
+                bridge_high_chords: Some(vec![7.0]),
+                bridge_low_flow_methods: Some(vec![3]),
+                ..Default::default()
+            },
+            structure_coupling_order: None,
+        });
+
+        assert_eq!(result.q.len(), 4);
+        assert!(result.q[1][0] > 0.0);
+        assert!(result.q[3][0] < 0.0);
+        let hl_fwd = result.bridge_head_losses.as_ref().unwrap()[1][0];
+        let hl_rev = result.bridge_head_losses.as_ref().unwrap()[3][0];
+        assert!(hl_fwd > 0.0);
+        assert!(hl_rev > 0.0);
     }
 
     #[test]

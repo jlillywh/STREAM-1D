@@ -93,6 +93,58 @@ impl Default for BridgeFrictionLengths {
     }
 }
 
+/// Reach discharge sign: downstream (+) vs upstream (−) per steady/unsteady `Q` convention.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum BridgeFlowDirection {
+    Downstream = 1,
+    Upstream = -1,
+}
+
+impl BridgeFlowDirection {
+    pub fn from_q(q: f64) -> Self {
+        if q < -1e-12 {
+            Self::Upstream
+        } else {
+            Self::Downstream
+        }
+    }
+}
+
+/// Mirror approach/departure and face ineffective for reverse-flow hydraulics (BU/BD reach labels unchanged).
+pub fn mirror_bridge_section_context(ctx: &BridgeSectionContext) -> BridgeSectionContext {
+    let mut mirrored = ctx.clone();
+    std::mem::swap(&mut mirrored.ineffective_up, &mut mirrored.ineffective_down);
+    std::mem::swap(&mut mirrored.xs_approach, &mut mirrored.xs_departure);
+    std::mem::swap(&mut mirrored.guide_banks_approach, &mut mirrored.guide_banks_departure);
+    mirrored.friction_lengths = BridgeFrictionLengths {
+        weighting: ctx.friction_lengths.weighting,
+        opening_m: ctx.friction_lengths.opening_m,
+        approach_m: ctx.friction_lengths.departure_m,
+        departure_m: ctx.friction_lengths.approach_m,
+    };
+    mirrored
+}
+
+fn bridge_q_to_metric_magnitude(q_user: f64, units: UnitSystem) -> f64 {
+    let q = q_user.abs();
+    if units == UnitSystem::USCustomary {
+        q * CFS_TO_CMS
+    } else {
+        q
+    }
+}
+
+fn hydraulic_hw_tw_reach(
+    direction: BridgeFlowDirection,
+    wsel_bu: f64,
+    wsel_bd: f64,
+) -> (f64, f64) {
+    match direction {
+        BridgeFlowDirection::Downstream => (wsel_bu, wsel_bd),
+        BridgeFlowDirection::Upstream => (wsel_bd, wsel_bu),
+    }
+}
+
 /// HEC-RAS-style bridge skew: projected opening width × cos(θ), friction length ÷ cos(θ).
 pub fn apply_bridge_skew(skew_deg: f64, width_m: f64, length_m: f64) -> (f64, f64) {
     apply_barrel_skew(skew_deg, width_m, length_m)
@@ -326,8 +378,11 @@ pub struct BridgeSolveParams {
     pub high_chord: f64,
     pub z_down: f64,
     pub z_up: f64,
-    /// Fixed downstream tailwater for subcritical rating (user units).
+    /// Fixed downstream tailwater for subcritical rating when `q > 0` (BD face, user units).
     pub tw_wsel: f64,
+    /// Tailwater at BU when `q < 0`. Omit to reuse `tw_wsel`.
+    #[serde(default)]
+    pub tw_wsel_reverse: Option<f64>,
     pub units: UnitSystem,
     #[serde(default)]
     pub pier_width: f64,
@@ -553,6 +608,7 @@ impl Default for BridgeSolveParams {
             z_down: 0.0,
             z_up: 0.0,
             tw_wsel: 0.0,
+            tw_wsel_reverse: None,
             units: UnitSystem::Metric,
             pier_width: 0.0,
             num_piers: 0,
@@ -2559,7 +2615,10 @@ fn bridge_flow_regime_label(
     }
 }
 
-/// Couples upstream WSEL to downstream tailwater for inline bridge routing.
+/// Couples reach BU/BD WSELs for inline bridge routing.
+///
+/// `tw_wsel` is tailwater on the **hydraulic downstream** face: BD when `q > 0`, BU when `q < 0`.
+/// Returns reach-frame `wsel_up` (BU) and `wsel_down` (BD).
 pub fn solve_bridge_coupled(
     q: f64,
     low_chord: f64,
@@ -2580,6 +2639,19 @@ pub fn solve_bridge_coupled(
     deck: Option<&BridgeDeckProfile>,
     sections: Option<&BridgeSectionContext>,
 ) -> BridgeSolveResult {
+    let direction = BridgeFlowDirection::from_q(q);
+    let q_metric = bridge_q_to_metric_magnitude(q, units);
+    let mirrored_sections = sections.map(mirror_bridge_section_context);
+    let (table_hyd_us, table_hyd_ds, z_hyd_us, z_hyd_ds, sections_hyd) = match direction {
+        BridgeFlowDirection::Downstream => (table_up, table_down, z_up, z_down, sections),
+        BridgeFlowDirection::Upstream => (
+            table_down,
+            table_up,
+            z_down,
+            z_up,
+            mirrored_sections.as_ref(),
+        ),
+    };
     let geom = build_bridge_geometry(
         low_chord,
         high_chord,
@@ -2588,13 +2660,13 @@ pub fn solve_bridge_coupled(
         pier_shape_type,
         weir_coeff,
         orifice_coeff,
-        z_down,
-        z_up,
+        z_hyd_ds,
+        z_hyd_us,
         units,
         coupling,
         interval_length_m,
         deck,
-        sections,
+        sections_hyd,
     );
     let tw_m = if units == UnitSystem::USCustomary {
         tw_wsel * FT_TO_M
@@ -2602,27 +2674,27 @@ pub fn solve_bridge_coupled(
         tw_wsel
     };
     let tw_clamped = tw_m.max(geom.z_down_m + 1e-4);
-    let q_metric = if units == UnitSystem::USCustomary {
-        q * CFS_TO_CMS
-    } else {
-        q
-    };
     let solved = solve_bridge_headwater_metric(
         q_metric,
         tw_clamped,
         &geom,
-        table_up,
-        table_down,
+        table_hyd_us,
+        table_hyd_ds,
     );
-    let wsel_up = if units == UnitSystem::USCustomary {
+    let hw_hyd_user = if units == UnitSystem::USCustomary {
         solved.wsel_m / FT_TO_M
     } else {
         solved.wsel_m
     };
+    let (wsel_bu, wsel_bd) = match direction {
+        BridgeFlowDirection::Downstream => (hw_hyd_user, tw_wsel),
+        BridgeFlowDirection::Upstream => (tw_wsel, hw_hyd_user),
+    };
+    let head_loss = (hw_hyd_user - tw_wsel).max(0.0);
     BridgeSolveResult {
-        wsel_up,
-        wsel_down: tw_wsel,
-        head_loss: (wsel_up - tw_wsel).max(0.0),
+        wsel_up: wsel_bu,
+        wsel_down: wsel_bd,
+        head_loss,
         flow_regime: solved.regime.as_str().to_string(),
     }
 }
@@ -2983,7 +3055,12 @@ pub fn solve_bridge_from_params(params: &BridgeSolveParams) -> BridgeSolveResult
         0.5
     };
 
-    solve_bridge_coupled(
+    let direction = BridgeFlowDirection::from_q(params.q);
+    let tw_hyd = match direction {
+        BridgeFlowDirection::Downstream => params.tw_wsel,
+        BridgeFlowDirection::Upstream => params.tw_wsel_reverse.unwrap_or(params.tw_wsel),
+    };
+    let reach = solve_bridge_coupled(
         params.q,
         params.low_chord,
         params.high_chord,
@@ -2994,7 +3071,7 @@ pub fn solve_bridge_from_params(params: &BridgeSolveParams) -> BridgeSolveResult
         orifice_coeff,
         params.z_down,
         params.z_up,
-        params.tw_wsel,
+        tw_hyd,
         params.units,
         &table_up,
         &table_down,
@@ -3002,7 +3079,14 @@ pub fn solve_bridge_from_params(params: &BridgeSolveParams) -> BridgeSolveResult
         interval_length_metric(&params),
         deck.as_ref(),
         Some(&sections),
-    )
+    );
+    let (hw, tw) = hydraulic_hw_tw_reach(direction, reach.wsel_up, reach.wsel_down);
+    BridgeSolveResult {
+        wsel_up: hw,
+        wsel_down: tw,
+        head_loss: reach.head_loss,
+        flow_regime: reach.flow_regime,
+    }
 }
 
 /// Compute upstream headwater vs discharge at fixed tailwater (bridge rating curve).
@@ -3014,6 +3098,9 @@ pub fn compute_bridge_rating_curve(inputs: &BridgeRatingCurveInputs) -> BridgeRa
     let mut head_losses = Vec::with_capacity(inputs.q_values.len());
 
     for &q_sample in &inputs.q_values {
+        if q_sample.abs() < 1e-12 {
+            continue;
+        }
         let mut params = inputs.bridge.clone();
         params.q = q_sample;
         let result = solve_bridge_from_params(&params);
@@ -3033,7 +3120,7 @@ pub fn compute_bridge_rating_curve(inputs: &BridgeRatingCurveInputs) -> BridgeRa
     }
 }
 
-/// Solves upstream WSEL from a known downstream tailwater (subcritical sweep).
+/// Reach BU-face WSEL after subcritical coupling (`tw_wsel` on hydraulic downstream face).
 pub fn solve_bridge_wsel(
     q: f64,
     low_chord: f64,
@@ -3054,7 +3141,8 @@ pub fn solve_bridge_wsel(
     deck: Option<&BridgeDeckProfile>,
     sections: Option<&BridgeSectionContext>,
 ) -> f64 {
-    let geom = build_bridge_geometry(
+    solve_bridge_coupled(
+        q,
         low_chord,
         high_chord,
         pier_width,
@@ -3064,41 +3152,19 @@ pub fn solve_bridge_wsel(
         orifice_coeff,
         z_down,
         z_up,
+        tw_wsel,
         units,
+        table_up,
+        table_down,
         coupling,
         interval_length_m,
         deck,
         sections,
-    );
-
-    let tw_m = if units == UnitSystem::USCustomary {
-        tw_wsel * FT_TO_M
-    } else {
-        tw_wsel
-    };
-    let tw_clamped = tw_m.max(geom.z_down_m + 1e-4);
-    let q_metric = if units == UnitSystem::USCustomary {
-        q * CFS_TO_CMS
-    } else {
-        q
-    };
-
-    let solved = solve_bridge_headwater_metric(
-        q_metric,
-        tw_clamped,
-        &geom,
-        table_up,
-        table_down,
-    );
-
-    if units == UnitSystem::USCustomary {
-        solved.wsel_m / FT_TO_M
-    } else {
-        solved.wsel_m
-    }
+    )
+    .wsel_up
 }
 
-/// Solves downstream tailwater from a known upstream headwater (supercritical sweep).
+/// Reach BD-face WSEL after supercritical coupling (`hw_wsel` on hydraulic upstream face).
 pub fn solve_bridge_tailwater(
     q: f64,
     low_chord: f64,
@@ -3119,6 +3185,19 @@ pub fn solve_bridge_tailwater(
     deck: Option<&BridgeDeckProfile>,
     sections: Option<&BridgeSectionContext>,
 ) -> f64 {
+    let direction = BridgeFlowDirection::from_q(q);
+    let q_metric = bridge_q_to_metric_magnitude(q, units);
+    let mirrored_sections = sections.map(mirror_bridge_section_context);
+    let (table_hyd_us, table_hyd_ds, z_hyd_us, z_hyd_ds, sections_hyd) = match direction {
+        BridgeFlowDirection::Downstream => (table_up, table_down, z_up, z_down, sections),
+        BridgeFlowDirection::Upstream => (
+            table_down,
+            table_up,
+            z_down,
+            z_up,
+            mirrored_sections.as_ref(),
+        ),
+    };
     let geom = build_bridge_geometry(
         low_chord,
         high_chord,
@@ -3127,13 +3206,13 @@ pub fn solve_bridge_tailwater(
         pier_shape_type,
         weir_coeff,
         orifice_coeff,
-        z_down,
-        z_up,
+        z_hyd_ds,
+        z_hyd_us,
         units,
         coupling,
         interval_length_m,
         deck,
-        sections,
+        sections_hyd,
     );
 
     let hw_m = if units == UnitSystem::USCustomary {
@@ -3141,16 +3220,11 @@ pub fn solve_bridge_tailwater(
     } else {
         hw_wsel
     };
-    let q_metric = if units == UnitSystem::USCustomary {
-        q * CFS_TO_CMS
-    } else {
-        q
-    };
 
     let tw_metric = if hw_m >= geom.low_chord_m {
-        solve_high_flow_tailwater(q_metric, &geom, hw_m, table_up, table_down)
+        solve_high_flow_tailwater(q_metric, &geom, hw_m, table_hyd_us, table_hyd_ds)
     } else {
-        solve_low_flow_tailwater(q_metric, hw_m, &geom, table_up, table_down)
+        solve_low_flow_tailwater(q_metric, hw_m, &geom, table_hyd_us, table_hyd_ds)
     };
 
     if units == UnitSystem::USCustomary {

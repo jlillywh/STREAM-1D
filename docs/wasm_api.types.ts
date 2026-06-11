@@ -423,7 +423,11 @@ export interface CulvertRatingCurveResult {
   barrel_froude: number[];
 }
 
-/** Inputs for `computeBridgeRatingCurve` — `q` is ignored; fields mirror standalone bridge solve params. */
+/**
+ * Inputs for `computeBridgeRatingCurve` — `q` is ignored; fields mirror standalone bridge solve params.
+ * **Reverse flow (v31):** negative `q_values` supported; `tw_wsel_reverse` for BU TW when `Q < 0`.
+ * `Q = 0` samples are skipped. Direction is not inferred from stages. See `bridge_reverse_flow_rating.md`.
+ */
 export interface BridgeRatingCurveInputs {
   q_values: number[];
   q?: number;
@@ -431,7 +435,10 @@ export interface BridgeRatingCurveInputs {
   high_chord: number;
   z_down: number;
   z_up: number;
+  /** Tailwater at BD when `q_values > 0` (user units). */
   tw_wsel: number;
+  /** Tailwater at BU when `q_values < 0`. Omit to reuse `tw_wsel`. */
+  tw_wsel_reverse?: number;
   units: UnitSystem;
   pier_width?: number;
   num_piers?: number;

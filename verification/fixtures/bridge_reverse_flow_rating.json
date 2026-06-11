@@ -1,0 +1,18 @@
+{
+  "tolerance_head_loss_m": 0.02,
+  "q_max_cms": 30.0,
+  "tw_wsel_m": 2.5,
+  "cases": [
+    {
+      "name": "symmetric_yarnell_bidirectional_sweep",
+      "notes": "Rectangular 10 m channel, energy low-flow; Q ∈ [-30, +30] cms at fixed TW=2.5 m (BD when Q>0, BU when Q<0 via default tw_wsel).",
+      "q_values_cms": [-30.0, -20.0, -10.0, 10.0, 20.0, 30.0],
+      "low_chord_m": 5.0,
+      "high_chord_m": 7.0,
+      "channel_width_m": 10.0,
+      "manning_n": 0.03,
+      "low_flow_method": 3,
+      "expected_head_loss_at_abs_q20_cms": 0.00247
+    }
+  ]
+}

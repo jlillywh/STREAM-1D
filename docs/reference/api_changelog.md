@@ -1,9 +1,10 @@
 # API changelog
 
-JSON/Python input schema version (`api_version` in WASM metadata). Current version: **30**.
+JSON/Python input schema version (`api_version` in WASM metadata). Current version: **31**.
 
 | Version | Change |
 |---------|--------|
+| 31 | Bi-directional bridge rating and reverse-flow reach coupling (Phase 4.3): negative `q_values` in `computeBridgeRatingCurve`; `tw_wsel_reverse` on rating params; `solve_bridge_coupled` mirror for `Q < 0`; steady subcritical/supercritical sweeps and mixed regime for negative `flow_rate`; unsteady post-step bridge coupling uses direction-aware TW/HW faces. **Limitations:** culvert reversal unsupported; `Q=0` rating samples skipped; direction not inferred from stages — [`bridge_reverse_flow_rating.md`](../development/bridge_reverse_flow_rating.md) |
 | 30 | Bridge friction weighting (HEC-RAS §4.2): `bridge_friction_weighting` (`0` = opening only, `1` = approach + opening + departure), `bridge_approach_friction_lengths`, `bridge_departure_friction_lengths`; rating curve keys `friction_weighting`, `approach_friction_length`, `departure_friction_length` — energy / WSPRO low-flow friction uses three segments when weighting is `1` |
 | 29 | Extended `bridge_pier_shapes` / `pier_shape_type` values `4`–`11`: twin-cylinder without diaphragm, ten-pile trestle bent, elliptical 2:1/4:1/8:1, triangular 30°/60°/120° — HEC-RAS Yarnell $K$ and momentum $C_D$ — see [`extended_pier_shape_catalog.md`](../development/extended_pier_shape_catalog.md) |
 | 28 | Pier footings and nosing: `bridge_pier_footing_top_elevations` / `_widths` / `_bottom_elevations`, `bridge_pier_nosing_lengths` / `_widths`; rating curve keys `pier_footing_*`, `pier_nosing_*` — footing composes into shaft width profile; nosing adds submerged plan area and opening-plane width — see [`pier_footings_nosing.md`](../development/pier_footings_nosing.md) |
