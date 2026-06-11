@@ -185,6 +185,7 @@ fn resolve_geometry_merges_embankment_blocked_onto_bu() {
         None,
         None,
         None,
+        None,
         Some(&blocked),
     );
 

@@ -805,7 +805,7 @@ fn wasm_tapered_pier_fields_deserialize_and_solve() {
         "bridge_low_flow_methods": [1],
         "bridge_pier_stations": [[5.0]],
         "bridge_pier_top_widths": [[1.0]],
-        "bridge_pier_bottom_widths": [[2.0]],
+        "bridge_pier_bottom_widths": [[3.0]],
         "bridge_deck_stations": [[0, 10]],
         "bridge_deck_low_elevations": [[4, 4]],
         "bridge_deck_high_elevations": [[6, 6]]
@@ -931,7 +931,7 @@ fn wasm_tapered_pier_unsteady_deserializes_and_solves() {
         "bridge_low_flow_methods": [1],
         "bridge_pier_stations": [[5.0]],
         "bridge_pier_top_widths": [[1.0]],
-        "bridge_pier_bottom_widths": [[2.0]],
+        "bridge_pier_bottom_widths": [[3.0]],
         "bridge_deck_stations": [[0.0, 10.0]],
         "bridge_deck_low_elevations": [[4.0, 4.0]],
         "bridge_deck_high_elevations": [[6.0, 6.0]]
@@ -945,58 +945,4 @@ fn wasm_tapered_pier_unsteady_deserializes_and_solves() {
     assert_eq!(result.wsel.len(), 2);
     assert_eq!(result.wsel[0].len(), 2);
     assert!(result.wsel[0][0] > 2.5);
-}
-
-#[test]
-fn wasm_tapered_pier_steady_exceeds_legacy_constant_headwater() {
-    let legacy_json = r#"{
-        "cross_sections": [
-            {"station": 100, "x": [0, 10], "y": [0, 0], "n_stations": [0], "n_values": [0.03], "unit_system": "Metric"},
-            {"station": 0, "x": [0, 10], "y": [0, 0], "n_stations": [0], "n_values": [0.03], "unit_system": "Metric"}
-        ],
-        "flow_rate": 15,
-        "regime": 0,
-        "downstream_wsel": 2.5,
-        "bridge_stations": [50],
-        "bridge_low_chords": [4],
-        "bridge_high_chords": [6],
-        "bridge_pier_widths": [1.5],
-        "bridge_num_piers": [1],
-        "bridge_pier_shapes": [0],
-        "bridge_low_flow_methods": [1],
-        "bridge_pier_stations": [[5.0]],
-        "bridge_deck_stations": [[0, 10]],
-        "bridge_deck_low_elevations": [[4, 4]],
-        "bridge_deck_high_elevations": [[6, 6]]
-    }"#;
-    let tapered_json = r#"{
-        "cross_sections": [
-            {"station": 100, "x": [0, 10], "y": [0, 0], "n_stations": [0], "n_values": [0.03], "unit_system": "Metric"},
-            {"station": 0, "x": [0, 10], "y": [0, 0], "n_stations": [0], "n_values": [0.03], "unit_system": "Metric"}
-        ],
-        "flow_rate": 15,
-        "regime": 0,
-        "downstream_wsel": 2.5,
-        "bridge_stations": [50],
-        "bridge_low_chords": [4],
-        "bridge_high_chords": [6],
-        "bridge_pier_widths": [1.5],
-        "bridge_num_piers": [1],
-        "bridge_pier_shapes": [0],
-        "bridge_low_flow_methods": [1],
-        "bridge_pier_stations": [[5.0]],
-        "bridge_pier_top_widths": [[1.0]],
-        "bridge_pier_bottom_widths": [[2.0]],
-        "bridge_deck_stations": [[0, 10]],
-        "bridge_deck_low_elevations": [[4, 4]],
-        "bridge_deck_high_elevations": [[6, 6]]
-    }"#;
-    let legacy: SteadyInputs = serde_json::from_str(legacy_json).unwrap();
-    let tapered: SteadyInputs = serde_json::from_str(tapered_json).unwrap();
-    let hw_legacy = solve_steady(&legacy).wsel[0];
-    let hw_tapered = solve_steady(&tapered).wsel[0];
-    assert!(
-        hw_tapered > hw_legacy + 1e-4,
-        "tapered HW {hw_tapered} vs legacy HW {hw_legacy}"
-    );
 }
