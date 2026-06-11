@@ -1209,31 +1209,24 @@ mod tests {
         let interior = interior_from_steady(&composed, 0);
         let reach = face(100.0);
         let table = reach.generate_lookup_table(50);
-        let geo = resolve_bridge_face_solve_geometry(
-            &interior,
-            None,
-            Some(&reach),
-            Some(&reach),
-            &table,
-            &table,
-            0.0,
-            0.0,
-            UnitSystem::Metric,
-            50,
-            bridge_ineffective_upstream_for(&composed, 0),
-            bridge_ineffective_downstream_for(&composed, 0),
-            0.0,
-            None,
-            4.0,
-            0.0,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            Some(blocked),
-        );
+        let geo = resolve_bridge_face_solve_geometry(crate::solvers::bridge_interior::BridgeFaceSolveParams {
+            interior: &interior,
+            reach_xs_up: Some(&reach),
+            reach_xs_down: Some(&reach),
+            reach_table_up: &table,
+            reach_table_down: &table,
+            raw_units: UnitSystem::Metric,
+            num_slices: 50,
+            ineffective_up: bridge_ineffective_upstream_for(&composed, 0),
+            ineffective_down: bridge_ineffective_downstream_for(&composed, 0),
+            interval_length_m: 4.0,
+            embankment_blocked: Some(blocked),
+            ..crate::solvers::bridge_interior::BridgeFaceSolveParams::new(
+                &interior,
+                &table,
+                &table,
+            )
+        });
 
         assert!(
             geo.sections

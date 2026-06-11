@@ -8,7 +8,7 @@ use stream1d::solvers::bridge_roadway_compose::{
     BridgeRoadwayEmbankment, EmbankmentPolyline, RoadwayEmbankmentSide,
 };
 use stream1d::solvers::bridge_interior::{
-    interior_from_steady, resolve_bridge_face_solve_geometry,
+    interior_from_steady, resolve_bridge_face_solve_geometry, BridgeFaceSolveParams,
 };
 use stream1d::solvers::steady::bridge_ineffective_downstream_for;
 use stream1d::solvers::steady::bridge_ineffective_upstream_for;
@@ -164,31 +164,20 @@ fn resolve_geometry_merges_embankment_blocked_onto_bu() {
     let table = reach.generate_lookup_table(50);
     let blocked = steady_composed_embankment_blocked(&inputs, 0).expect("blocked");
 
-    let geo = resolve_bridge_face_solve_geometry(
-        &interior,
-        None,
-        Some(&reach),
-        Some(&reach),
-        &table,
-        &table,
-        0.0,
-        0.0,
-        UnitSystem::Metric,
-        50,
-        bridge_ineffective_upstream_for(&inputs, 0),
-        bridge_ineffective_downstream_for(&inputs, 0),
-        0.0,
-        None,
-        4.0,
-        0.0,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        Some(&blocked),
-    );
+    let geo = resolve_bridge_face_solve_geometry(BridgeFaceSolveParams {
+        interior: &interior,
+        reach_xs_up: Some(&reach),
+        reach_xs_down: Some(&reach),
+        reach_table_up: &table,
+        reach_table_down: &table,
+        raw_units: UnitSystem::Metric,
+        num_slices: 50,
+        ineffective_up: bridge_ineffective_upstream_for(&inputs, 0),
+        ineffective_down: bridge_ineffective_downstream_for(&inputs, 0),
+        interval_length_m: 4.0,
+        embankment_blocked: Some(&blocked),
+        ..BridgeFaceSolveParams::new(&interior, &table, &table)
+    });
 
     let bu_resolved = geo.sections.xs_up.expect("BU xs");
     let blocks = bu_resolved

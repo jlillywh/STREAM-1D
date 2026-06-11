@@ -1,7 +1,8 @@
-//! Unit tests for bridge hydraulics (see `bridge.rs`).
+﻿//! Unit tests for bridge hydraulics (see `bridge.rs`).
 
 use super::*;
 use crate::geometry::{CrossSection, GuideBankToe, GuideBanks, IneffectiveFlowAreas, row_at_elevation};
+use crate::solvers::deck_vent_geometry::DeckVentUserInput;
 use crate::solvers::pier_geometry::{
     resolve_pier_width_specs, PierAttachmentsUserInput, PierWidthSpec, PierWidthUserInput,
     ResolvedPier,
@@ -35,21 +36,9 @@ fn compound_overbank_approach(ineffective: bool) -> CrossSection {
 
 fn approach_sections_with_ineffective_overbank() -> BridgeSectionContext {
     BridgeSectionContext {
-        ineffective_up: None,
-        ineffective_down: None,
-        xs_up: None,
-        xs_down: None,
-        internal_xs: vec![],
-        opening_reach_station_origin: None,
-        skew_deg: 0.0,
-        pier_stations: None,
-        pier_widths: None,
-        pier_attachments: None,
         friction_length_m: 50.0,
         xs_approach: Some(compound_overbank_approach(true)),
-        xs_departure: None,
-        guide_banks_approach: None,
-        guide_banks_departure: None,
+        ..Default::default()
     }
 }
 
@@ -71,19 +60,8 @@ fn approach_sections_with_guide_banks(
         guide_banks: None,
     };
     BridgeSectionContext {
-        ineffective_up: None,
-        ineffective_down: None,
-        xs_up: None,
-        xs_down: None,
-        internal_xs: vec![],
-        opening_reach_station_origin: None,
-        skew_deg: 0.0,
-        pier_stations: None,
-        pier_widths: None,
-        pier_attachments: None,
         friction_length_m: 50.0,
         xs_approach: Some(approach),
-        xs_departure: None,
         guide_banks_approach: Some(GuideBanks {
             left_toe: Some(GuideBankToe {
                 station: left_toe,
@@ -95,7 +73,7 @@ fn approach_sections_with_guide_banks(
             }),
             ..Default::default()
         }),
-        guide_banks_departure: None,
+        ..Default::default()
     }
 }
 
@@ -189,6 +167,7 @@ fn test_classify_low_flow_subcritical_is_class_a() {
         guide_banks_departure: None,
         table_approach: None,
         table_departure: None,
+        deck_vents: Vec::new(),
     };
     assert_eq!(
         classify_low_flow(15.0, 3.0, &geom, &table, &table),
@@ -236,6 +215,7 @@ fn test_asymmetric_abutments_reduce_area_more_on_wide_side() {
         guide_banks_departure: None,
         table_approach: None,
         table_departure: None,
+        deck_vents: Vec::new(),
     };
     let narrow_left = BridgeGeometry {
         abutments: resolve_abutments(
@@ -305,6 +285,7 @@ fn test_per_side_abutment_tops_affect_obstructed_hydraulics() {
         guide_banks_departure: None,
         table_approach: None,
         table_departure: None,
+        deck_vents: Vec::new(),
     };
     let geom_both = BridgeGeometry {
         abutments: resolve_abutments(
@@ -384,6 +365,7 @@ fn test_abutment_reduces_opening_area() {
         guide_banks_departure: None,
         table_approach: None,
         table_departure: None,
+        deck_vents: Vec::new(),
     };
     let props_no = obstructed_hydraulics(&table, 3.0, 0.0, &geom_no_abut, false);
     let geom_abut = BridgeGeometry {
@@ -837,7 +819,7 @@ fn test_submerged_orifice_constant_driving_head() {
         None,
         None,
     );
-    // Fully submerged orifice: E_up - TW ≈ constant for a given Q, so WSEL rises with tailwater.
+    // Fully submerged orifice: E_up - TW â‰ˆ constant for a given Q, so WSEL rises with tailwater.
     assert!(
         hw_deep > hw_mild,
         "deeper submergence should raise upstream WSEL, mild={hw_mild}, deep={hw_deep}"
@@ -1051,7 +1033,9 @@ fn test_ineffective_flow_raises_bridge_headwater() {
 
 #[test]
 fn test_bu_section_ineffective_raises_bridge_headwater() {
-    use crate::solvers::bridge_interior::{BridgeInteriorInput, resolve_bridge_face_solve_geometry};
+    use crate::solvers::bridge_interior::{
+        BridgeFaceSolveParams, BridgeInteriorInput, resolve_bridge_face_solve_geometry,
+    };
 
     let table_up = rectangular_table(10.0, 0.0, 50);
     let table_down = rectangular_table(10.0, 0.0, 50);
@@ -1075,64 +1059,32 @@ fn test_bu_section_ineffective_raises_bridge_headwater() {
     bu.ineffective_flow_areas = Some(
         IneffectiveFlowAreas::from_block_pairs(&[], &[], &[30.0], &[3.0]).unwrap(),
     );
-    let geo_none = resolve_bridge_face_solve_geometry(
-        &BridgeInteriorInput {
-            bu: Some(reach.clone()),
-            bd: Some(reach.clone()),
-            ..Default::default()
-        },
-        None,
-        Some(&reach),
-        Some(&reach),
-        &table_up,
-        &table_down,
-        0.0,
-        0.0,
-        UnitSystem::Metric,
-        50,
-        None,
-        None,
-        0.0,
-        None,
-        0.0,
-        0.0,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-    );
-    let geo_bu_ineff = resolve_bridge_face_solve_geometry(
-        &BridgeInteriorInput {
-            bu: Some(bu),
-            bd: Some(reach.clone()),
-            ..Default::default()
-        },
-        None,
-        Some(&reach),
-        Some(&reach),
-        &table_up,
-        &table_down,
-        0.0,
-        0.0,
-        UnitSystem::Metric,
-        50,
-        None,
-        None,
-        0.0,
-        None,
-        0.0,
-        0.0,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-    );
+    let interior_none = BridgeInteriorInput {
+        bu: Some(reach.clone()),
+        bd: Some(reach.clone()),
+        ..Default::default()
+    };
+    let geo_none = resolve_bridge_face_solve_geometry(BridgeFaceSolveParams {
+        interior: &interior_none,
+        reach_xs_up: Some(&reach),
+        reach_xs_down: Some(&reach),
+        reach_table_up: &table_up,
+        reach_table_down: &table_down,
+        ..BridgeFaceSolveParams::new(&interior_none, &table_up, &table_down)
+    });
+    let interior_bu_ineff = BridgeInteriorInput {
+        bu: Some(bu),
+        bd: Some(reach.clone()),
+        ..Default::default()
+    };
+    let geo_bu_ineff = resolve_bridge_face_solve_geometry(BridgeFaceSolveParams {
+        interior: &interior_bu_ineff,
+        reach_xs_up: Some(&reach),
+        reach_xs_down: Some(&reach),
+        reach_table_up: &table_up,
+        reach_table_down: &table_down,
+        ..BridgeFaceSolveParams::new(&interior_bu_ineff, &table_up, &table_down)
+    });
 
     let hw_none = solve_bridge_wsel(
         20.0,
@@ -1235,7 +1187,7 @@ fn test_longer_bu_bd_friction_length_raises_energy_headwater() {
     );
     assert!(
         hw_long > hw_short,
-        "longer BU–BD friction reach should raise energy headwater, short={hw_short}, long={hw_long}"
+        "longer BUâ€“BD friction reach should raise energy headwater, short={hw_short}, long={hw_long}"
     );
 }
 
@@ -1628,6 +1580,7 @@ fn test_obstructed_area_hand_calc_asymmetric_and_one_sided() {
         guide_banks_departure: None,
         table_approach: None,
         table_departure: None,
+        deck_vents: Vec::new(),
     };
 
     let asymmetric = BridgeGeometry {
@@ -1766,6 +1719,7 @@ fn test_wspro_headwater_hand_calc_reference_cases() {
         guide_banks_departure: None,
         table_approach: None,
         table_departure: None,
+        deck_vents: Vec::new(),
     };
 
     for (name, mut coupling, a_eff_tw, expected_hw) in cases {
@@ -1939,7 +1893,7 @@ fn test_guide_banks_narrow_approach_raises_energy_headwater() {
 }
 
 /// Approach guide banks narrow the contraction area below the BU reach face; loss uses
-/// `coeff_contraction` on velocity-head difference (guided approach → opening), not BU area alone.
+/// `coeff_contraction` on velocity-head difference (guided approach â†’ opening), not BU area alone.
 #[test]
 fn test_approach_narrowing_vs_reach_only_contraction_coefficient() {
     let q = 20.0;
@@ -2199,7 +2153,7 @@ fn approach_ineffective_raises_energy_headwater() {
     );
 }
 
-/// Taper top=1 / bottom=2 vs constant prism at mean width 1.5 (same pier height 0→4 m).
+/// Taper top=1 / bottom=2 vs constant prism at mean width 1.5 (same pier height 0â†’4 m).
 fn tapered_vs_mean_constant_pier_geometries() -> (BridgeGeometry, BridgeGeometry) {
     let base = BridgeGeometry {
         pier_width_m: 1.5,
@@ -2238,6 +2192,7 @@ fn tapered_vs_mean_constant_pier_geometries() -> (BridgeGeometry, BridgeGeometry
         guide_banks_departure: None,
         table_approach: None,
         table_departure: None,
+        deck_vents: Vec::new(),
     };
     let mean_constant = BridgeGeometry {
         pier_specs: vec![ResolvedPier {
@@ -2305,6 +2260,7 @@ fn tapered_vs_rectangular_pier_geometries() -> (BridgeGeometry, BridgeGeometry) 
         guide_banks_departure: None,
         table_approach: None,
         table_departure: None,
+        deck_vents: Vec::new(),
     };
     let tapered = BridgeGeometry {
         pier_specs: vec![ResolvedPier {
@@ -2340,7 +2296,7 @@ fn test_tapered_vs_mean_constant_partial_wsel_more_blockage() {
     let props_mean = obstructed_hydraulics(&table, wsel, 0.0, &mean_const, false);
     let props_taper = obstructed_hydraulics(&table, wsel, 0.0, &taper, false);
     assert!(props_taper.a_eff < props_mean.a_eff);
-    // WSEL=2.5: taper surface width 1.375 m < mean constant 1.5 m → more conveyance top width.
+    // WSEL=2.5: taper surface width 1.375 m < mean constant 1.5 m â†’ more conveyance top width.
     assert!(props_taper.top_width > props_mean.top_width);
 }
 
@@ -2445,7 +2401,7 @@ fn test_tapered_pier_pressure_net_area_less_than_rectangular() {
     let a_taper = net_opening_area_at_low_chord(&taper, &table, &table);
     assert!(a_taper < a_rect);
     assert!((a_rect - 36.0).abs() < 0.1, "rect net @ low chord: {a_rect}");
-    // Trapezoid pier: 0.5 * (2 + 1) * 4 m height = 6 m² → 40 − 6 = 34 m²
+    // Trapezoid pier: 0.5 * (2 + 1) * 4 m height = 6 mÂ² â†’ 40 âˆ’ 6 = 34 mÂ²
     assert!((a_taper - 34.0).abs() < 0.1, "taper net @ low chord: {a_taper}");
 }
 
@@ -2561,6 +2517,7 @@ fn test_legacy_constant_pier_area_unchanged_via_empty_specs() {
         guide_banks_departure: None,
         table_approach: None,
         table_departure: None,
+        deck_vents: Vec::new(),
     };
     let wsel = 3.0;
     let props = obstructed_hydraulics(&table, wsel, 0.0, &geom, false);
@@ -2778,7 +2735,7 @@ fn test_footing_increases_obstructed_area_below_shaft() {
     assert!(a_footing < a_shaft);
 }
 
-/// Submerged footing band (bed → shaft base) widens pier plan area and lowers contracted opening `a_eff`.
+/// Submerged footing band (bed â†’ shaft base) widens pier plan area and lowers contracted opening `a_eff`.
 #[test]
 fn test_submerged_footing_reduces_opening_area() {
     let table = rectangular_table(10.0, 0.0, 50);
@@ -2822,7 +2779,7 @@ fn test_submerged_footing_reduces_opening_area() {
     };
     let props_shaft = obstructed_hydraulics(&table, wsel, 0.0, &shaft_only, false);
     let props_footing = obstructed_hydraulics(&table, wsel, 0.0, &with_footing, false);
-    // Shaft wet 1→2 m at 1 m wide → 1 m² pier; footing 0→1 m tapers 3→1 m → +2 m².
+    // Shaft wet 1â†’2 m at 1 m wide â†’ 1 mÂ² pier; footing 0â†’1 m tapers 3â†’1 m â†’ +2 mÂ².
     let a_pier_shaft = 1.0;
     let a_pier_footing = 3.0;
     let delta_opening = props_shaft.a_eff - props_footing.a_eff;
@@ -2965,5 +2922,335 @@ fn test_footing_nosing_exceed_shaft_only_headwater_in_solve() {
     assert!(
         hw_attach > hw_shaft + 1e-4,
         "footing+nosing HW {hw_attach} vs shaft-only {hw_shaft}"
+    );
+}
+
+#[test]
+fn test_partially_submerged_deck_with_vents() {
+    use crate::solvers::deck_vent_geometry::{resolve_deck_vents, total_deck_vent_discharge_m3s};
+
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let table_down = rectangular_table(10.0, 0.0, 50);
+    let deck = BridgeDeckProfile {
+        stations_m: vec![0.0, 10.0],
+        low_elevations_m: vec![5.0, 5.0],
+        high_elevations_m: vec![7.0, 7.0],
+    };
+    let coupling = BridgeCouplingParams {
+        low_flow_method: 3,
+        high_flow_method: 0,
+        ..Default::default()
+    };
+    let sections = BridgeSectionContext {
+        deck_vents: Some(DeckVentUserInput {
+            left_stations: Some(vec![2.0]),
+            right_stations: Some(vec![4.0]),
+            invert_elevations: Some(vec![5.2]),
+            soffit_elevations: Some(vec![5.9]),
+            discharge_coefficients: Some(vec![0.8]),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let geom = build_bridge_geometry(
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        UnitSystem::Metric,
+        &coupling,
+        50.0,
+        Some(&deck),
+        Some(&sections),
+    );
+    let tw = 5.3;
+    let wsel = 5.55;
+    assert!(
+        wsel > geom.low_chord_m && wsel < geom.high_chord_m,
+        "deck in pressure regime only"
+    );
+
+    let vents = resolve_deck_vents(sections.deck_vents.as_ref().unwrap(), 1.0, UnitSystem::Metric, 0.8);
+    let h_sub = wsel - vents[0].invert_m;
+    assert!(
+        h_sub < vents[0].slot_height_m - 1e-6,
+        "vent should be partly submerged, not full slot"
+    );
+    assert!((vents[0].submerged_area_m2(wsel) - 2.0 * h_sub).abs() < 1e-9);
+
+    let q_metric = 100.0;
+    let a_net = net_opening_area_at_low_chord(&geom, &table_up, &table_down);
+    let parts = combined_high_flow_discharge(wsel, tw, q_metric, &geom, &table_up, a_net, Some(10.0));
+    assert!(parts.q_opening_m3s > 1.0, "main submerged orifice active");
+    assert!(parts.q_vents_m3s > 0.05, "vents active above invert");
+    assert!(
+        parts.q_weir_m3s.abs() < 1e-6,
+        "no roadway weir below high chord"
+    );
+
+    let e_up = upstream_energy_grade(wsel, q_metric, &geom, &table_up, geom.z_up_m, true);
+    let q_vent_hand =
+        total_deck_vent_discharge_m3s(&vents, wsel, e_up, tw);
+    assert!((parts.q_vents_m3s - q_vent_hand).abs() < 1e-4);
+
+    let q = 100.0;
+    let solve = |sections: Option<&BridgeSectionContext>| {
+        solve_bridge_wsel(
+            q,
+            5.0,
+            7.0,
+            0.0,
+            0,
+            0,
+            1.44,
+            0.8,
+            0.0,
+            0.0,
+            tw,
+            UnitSystem::Metric,
+            &table_up,
+            &table_down,
+            &coupling,
+            50.0,
+            Some(&deck),
+            sections,
+        )
+    };
+    let hw = solve(Some(&sections));
+    assert!(
+        hw > vents[0].invert_m + 1e-3 && hw < vents[0].soffit_m - 1e-3,
+        "solved HW should partly fill vent, got hw={hw}"
+    );
+    assert!(hw < geom.high_chord_m - 1e-3, "no deck overtopping");
+
+    let parts_solved =
+        combined_high_flow_discharge(hw, tw, q, &geom, &table_up, a_net, Some(10.0));
+    assert!(
+        (parts_solved.total_m3s() - q).abs() < 0.05,
+        "opening={} vents={} weir={} sum={}",
+        parts_solved.q_opening_m3s,
+        parts_solved.q_vents_m3s,
+        parts_solved.q_weir_m3s,
+        parts_solved.total_m3s()
+    );
+
+    let hw_no_vents = solve(None);
+    assert!(
+        hw < hw_no_vents - 1e-4,
+        "vents should lower HW in partial submergence: with={hw}, without={hw_no_vents}"
+    );
+}
+
+#[test]
+fn test_deck_vents_reduce_headwater_when_main_opening_submerged() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let table_down = rectangular_table(10.0, 0.0, 50);
+    let deck = BridgeDeckProfile {
+        stations_m: vec![0.0, 10.0],
+        low_elevations_m: vec![5.0, 5.0],
+        high_elevations_m: vec![7.0, 7.0],
+    };
+    let coupling = BridgeCouplingParams {
+        low_flow_method: 3,
+        high_flow_method: 0,
+        ..Default::default()
+    };
+    let q = 80.0;
+    let tw = 5.2;
+    let solve = |sections: Option<&BridgeSectionContext>| {
+        solve_bridge_wsel(
+            q,
+            5.0,
+            7.0,
+            0.0,
+            0,
+            0,
+            1.44,
+            0.8,
+            0.0,
+            0.0,
+            tw,
+            UnitSystem::Metric,
+            &table_up,
+            &table_down,
+            &coupling,
+            50.0,
+            Some(&deck),
+            sections,
+        )
+    };
+    let hw_main_only = solve(None);
+    let sections_vents = BridgeSectionContext {
+        deck_vents: Some(DeckVentUserInput {
+            left_stations: Some(vec![3.0, 6.0]),
+            right_stations: Some(vec![4.0, 7.0]),
+            invert_elevations: Some(vec![5.0, 5.0]),
+            soffit_elevations: Some(vec![5.6, 5.6]),
+            discharge_coefficients: Some(vec![0.75, 0.75]),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let hw_with_vents = solve(Some(&sections_vents));
+    assert!(
+        hw_with_vents < hw_main_only - 1e-4,
+        "vents should lower HW under submerged deck: main={hw_main_only}, vents={hw_with_vents}"
+    );
+}
+
+#[test]
+fn test_deck_vents_parallel_orifice_matches_hand_calc() {
+    use crate::solvers::deck_vent_geometry::{resolve_deck_vents, total_deck_vent_discharge_m3s};
+
+    let user = DeckVentUserInput {
+        left_stations: Some(vec![0.0]),
+        right_stations: Some(vec![2.0]),
+        invert_elevations: Some(vec![10.0]),
+        soffit_elevations: Some(vec![12.0]),
+        discharge_coefficients: Some(vec![0.8]),
+        ..Default::default()
+    };
+    let vents = resolve_deck_vents(&user, 1.0, UnitSystem::Metric, 0.8);
+    let wsel = 11.0;
+    let e_up = 11.5;
+    let tw = 8.0;
+    let q = total_deck_vent_discharge_m3s(&vents, wsel, e_up, tw);
+    let a = 2.0;
+    let head = 3.5;
+    let expected = 0.8 * a * (2.0 * crate::utils::G_METRIC * head).sqrt();
+    assert!((q - expected).abs() < 1e-6);
+}
+
+#[test]
+fn test_combined_high_flow_opening_vents_weir_sum_to_q() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let table_down = rectangular_table(10.0, 0.0, 50);
+    let deck = BridgeDeckProfile {
+        stations_m: vec![0.0, 10.0],
+        low_elevations_m: vec![5.0, 5.0],
+        high_elevations_m: vec![7.0, 7.0],
+    };
+    let coupling = BridgeCouplingParams {
+        low_flow_method: 3,
+        high_flow_method: 0,
+        ..Default::default()
+    };
+    let sections = BridgeSectionContext {
+        deck_vents: Some(DeckVentUserInput {
+            left_stations: Some(vec![2.0, 6.0]),
+            right_stations: Some(vec![3.0, 7.0]),
+            invert_elevations: Some(vec![5.1, 5.1]),
+            soffit_elevations: Some(vec![5.7, 5.7]),
+            discharge_coefficients: Some(vec![0.75, 0.75]),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    // Q must exceed pressure-only capacity (opening + vents) so weir overtopping engages.
+    let q = 300.0;
+    let tw = 5.5;
+    let hw = solve_bridge_wsel(
+        q,
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        tw,
+        UnitSystem::Metric,
+        &table_up,
+        &table_down,
+        &coupling,
+        50.0,
+        Some(&deck),
+        Some(&sections),
+    );
+    assert!(
+        hw > 7.0 + 1e-4,
+        "combined overtopping expected above high chord, got hw={hw}"
+    );
+
+    let geom = build_bridge_geometry(
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        UnitSystem::Metric,
+        &coupling,
+        50.0,
+        Some(&deck),
+        Some(&sections),
+    );
+    let a_net = net_opening_area_at_low_chord(&geom, &table_up, &table_down);
+    let e_up = upstream_energy_grade(hw, q, &geom, &table_up, geom.z_up_m, true);
+    let l_weir = effective_weir_length_m(&geom, e_up, 10.0);
+    let parts = combined_high_flow_discharge(hw, tw, q, &geom, &table_up, a_net, Some(l_weir));
+
+    assert!(
+        (parts.total_m3s() - q).abs() < 1e-2,
+        "Q_opening={} Q_vents={} Q_weir={} sum={} target={}",
+        parts.q_opening_m3s,
+        parts.q_vents_m3s,
+        parts.q_weir_m3s,
+        parts.total_m3s(),
+        q
+    );
+    assert!(parts.q_opening_m3s > 1.0, "main opening should carry flow");
+    assert!(parts.q_vents_m3s > 0.1, "vents should carry flow");
+    assert!(parts.q_weir_m3s > 0.1, "weir should carry flow");
+}
+
+#[test]
+fn test_combined_high_flow_weir_only_when_below_high_chord() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let table_down = rectangular_table(10.0, 0.0, 50);
+    let deck = BridgeDeckProfile {
+        stations_m: vec![0.0, 10.0],
+        low_elevations_m: vec![5.0, 5.0],
+        high_elevations_m: vec![7.0, 7.0],
+    };
+    let coupling = BridgeCouplingParams::default();
+    let geom = build_bridge_geometry(
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        UnitSystem::Metric,
+        &coupling,
+        50.0,
+        Some(&deck),
+        None,
+    );
+    let a_net = net_opening_area_at_low_chord(&geom, &table_up, &table_down);
+    let wsel = 6.0;
+    let tw = 5.5;
+    let q = 50.0;
+    let pressure_only =
+        combined_high_flow_discharge(wsel, tw, q, &geom, &table_up, a_net, None);
+    let with_weir = combined_high_flow_discharge(wsel, tw, q, &geom, &table_up, a_net, Some(10.0));
+    assert!((pressure_only.q_weir_m3s).abs() < 1e-9);
+    assert!((with_weir.q_weir_m3s).abs() < 1e-9);
+    assert!(
+        (pressure_only.total_m3s() - with_weir.total_m3s()).abs() < 1e-9,
+        "below high chord weir term should be zero"
     );
 }

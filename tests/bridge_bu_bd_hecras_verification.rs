@@ -8,7 +8,7 @@ use stream1d::solvers::bridge::{solve_bridge_wsel, BridgeCouplingParams};
 use stream1d::solvers::bridge_interior::{
     friction_path_from_interior, interior_from_steady, layout_cuts_for_bridge,
     resolve_bridge_face_solve_geometry, resolve_bridge_face_stations_metric,
-    resolve_bridge_friction_length_metric,
+    resolve_bridge_friction_length_metric, BridgeFaceSolveParams,
 };
 use stream1d::solvers::{solve_steady, SteadyInputs};
 use stream1d::utils::UnitSystem;
@@ -207,56 +207,26 @@ fn three_section_bridge_reach_matches_two_face_baseline() {
         low_flow_method: 1,
         ..Default::default()
     };
-    let geo_two = resolve_bridge_face_solve_geometry(
-        &interior_two,
-        None,
-        None,
-        None,
-        &table_up,
-        &table_down,
-        0.05,
-        0.0,
-        UnitSystem::Metric,
-        50,
-        None,
-        None,
-        0.0,
-        None,
-        4.0,
-        0.0,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-    );
-    let geo_three = resolve_bridge_face_solve_geometry(
-        &interior_three,
-        None,
-        None,
-        None,
-        &table_up,
-        &table_down,
-        0.05,
-        0.0,
-        UnitSystem::Metric,
-        50,
-        None,
-        None,
-        0.0,
-        None,
-        4.0,
-        0.0,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-    );
+    let geo_two = resolve_bridge_face_solve_geometry(BridgeFaceSolveParams {
+        interior: &interior_two,
+        reach_table_up: &table_up,
+        reach_table_down: &table_down,
+        reach_z_up_user: 0.05,
+        raw_units: UnitSystem::Metric,
+        num_slices: 50,
+        interval_length_m: 4.0,
+        ..BridgeFaceSolveParams::new(&interior_two, &table_up, &table_down)
+    });
+    let geo_three = resolve_bridge_face_solve_geometry(BridgeFaceSolveParams {
+        interior: &interior_three,
+        reach_table_up: &table_up,
+        reach_table_down: &table_down,
+        reach_z_up_user: 0.05,
+        raw_units: UnitSystem::Metric,
+        num_slices: 50,
+        interval_length_m: 4.0,
+        ..BridgeFaceSolveParams::new(&interior_three, &table_up, &table_down)
+    });
     let hw_two = solve_bridge_wsel(
         15.0,
         5.0,

@@ -7,6 +7,7 @@ pub mod bridge_interior;
 pub mod bridge_validation;
 pub mod bridge_roadway_compose;
 pub mod pier_geometry;
+pub mod deck_vent_geometry;
 pub mod junction;
 
 pub use bridge::{
