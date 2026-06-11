@@ -181,6 +181,7 @@ WASM API: [`docs/web/wasm_integration.md`](docs/web/wasm_integration.md).
 | [`docs/development/pier_tapered_width.md`](docs/development/pier_tapered_width.md) | Tapered pier width API (v27) |
 | [`docs/development/pier_footings_nosing.md`](docs/development/pier_footings_nosing.md) | Pier footings, nosing (API v28); plan polygons and wing walls (design) |
 | [`docs/development/deck_vents_slotted_openings.md`](docs/development/deck_vents_slotted_openings.md) | Deck vents & slotted openings (API design, v29) |
+| [`docs/development/extended_pier_shape_catalog.md`](docs/development/extended_pier_shape_catalog.md) | Extended pier shape catalog — `bridge_pier_shapes` 0–11 (API v29) |
 | [`docs/BRIDGE_INTERIOR_SECTIONS_API.md`](docs/BRIDGE_INTERIOR_SECTIONS_API.md) | Advanced: BU/BD, opening alignment, guide banks |
 | [`docs/web/wasm_integration.md`](docs/web/wasm_integration.md) | WASM build and JavaScript usage |
 | [`docs/development/testing.md`](docs/development/testing.md) | Test suites and CI |
