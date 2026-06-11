@@ -321,6 +321,89 @@ impl HighFlowMethod {
     }
 }
 
+/// Optional pier debris and ice modifiers (user units until resolved on `BridgeGeometry`).
+#[derive(Debug, Clone)]
+pub struct BridgeIceDebrisParams {
+    /// Multiplier on net opening area / conveyance (0–1]. 1.0 = no extra blockage.
+    pub opening_blockage_factor: f64,
+    /// Constant ice thickness through opening (user units).
+    pub ice_thickness: f64,
+    /// `0` = none, `1` = constant thickness, `2` = reserved dynamic jam.
+    pub ice_mode: u8,
+    /// Roadway ice lowering weir crest (user units).
+    pub deck_ice_thickness: f64,
+    /// Total debris width per pier in opening coordinates (user units).
+    pub pier_debris_widths: Vec<f64>,
+    /// Debris height below WSEL per pier (user units).
+    pub pier_debris_heights: Vec<f64>,
+}
+
+impl Default for BridgeIceDebrisParams {
+    fn default() -> Self {
+        Self {
+            opening_blockage_factor: 1.0,
+            ice_thickness: 0.0,
+            ice_mode: 0,
+            deck_ice_thickness: 0.0,
+            pier_debris_widths: Vec::new(),
+            pier_debris_heights: Vec::new(),
+        }
+    }
+}
+
+fn clamp_opening_blockage_factor(f: f64) -> f64 {
+    if f <= 0.0 || !f.is_finite() {
+        1e-6
+    } else {
+        f.min(1.0)
+    }
+}
+
+fn nested_bridge_scalar(values: &Option<Vec<f64>>, b_idx: usize, default: f64) -> f64 {
+    values
+        .as_ref()
+        .and_then(|v| v.get(b_idx))
+        .copied()
+        .unwrap_or(default)
+}
+
+fn nested_bridge_pier_row(values: &Option<Vec<Vec<f64>>>, b_idx: usize) -> Vec<f64> {
+    values
+        .as_ref()
+        .and_then(|v| v.get(b_idx))
+        .cloned()
+        .unwrap_or_default()
+}
+
+/// Resolve ice/debris inputs for bridge index `b_idx` (steady / unsteady flat arrays).
+pub fn ice_debris_params_for_bridge(
+    opening_blockage_factors: &Option<Vec<f64>>,
+    pier_debris_widths: &Option<Vec<Vec<f64>>>,
+    pier_debris_heights: &Option<Vec<Vec<f64>>>,
+    ice_thicknesses: &Option<Vec<f64>>,
+    ice_modes: &Option<Vec<i32>>,
+    deck_ice_thicknesses: &Option<Vec<f64>>,
+    b_idx: usize,
+) -> BridgeIceDebrisParams {
+    BridgeIceDebrisParams {
+        opening_blockage_factor: clamp_opening_blockage_factor(nested_bridge_scalar(
+            opening_blockage_factors,
+            b_idx,
+            1.0,
+        )),
+        ice_thickness: nested_bridge_scalar(ice_thicknesses, b_idx, 0.0),
+        ice_mode: ice_modes
+            .as_ref()
+            .and_then(|m| m.get(b_idx))
+            .copied()
+            .unwrap_or(0)
+            .clamp(0, 2) as u8,
+        deck_ice_thickness: nested_bridge_scalar(deck_ice_thicknesses, b_idx, 0.0),
+        pier_debris_widths: nested_bridge_pier_row(pier_debris_widths, b_idx),
+        pier_debris_heights: nested_bridge_pier_row(pier_debris_heights, b_idx),
+    }
+}
+
 /// Per-bridge coupling parameters (steady and unsteady).
 #[derive(Debug, Clone)]
 pub struct BridgeCouplingParams {
@@ -346,6 +429,8 @@ pub struct BridgeCouplingParams {
     pub approach_friction_length: f64,
     /// Override departure friction length (user units). 0 = auto from river stations.
     pub departure_friction_length: f64,
+    /// Floating pier debris, ice cover, deck ice, and opening blockage factor.
+    pub ice_debris: BridgeIceDebrisParams,
 }
 
 impl Default for BridgeCouplingParams {
@@ -364,6 +449,7 @@ impl Default for BridgeCouplingParams {
             friction_weighting: BridgeFrictionWeighting::OpeningOnly,
             approach_friction_length: 0.0,
             departure_friction_length: 0.0,
+            ice_debris: BridgeIceDebrisParams::default(),
         }
     }
 }
@@ -451,6 +537,24 @@ pub struct BridgeSolveParams {
     /// Override departure friction length (user units). 0 = auto from river stations.
     #[serde(default)]
     pub departure_friction_length: f64,
+    /// Opening area / conveyance multiplier (0–1]. Omit or `1.0` = no extra blockage.
+    #[serde(default = "default_opening_blockage_factor")]
+    pub opening_blockage_factor: f64,
+    /// Per-pier floating debris total width in opening coordinates (user units).
+    #[serde(default)]
+    pub pier_debris_widths: Option<Vec<f64>>,
+    /// Per-pier floating debris height below WSEL (user units).
+    #[serde(default)]
+    pub pier_debris_heights: Option<Vec<f64>>,
+    /// Constant ice thickness through opening (user units).
+    #[serde(default)]
+    pub ice_thickness: f64,
+    /// `0` = none, `1` = constant thickness, `2` = reserved.
+    #[serde(default)]
+    pub ice_mode: i32,
+    /// Roadway ice lowering weir crest (user units).
+    #[serde(default)]
+    pub deck_ice_thickness: f64,
     #[serde(default)]
     pub skew_deg: f64,
     #[serde(default)]
@@ -591,6 +695,10 @@ fn default_max_weir_submergence() -> f64 {
     0.98
 }
 
+fn default_opening_blockage_factor() -> f64 {
+    1.0
+}
+
 fn default_channel_width() -> f64 {
     10.0
 }
@@ -632,6 +740,12 @@ impl Default for BridgeSolveParams {
             friction_weighting: 0,
             approach_friction_length: 0.0,
             departure_friction_length: 0.0,
+            opening_blockage_factor: default_opening_blockage_factor(),
+            pier_debris_widths: None,
+            pier_debris_heights: None,
+            ice_thickness: 0.0,
+            ice_mode: 0,
+            deck_ice_thickness: 0.0,
             wspro_coeff: default_wspro_coeff(),
             coeff_contraction: default_coeff_contraction(),
             coeff_expansion: default_coeff_expansion(),
@@ -885,10 +999,13 @@ fn effective_weir_length_m(geom: &BridgeGeometry, e_upstream: f64, fallback: f64
             continue;
         }
         let s_mid = 0.5 * (deck.stations_m[i] + deck.stations_m[i + 1]);
-        let high_mid = interpolate_profile(
-            &deck.stations_m,
-            &deck.high_elevations_m,
-            s_mid,
+        let high_mid = effective_deck_crest_m(
+            geom,
+            interpolate_profile(
+                &deck.stations_m,
+                &deck.high_elevations_m,
+                s_mid,
+            ),
         );
         if e_upstream > high_mid {
             len += w;
@@ -960,6 +1077,18 @@ pub struct BridgeGeometry {
     pub internal_opening_segment_lengths_m: Vec<f64>,
     /// Bed elevation (metric) at each interior opening cut.
     pub internal_opening_z_m: Vec<f64>,
+    /// Final multiplier on net opening area after debris / ice (§A).
+    pub opening_blockage_factor: f64,
+    /// Active constant ice thickness under deck (metric).
+    pub ice_thickness_m: f64,
+    /// `0` = none, `1` = constant thickness.
+    pub ice_mode: u8,
+    /// Roadway ice lowering weir crest (metric).
+    pub deck_ice_thickness_m: f64,
+    /// Resolved per-pier debris widths (metric, opening coordinates).
+    pub pier_debris_widths_m: Vec<f64>,
+    /// Resolved per-pier debris heights below WSEL (metric).
+    pub pier_debris_heights_m: Vec<f64>,
 }
 
 impl Default for BridgeGeometry {
@@ -1009,8 +1138,88 @@ impl Default for BridgeGeometry {
             internal_opening_tables: Vec::new(),
             internal_opening_segment_lengths_m: Vec::new(),
             internal_opening_z_m: Vec::new(),
+            opening_blockage_factor: 1.0,
+            ice_thickness_m: 0.0,
+            ice_mode: 0,
+            deck_ice_thickness_m: 0.0,
+            pier_debris_widths_m: Vec::new(),
+            pier_debris_heights_m: Vec::new(),
         }
     }
+}
+
+fn ice_thickness_active_m(geom: &BridgeGeometry) -> f64 {
+    if geom.ice_mode == 1 {
+        geom.ice_thickness_m.max(0.0)
+    } else {
+        0.0
+    }
+}
+
+fn capped_ice_thickness_m(geom: &BridgeGeometry, z_bed: f64) -> f64 {
+    let t = ice_thickness_active_m(geom);
+    if t <= 1e-9 {
+        return 0.0;
+    }
+    let max_ice = (geom.low_chord_m - z_bed - 1e-3).max(0.0);
+    t.min(max_ice)
+}
+
+fn effective_z_bed_m(z_bed: f64, geom: &BridgeGeometry) -> f64 {
+    z_bed + capped_ice_thickness_m(geom, z_bed)
+}
+
+fn effective_deck_crest_m(geom: &BridgeGeometry, crest_m: f64) -> f64 {
+    crest_m - geom.deck_ice_thickness_m.max(0.0)
+}
+
+fn effective_scalar_high_chord_m(geom: &BridgeGeometry) -> f64 {
+    effective_deck_crest_m(geom, geom.high_chord_m)
+}
+
+fn apply_opening_blockage(a_eff: f64, geom: &BridgeGeometry) -> f64 {
+    a_eff * clamp_opening_blockage_factor(geom.opening_blockage_factor)
+}
+
+fn scale_base_area_for_ice(a_base: f64, wsel: f64, z_bed: f64, geom: &BridgeGeometry) -> f64 {
+    let ice = capped_ice_thickness_m(geom, z_bed);
+    if ice <= 1e-9 || wsel <= z_bed + 1e-9 {
+        return a_base;
+    }
+    let h_total = wsel - z_bed;
+    let h_flow = (wsel - effective_z_bed_m(z_bed, geom)).max(0.0);
+    a_base * (h_flow / h_total).min(1.0)
+}
+
+fn pier_floating_debris_obstruction_m2(geom: &BridgeGeometry, wsel: f64, z_bed: f64) -> f64 {
+    let z_eff = effective_z_bed_m(z_bed, geom);
+    let depth = (wsel - z_eff).max(0.0);
+    if depth < 1e-9 {
+        return 0.0;
+    }
+    let (s_min, s_max) = opening_station_bounds_m(geom);
+    let cos = geom.skew_cos.max(1e-6);
+    let mut total = 0.0;
+    for (i, pier) in active_resolved_piers(geom).iter().enumerate() {
+        let w_debris = geom.pier_debris_widths_m.get(i).copied().unwrap_or(0.0);
+        let h_debris = geom.pier_debris_heights_m.get(i).copied().unwrap_or(0.0);
+        if w_debris < 1e-9 || h_debris < 1e-9 {
+            continue;
+        }
+        let pier_w = pier.spec.width_perp_at(wsel).max(0.0) / cos;
+        let w = w_debris.max(pier_w);
+        let half = w * 0.5;
+        let s_lo = (pier.station_m - half).max(s_min);
+        let s_hi = (pier.station_m + half).min(s_max);
+        if s_hi <= s_lo + 1e-9 {
+            continue;
+        }
+        let h = h_debris.min(depth);
+        let gross = (s_hi - s_lo) * h;
+        let pier_a = pier.submerged_area_m2(wsel, z_eff) / cos;
+        total += (gross - pier_a).max(0.0);
+    }
+    total
 }
 
 const APPROACH_DEPARTURE_TABLE_SLICES: usize = 50;
@@ -1213,21 +1422,23 @@ fn pier_in_opening_span(geom: &BridgeGeometry, pier: &ResolvedPier) -> bool {
 }
 
 fn total_pier_flow_width_at_wsel_m(geom: &BridgeGeometry, wsel: f64, z_bed: f64) -> f64 {
+    let z_eff = effective_z_bed_m(z_bed, geom);
     let piers = active_resolved_piers(geom);
     crate::solvers::pier_geometry::total_pier_flow_width_at_wsel_m(
         &piers,
         wsel,
-        z_bed,
+        z_eff,
         geom.skew_cos,
     )
 }
 
 fn pier_submerged_area_at_wsel(geom: &BridgeGeometry, wsel: f64, z_bed: f64) -> f64 {
+    let z_eff = effective_z_bed_m(z_bed, geom);
     let piers = active_resolved_piers(geom);
     crate::solvers::pier_geometry::total_submerged_pier_area_m2(
         &piers,
         wsel,
-        z_bed,
+        z_eff,
         geom.skew_cos,
     )
 }
@@ -1261,8 +1472,10 @@ fn obstructed_opening_at_wsel(
 
 /// Vertical opening below the low chord (minimum of BU and BD invert depths).
 fn opening_height_below_deck_m(geom: &BridgeGeometry) -> f64 {
-    let h_up = (geom.low_chord_m - geom.z_up_m).max(0.0);
-    let h_down = (geom.low_chord_m - geom.z_down_m).max(0.0);
+    let ice_up = capped_ice_thickness_m(geom, geom.z_up_m);
+    let ice_down = capped_ice_thickness_m(geom, geom.z_down_m);
+    let h_up = (geom.low_chord_m - geom.z_up_m - ice_up).max(0.0);
+    let h_down = (geom.low_chord_m - geom.z_down_m - ice_down).max(0.0);
     h_up.min(h_down).max(1e-3)
 }
 
@@ -1281,11 +1494,21 @@ fn obstructed_hydraulics(
         None,
         wsel,
     );
-    let a_base = base_flow_area(&row, ineffective, None);
-    let depth = (wsel - z_bed).max(0.0);
+    let a_base = scale_base_area_for_ice(
+        base_flow_area(&row, ineffective, None),
+        wsel,
+        z_bed,
+        geom,
+    );
+    let z_eff = effective_z_bed_m(z_bed, geom);
+    let depth = (wsel - z_eff).max(0.0);
     let a_piers = pier_submerged_area_at_wsel(geom, wsel, z_bed);
-    let a_abut = geom.abutments.submerged_area_m2(wsel, z_bed);
-    let a_eff = (a_base - a_piers - a_abut).max(1e-5);
+    let a_abut = geom.abutments.submerged_area_m2(wsel, z_eff);
+    let a_debris = pier_floating_debris_obstruction_m2(geom, wsel, z_bed);
+    let a_eff = apply_opening_blockage(
+        (a_base - a_piers - a_abut - a_debris).max(1e-5),
+        geom,
+    );
 
     let full_moment = table.calculate_area_moment(wsel);
     let area_moment = if a_base > 1e-5 {
@@ -1299,7 +1522,7 @@ fn obstructed_hydraulics(
     } else {
         row.top_width
     };
-    let abut_width_at_wsel = geom.abutments.submerged_width_at_wsel_m(wsel, z_bed);
+    let abut_width_at_wsel = geom.abutments.submerged_width_at_wsel_m(wsel, z_eff);
     let top_width = (t_base
         - total_pier_flow_width_at_wsel_m(geom, wsel, z_bed)
         - abut_width_at_wsel)
@@ -1829,7 +2052,8 @@ fn gross_opening_area_at_low_chord(
     is_upstream: bool,
 ) -> f64 {
     let wsel = geom.low_chord_m;
-    let height_under_deck = (wsel - z_bed).max(0.0);
+    let z_eff = effective_z_bed_m(z_bed, geom);
+    let height_under_deck = (wsel - z_eff).max(0.0);
     let deck_width = gross_projected_opening_width_m(geom);
     let a_gross = if deck_width > 1e-6 {
         deck_width * height_under_deck
@@ -1842,11 +2066,15 @@ fn gross_opening_area_at_low_chord(
             None,
             wsel,
         );
-        base_flow_area(&row, ineffective, None)
+        scale_base_area_for_ice(base_flow_area(&row, ineffective, None), wsel, z_bed, geom)
     };
     let a_piers = pier_submerged_area_at_wsel(geom, wsel, z_bed);
-    let a_abut = geom.abutments.submerged_area_m2(wsel, z_bed);
-    (a_gross - a_piers - a_abut).max(1e-4)
+    let a_abut = geom.abutments.submerged_area_m2(wsel, z_eff);
+    let a_debris = pier_floating_debris_obstruction_m2(geom, wsel, z_bed);
+    apply_opening_blockage(
+        (a_gross - a_piers - a_abut - a_debris).max(1e-4),
+        geom,
+    )
 }
 
 /// Net opening area at the low chord using HEC-RAS min(BU, BD) weighting.
@@ -1919,18 +2147,21 @@ fn max_active_weir_submergence_ratio(tw_m: f64, e_upstream: f64, geom: &BridgeGe
                 continue;
             }
             let s_mid = 0.5 * (deck.stations_m[i] + deck.stations_m[i + 1]);
-            let crest = interpolate_profile(
-                &deck.stations_m,
-                &deck.high_elevations_m,
-                s_mid,
+            let crest = effective_deck_crest_m(
+                geom,
+                interpolate_profile(
+                    &deck.stations_m,
+                    &deck.high_elevations_m,
+                    s_mid,
+                ),
             );
             if e_upstream > crest + 1e-6 {
                 max_ratio = max_ratio.max(weir_submergence_ratio(tw_m, e_upstream, crest));
             }
         }
         max_ratio
-    } else if e_upstream > geom.high_chord_m + 1e-6 {
-        weir_submergence_ratio(tw_m, e_upstream, geom.high_chord_m)
+    } else if e_upstream > effective_scalar_high_chord_m(geom) + 1e-6 {
+        weir_submergence_ratio(tw_m, e_upstream, effective_scalar_high_chord_m(geom))
     } else {
         0.0
     }
@@ -1950,10 +2181,13 @@ fn segment_weir_discharge_m3s(tw_m: f64, e_upstream: f64, geom: &BridgeGeometry)
                 continue;
             }
             let s_mid = 0.5 * (deck.stations_m[i] + deck.stations_m[i + 1]);
-            let crest = interpolate_profile(
-                &deck.stations_m,
-                &deck.high_elevations_m,
-                s_mid,
+            let crest = effective_deck_crest_m(
+                geom,
+                interpolate_profile(
+                    &deck.stations_m,
+                    &deck.high_elevations_m,
+                    s_mid,
+                ),
             );
             let h = (e_upstream - crest).max(0.0);
             if h <= 1e-6 {
@@ -2088,12 +2322,13 @@ fn weir_flow_discharge(
     if geom.deck.as_ref().is_some_and(|d| d.is_valid()) {
         return segment_weir_discharge_m3s(tw_m, e_up, geom);
     }
-    let h_weir = (e_up - geom.high_chord_m).max(0.0);
+    let crest = effective_scalar_high_chord_m(geom);
+    let h_weir = (e_up - crest).max(0.0);
     if h_weir <= 1e-6 {
         return 0.0;
     }
     let l = l_weir.max(1e-3);
-    let sub_ratio = weir_submergence_ratio(tw_m, e_up, geom.high_chord_m);
+    let sub_ratio = weir_submergence_ratio(tw_m, e_up, crest);
     let factor = bradley_weir_submergence_factor(sub_ratio);
     geom.weir_coeff_m * factor * l * h_weir.powf(1.5)
 }
@@ -2129,10 +2364,13 @@ fn weir_head_active_at_energy(e_upstream: f64, geom: &BridgeGeometry) -> bool {
     if let Some(deck) = geom.deck.as_ref().filter(|d| d.is_valid()) {
         for i in 0..deck.stations_m.len().saturating_sub(1) {
             let s_mid = 0.5 * (deck.stations_m[i] + deck.stations_m[i + 1]);
-            let crest = interpolate_profile(
-                &deck.stations_m,
-                &deck.high_elevations_m,
-                s_mid,
+            let crest = effective_deck_crest_m(
+                geom,
+                interpolate_profile(
+                    &deck.stations_m,
+                    &deck.high_elevations_m,
+                    s_mid,
+                ),
             );
             if e_upstream > crest + 1e-6 {
                 return true;
@@ -2140,7 +2378,7 @@ fn weir_head_active_at_energy(e_upstream: f64, geom: &BridgeGeometry) -> bool {
         }
         false
     } else {
-        e_upstream > geom.high_chord_m + 1e-6
+        e_upstream > effective_scalar_high_chord_m(geom) + 1e-6
     }
 }
 
@@ -2758,6 +2996,14 @@ fn coupling_from_params(params: &BridgeSolveParams) -> BridgeCouplingParams {
         friction_weighting: BridgeFrictionWeighting::from_i32(params.friction_weighting),
         approach_friction_length: params.approach_friction_length,
         departure_friction_length: params.departure_friction_length,
+        ice_debris: BridgeIceDebrisParams {
+            opening_blockage_factor: clamp_opening_blockage_factor(params.opening_blockage_factor),
+            ice_thickness: params.ice_thickness,
+            ice_mode: params.ice_mode.clamp(0, 2) as u8,
+            deck_ice_thickness: params.deck_ice_thickness,
+            pier_debris_widths: params.pier_debris_widths.clone().unwrap_or_default(),
+            pier_debris_heights: params.pier_debris_heights.clone().unwrap_or_default(),
+        },
     }
 }
 
@@ -3281,6 +3527,28 @@ fn pier_attachments_user_to_metric(
     }
 }
 
+fn resolve_ice_debris_geometry_fields(
+    coupling: &BridgeCouplingParams,
+    units: UnitSystem,
+) -> (f64, f64, u8, f64, Vec<f64>, Vec<f64>) {
+    let to_m = |v: f64| {
+        if units == UnitSystem::USCustomary {
+            v * FT_TO_M
+        } else {
+            v
+        }
+    };
+    let id = &coupling.ice_debris;
+    (
+        clamp_opening_blockage_factor(id.opening_blockage_factor),
+        to_m(id.ice_thickness),
+        id.ice_mode,
+        to_m(id.deck_ice_thickness),
+        id.pier_debris_widths.iter().map(|&w| to_m(w)).collect(),
+        id.pier_debris_heights.iter().map(|&h| to_m(h)).collect(),
+    )
+}
+
 fn build_bridge_geometry(
     low_chord: f64,
     high_chord: f64,
@@ -3515,6 +3783,14 @@ fn build_bridge_geometry(
         .and_then(|s| s.deck_vents.as_ref())
         .map(|u| resolve_deck_vents(u, skew_cos, units, submerged_c))
         .unwrap_or_default();
+    let (
+        opening_blockage_factor,
+        ice_thickness_m,
+        ice_mode,
+        deck_ice_thickness_m,
+        pier_debris_widths_m,
+        pier_debris_heights_m,
+    ) = resolve_ice_debris_geometry_fields(coupling, units);
 
     if units == UnitSystem::USCustomary {
         BridgeGeometry {
@@ -3562,6 +3838,12 @@ fn build_bridge_geometry(
             internal_opening_tables: internal_opening_tables.clone(),
             internal_opening_segment_lengths_m: internal_opening_segment_lengths_m.clone(),
             internal_opening_z_m: internal_opening_z_m.clone(),
+            opening_blockage_factor,
+            ice_thickness_m,
+            ice_mode,
+            deck_ice_thickness_m,
+            pier_debris_widths_m: pier_debris_widths_m.clone(),
+            pier_debris_heights_m: pier_debris_heights_m.clone(),
         }
     } else {
         BridgeGeometry {
@@ -3609,6 +3891,12 @@ fn build_bridge_geometry(
             internal_opening_tables,
             internal_opening_segment_lengths_m,
             internal_opening_z_m,
+            opening_blockage_factor,
+            ice_thickness_m,
+            ice_mode,
+            deck_ice_thickness_m,
+            pier_debris_widths_m,
+            pier_debris_heights_m,
         }
     }
 }

@@ -109,6 +109,24 @@ pub struct UnsteadyBridgeInputs {
     /// Override departure friction length per bridge (user units). 0 = auto from river stations.
     #[serde(default)]
     pub bridge_departure_friction_lengths: Option<Vec<f64>>,
+    /// Net opening area multiplier per bridge (0–1]. Omit or `1.0` = no extra blockage.
+    #[serde(default)]
+    pub bridge_opening_blockage_factors: Option<Vec<f64>>,
+    /// Floating pier debris total width per bridge `[bridge][pier]` (opening coordinates).
+    #[serde(default)]
+    pub bridge_pier_debris_widths: Option<Vec<Vec<f64>>>,
+    /// Floating pier debris height below WSEL per bridge `[bridge][pier]`.
+    #[serde(default)]
+    pub bridge_pier_debris_heights: Option<Vec<Vec<f64>>>,
+    /// Constant ice thickness through opening per bridge (user units).
+    #[serde(default)]
+    pub bridge_ice_thicknesses: Option<Vec<f64>>,
+    /// Ice mode per bridge: `0` = none, `1` = constant thickness, `2` = reserved.
+    #[serde(default)]
+    pub bridge_ice_modes: Option<Vec<i32>>,
+    /// Roadway ice lowering weir crest per bridge (user units).
+    #[serde(default)]
+    pub bridge_deck_ice_thicknesses: Option<Vec<f64>>,
     #[serde(default)]
     pub bridge_wspro_coeffs: Option<Vec<f64>>,
     #[serde(default)]
@@ -548,6 +566,15 @@ fn bridge_coupling_for(inputs: &UnsteadyInputs, b_idx: usize) -> crate::solvers:
             .and_then(|v| v.get(b_idx))
             .copied()
             .unwrap_or(0.0),
+        ice_debris: crate::solvers::bridge::ice_debris_params_for_bridge(
+            &inputs.bridge.bridge_opening_blockage_factors,
+            &inputs.bridge.bridge_pier_debris_widths,
+            &inputs.bridge.bridge_pier_debris_heights,
+            &inputs.bridge.bridge_ice_thicknesses,
+            &inputs.bridge.bridge_ice_modes,
+            &inputs.bridge.bridge_deck_ice_thicknesses,
+            b_idx,
+        ),
     }
 }
 
@@ -1700,6 +1727,12 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
             bridge_friction_weighting: inputs.bridge.bridge_friction_weighting.clone(),
             bridge_approach_friction_lengths: inputs.bridge.bridge_approach_friction_lengths.clone(),
             bridge_departure_friction_lengths: inputs.bridge.bridge_departure_friction_lengths.clone(),
+            bridge_opening_blockage_factors: inputs.bridge.bridge_opening_blockage_factors.clone(),
+            bridge_pier_debris_widths: inputs.bridge.bridge_pier_debris_widths.clone(),
+            bridge_pier_debris_heights: inputs.bridge.bridge_pier_debris_heights.clone(),
+            bridge_ice_thicknesses: inputs.bridge.bridge_ice_thicknesses.clone(),
+            bridge_ice_modes: inputs.bridge.bridge_ice_modes.clone(),
+            bridge_deck_ice_thicknesses: inputs.bridge.bridge_deck_ice_thicknesses.clone(),
             bridge_wspro_coeffs: inputs.bridge.bridge_wspro_coeffs.clone(),
             bridge_pressure_flow_coeffs_inlet: inputs
                 .bridge

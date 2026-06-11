@@ -48,7 +48,7 @@ Compared to a full HEC-RAS installation, the engine does not model everything in
 | **Ineffective flow** *(partial parity)* | Roadway embankment blocking; full RAS storage-area coupling | Reach `ineffective_flow_areas` (steady, unsteady), `blocked_obstructions`, `bridge_ineffective_*`, approach/departure cuts — [`equations.md` §H0](equations.md); `densify_reach_modifier_policy` for `max_spacing` interior nodes — §H1; `bridge_roadway_embankments` composes deck+abutment+ineffective+embankment blocked tops from grade profiles (API v26) — §G2 |
 | **Terrain & mapping** | RAS Terrain, TIN/bathymetry authoring, RAS Map | **Not in the engine** — the companion **web app** may edit cross-sections and import HEC-RAS geometry; the solver only receives $(x,y)$ sections and stations |
 | **Sediment & morphology** | Mobile bed, sediment transport, scour | Not modeled (optional fixed culvert blockage depth only) |
-| **Water quality & ice** | Temperature, water quality, ice jams | Not modeled |
+| **Water quality & ice** | Temperature, water quality, full river-ice transport and jam physics | Not modeled; optional **bridge-local** ice/debris modifiers (v32) in [`bridge_ice_debris.md`](../development/bridge_ice_debris.md) |
 | **Project workflow** | Full HEC-RAS `.prj` with Plan, Geometry, and Unsteady files | **Not in the engine** — no built-in project format; the **web app** may import geometry and manage projects, then call WASM per solve |
 | **Regulatory reporting** | FEMA, flood insurance, HEC-RAS report templates | Not included |
 
@@ -70,7 +70,8 @@ HEC-RAS models piers in the **Bridge** editor: centerline placement, a **width v
 | Pier submerged plan area at WSEL | Integrated $\int w(z)\,dz$ + nosing (v27–v28); feeds Yarnell $\alpha$, momentum drag, `obstructed_hydraulics` `a_eff` | **Full** for shaft + footing shorthand + nosing; see [`pier_tapered_width.md`](../development/pier_tapered_width.md), [`pier_footings_nosing.md`](../development/pier_footings_nosing.md) |
 | Clip pier to ground / invert | Pier base defaults to BU/BD bed; `bridge_pier_base_elevations` or profile lowest point | **Full** |
 | Clip pier to deck soffit (low chord) | Deck `bridge_deck_*` low chord at pier station caps pier top | **Full** |
-| Floating debris on pier | Editor checkbox in RAS | **Not modeled** |
+| Floating debris on pier | Editor: debris width + height per pier (block at WSEL) | **Partial** — `bridge_pier_debris_widths` / `_heights` (v32); opening-local only — [`bridge_ice_debris.md`](../development/bridge_ice_debris.md) §B |
+| River ice at bridge | Constant US thickness or dynamic jam through bridge | **Partial** — constant thickness + deck ice (v32); dynamic jam deferred — [`bridge_ice_debris.md`](../development/bridge_ice_debris.md) §C–§D |
 | Fender / pier-attached plan polygons | — | **Not implemented** (§C in [`pier_footings_nosing.md`](../development/pier_footings_nosing.md)) |
 | Bridge wing walls (WSPRO contraction) | — | **Not implemented** (§D in [`pier_footings_nosing.md`](../development/pier_footings_nosing.md)) |
 | Separate upstream / downstream pier geometry | Single definition per pier | **Not modeled** |
@@ -135,11 +136,23 @@ Canonical list: [`pressure_weir_combined_flow_audit.md` § Intentional remaining
 
 Full spec: [`bridge_reverse_flow_rating.md`](../development/bridge_reverse_flow_rating.md).
 
+### Bridge ice / debris (Phase 4.4 — optional, API v32)
+
+Implemented in solver (constant ice + deck ice + pier debris + opening factor): [`bridge_ice_debris.md`](../development/bridge_ice_debris.md).
+
+| Capability | HEC-RAS | STREAM-1D (v32) |
+|------------|---------|----------------------|
+| Uniform opening blockage | Manual % reduction / judgement | `bridge_opening_blockage_factors` (§A) |
+| Floating pier debris | Per-pier width + height at WSEL | `bridge_pier_debris_widths` / `_heights` (§B) |
+| Ice constant through bridge | US XS ice thickness | `bridge_ice_thicknesses`, `bridge_ice_modes` (§C) |
+| Deck / roadway ice | Ice on high chord | `bridge_deck_ice_thicknesses` (§D) |
+| Dynamic ice jam at bridge | Computed at bridge XS | **Deferred** (`ice_mode = 2`) |
+
 ### Practical guidance
 
 * Supply reach geometry as `cross_sections` arrays (Python or JSON). No built-in HEC-RAS `.g01` importer in this repository.
 * Steady junction: merge upper and lower main stem into one `cross_sections` array; pass tributary as `tributary_cross_sections` with `junction_main_station` at the confluence.
-* Not supported: multi-reach unsteady networks, 2D routing, FEMA report templates, general pump/gate/storage workflows, HEC-RAS pier **floating debris**, per-pier nose shapes, or pier fender/wing-wall polygons (until §C/§D land).
+* Not supported: multi-reach unsteady networks, 2D routing, FEMA report templates, general pump/gate/storage workflows, per-pier nose shapes, or pier fender/wing-wall polygons. HEC-RAS **dynamic ice jam** and reach-wide ice transport are not modeled — see [`bridge_ice_debris.md`](../development/bridge_ice_debris.md) for v32 scope and limits.
 * Unsteady stabilization for steep transients remains in development; see open issues.
 
 For host-application architecture (Web Workers, data transfer, GIS integration), see [`tech_spec.md`](tech_spec.md).

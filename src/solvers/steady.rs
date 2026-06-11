@@ -165,6 +165,24 @@ pub struct SteadyInputs {
     /// Override departure friction length per bridge (user units). 0 = auto from river stations.
     #[serde(default)]
     pub bridge_departure_friction_lengths: Option<Vec<f64>>,
+    /// Net opening area multiplier per bridge (0–1]. Omit or `1.0` = no extra blockage.
+    #[serde(default)]
+    pub bridge_opening_blockage_factors: Option<Vec<f64>>,
+    /// Floating pier debris total width per bridge `[bridge][pier]` (opening coordinates).
+    #[serde(default)]
+    pub bridge_pier_debris_widths: Option<Vec<Vec<f64>>>,
+    /// Floating pier debris height below WSEL per bridge `[bridge][pier]`.
+    #[serde(default)]
+    pub bridge_pier_debris_heights: Option<Vec<Vec<f64>>>,
+    /// Constant ice thickness through opening per bridge (user units).
+    #[serde(default)]
+    pub bridge_ice_thicknesses: Option<Vec<f64>>,
+    /// Ice mode per bridge: `0` = none, `1` = constant thickness, `2` = reserved.
+    #[serde(default)]
+    pub bridge_ice_modes: Option<Vec<i32>>,
+    /// Roadway ice lowering weir crest per bridge (user units).
+    #[serde(default)]
+    pub bridge_deck_ice_thicknesses: Option<Vec<f64>>,
     /// WSPRO contracted-opening discharge coefficient C per bridge (typical 0.7–0.9).
     #[serde(default)]
     pub bridge_wspro_coeffs: Option<Vec<f64>>,
@@ -1079,6 +1097,15 @@ fn bridge_coupling_for(inputs: &SteadyInputs, b_idx: usize) -> crate::solvers::b
             .and_then(|v| v.get(b_idx))
             .copied()
             .unwrap_or(0.0),
+        ice_debris: crate::solvers::bridge::ice_debris_params_for_bridge(
+            &inputs.bridge_opening_blockage_factors,
+            &inputs.bridge_pier_debris_widths,
+            &inputs.bridge_pier_debris_heights,
+            &inputs.bridge_ice_thicknesses,
+            &inputs.bridge_ice_modes,
+            &inputs.bridge_deck_ice_thicknesses,
+            b_idx,
+        ),
     }
 }
 
