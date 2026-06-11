@@ -1858,15 +1858,11 @@ fn reconcile_low_flow_with_high_flow(
     }
     let high = solve_high_flow(q_metric, geom, tw_m, table_up, table_down);
     let wsel = wsel_low.max(high.wsel_m);
-    let regime = if high.wsel_m > wsel_low + 1e-6 {
-        high.regime
-    } else if wsel + 1e-6 >= wsel_low {
-        // EGL exceeded the deck; high-flow path applies even when HW ties low-flow.
-        high.regime
-    } else {
-        low_class.flow_regime()
-    };
-    BridgeHeadwaterSolve { wsel_m: wsel, regime }
+    // EGL exceeded the deck; high-flow regime governs even when HW ties low-flow.
+    BridgeHeadwaterSolve {
+        wsel_m: wsel,
+        regime: high.regime,
+    }
 }
 
 fn high_flow_energy_uses_wspro(geom: &BridgeGeometry) -> bool {
@@ -3323,7 +3319,13 @@ fn solve_high_flow_tailwater(
             - q_metric
     };
 
-    let mut low = geom.z_down_m + 1e-4;
+    // Submerged-orifice tailwater applies for TW ≥ max low chord; sluice Q below that
+    // discontinuity is not monotonic with the combined-weir balance.
+    let mut low = if hw_m >= geom.low_chord_m {
+        geom.low_chord_max_m.max(geom.z_down_m + 1e-4)
+    } else {
+        geom.z_down_m + 1e-4
+    };
     let mut high = hw_m;
     let mut best = low;
     for _ in 0..50 {
