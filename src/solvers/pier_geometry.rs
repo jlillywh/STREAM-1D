@@ -11,6 +11,24 @@ pub struct PierWidthUserInput {
     pub base_elevations: Option<Vec<f64>>,
 }
 
+/// Optional per-pier footing and nosing (user units before metric conversion).
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct PierAttachmentsUserInput {
+    pub footing_top_elevations: Option<Vec<f64>>,
+    pub footing_widths: Option<Vec<f64>>,
+    pub footing_bottom_elevations: Option<Vec<f64>>,
+    pub nosing_lengths: Option<Vec<f64>>,
+    pub nosing_widths: Option<Vec<f64>>,
+}
+
+/// Flow-normal upstream nosing extension (metric).
+#[derive(Debug, Clone)]
+pub struct ResolvedPierNosing {
+    pub length_perp_m: f64,
+    /// When `None`, use shaft perpendicular width at each elevation.
+    pub width_perp_m: Option<f64>,
+}
+
 /// Resolved pier width definition in metric units (perpendicular to flow).
 #[derive(Debug, Clone)]
 pub enum PierWidthSpec {
@@ -35,6 +53,60 @@ pub enum PierWidthSpec {
 pub struct ResolvedPier {
     pub station_m: f64,
     pub spec: PierWidthSpec,
+    pub nosing: Option<ResolvedPierNosing>,
+}
+
+impl ResolvedPier {
+    fn wetted_vertical_limits(&self, wsel_m: f64, z_bed_m: f64) -> (f64, f64) {
+        let z_lo = self.spec.z_base_m(z_bed_m).max(z_bed_m);
+        let z_hi = wsel_m.min(self.spec.z_top_m());
+        (z_lo, z_hi)
+    }
+
+    /// Shaft plan area only (footing merged into `spec` when composed).
+    pub fn shaft_submerged_area_m2(&self, wsel_m: f64, z_bed_m: f64) -> f64 {
+        self.spec.submerged_area_m2(wsel_m, z_bed_m)
+    }
+
+    /// Upstream nosing plan area: $L_\perp \times W_{nose} \times h_{wet}$.
+    pub fn nosing_submerged_area_m2(&self, wsel_m: f64, z_bed_m: f64) -> f64 {
+        let Some(n) = &self.nosing else {
+            return 0.0;
+        };
+        if n.length_perp_m <= 1e-9 {
+            return 0.0;
+        }
+        let (z_lo, z_hi) = self.wetted_vertical_limits(wsel_m, z_bed_m);
+        let h = z_hi - z_lo;
+        if h <= 1e-9 {
+            return 0.0;
+        }
+        let w_nose = n
+            .width_perp_m
+            .unwrap_or_else(|| self.spec.width_perp_at_wsel(wsel_m, z_bed_m));
+        n.length_perp_m * w_nose.max(0.0) * h
+    }
+
+    /// Total submerged opening-plane pier area including nosing.
+    pub fn submerged_area_m2(&self, wsel_m: f64, z_bed_m: f64) -> f64 {
+        self.shaft_submerged_area_m2(wsel_m, z_bed_m) + self.nosing_submerged_area_m2(wsel_m, z_bed_m)
+    }
+
+    /// Opening-plane top width at WSEL (shaft + nosing length when wet).
+    pub fn flow_width_at_wsel_opening_m(&self, wsel_m: f64, z_bed_m: f64, skew_cos: f64) -> f64 {
+        let cos = skew_cos.max(1e-6);
+        let w_shaft = self.spec.width_perp_at_wsel(wsel_m, z_bed_m) / cos;
+        if w_shaft <= 1e-9 {
+            return 0.0;
+        }
+        let l_nose = self
+            .nosing
+            .as_ref()
+            .filter(|n| n.length_perp_m > 1e-9)
+            .map(|n| n.length_perp_m / cos)
+            .unwrap_or(0.0);
+        w_shaft + l_nose
+    }
 }
 
 fn interpolate_profile(stations: &[f64], values: &[f64], x: f64) -> f64 {
@@ -93,7 +165,7 @@ fn integrate_width_profile(elevations: &[f64], widths: &[f64], z_lo: f64, z_hi: 
 }
 
 impl PierWidthSpec {
-    fn z_top_m(&self) -> f64 {
+    pub(crate) fn z_top_m(&self) -> f64 {
         match self {
             PierWidthSpec::Constant { .. } => f64::INFINITY,
             PierWidthSpec::Tapered { z_top_m, .. } => *z_top_m,
@@ -103,7 +175,7 @@ impl PierWidthSpec {
         }
     }
 
-    fn z_base_m(&self, z_bed_m: f64) -> f64 {
+    pub(crate) fn z_base_m(&self, z_bed_m: f64) -> f64 {
         match self {
             PierWidthSpec::Constant { .. } => z_bed_m,
             PierWidthSpec::Tapered { z_base_m, .. } => *z_base_m,
@@ -201,6 +273,129 @@ pub fn evenly_spaced_pier_stations(
         .collect()
 }
 
+fn spec_to_profile_points(spec: &PierWidthSpec, z_bed_m: f64, z_cap_m: f64) -> (Vec<f64>, Vec<f64>) {
+    match spec {
+        PierWidthSpec::Constant { width_perp_m } => (
+            vec![z_bed_m, z_cap_m.max(z_bed_m + 1e-9)],
+            vec![*width_perp_m, *width_perp_m],
+        ),
+        PierWidthSpec::Tapered {
+            top_width_perp_m,
+            bottom_width_perp_m,
+            z_top_m,
+            z_base_m,
+        } => (
+            vec![*z_base_m, *z_top_m],
+            vec![*bottom_width_perp_m, *top_width_perp_m],
+        ),
+        PierWidthSpec::Profile {
+            elevations_m,
+            widths_perp_m,
+        } => (elevations_m.clone(), widths_perp_m.clone()),
+    }
+}
+
+fn merge_footing_profile(
+    elevs: &[f64],
+    widths: &[f64],
+    z_bed_m: f64,
+    footing_top_m: f64,
+    footing_bottom_m: f64,
+    footing_width_m: f64,
+) -> (Vec<f64>, Vec<f64>) {
+    // Profile wins only when it already extends below the footing top (shaft base).
+    if !elevs.is_empty() && elevs[0] < footing_top_m - 1e-9 {
+        return (elevs.to_vec(), widths.to_vec());
+    }
+    let z_bot = footing_bottom_m.min(footing_top_m - 1e-6).max(z_bed_m);
+    let mut out_e = vec![z_bot, footing_top_m];
+    let mut out_w = vec![footing_width_m, footing_width_m];
+    let w_shaft = widths[0];
+    if (elevs[0] - footing_top_m).abs() <= 1e-9 {
+        // Shaft base coincides with footing top — one point, shaft width above.
+        *out_w.last_mut().unwrap() = w_shaft;
+    } else if elevs[0] > footing_top_m + 1e-9 {
+        out_e.push(elevs[0]);
+        out_w.push(w_shaft);
+    } else if (w_shaft - footing_width_m).abs() > 1e-9 {
+        out_e.push(footing_top_m);
+        out_w.push(w_shaft);
+    }
+    for i in 1..elevs.len() {
+        if out_e.last().map(|&z| (z - elevs[i]).abs() < 1e-9).unwrap_or(false) {
+            *out_w.last_mut().unwrap() = widths[i];
+        } else {
+            out_e.push(elevs[i]);
+            out_w.push(widths[i]);
+        }
+    }
+    (out_e, out_w)
+}
+
+fn apply_footing_to_spec(
+    spec: PierWidthSpec,
+    z_bed_m: f64,
+    z_cap_m: f64,
+    footing_top_m: f64,
+    footing_bottom_m: f64,
+    footing_width_m: f64,
+) -> PierWidthSpec {
+    let (elevs, widths) = spec_to_profile_points(&spec, z_bed_m, z_cap_m);
+    let (elevs, widths) = merge_footing_profile(
+        &elevs,
+        &widths,
+        z_bed_m,
+        footing_top_m,
+        footing_bottom_m,
+        footing_width_m,
+    );
+    if elevs.len() >= 2 && valid_profile(&elevs, &widths) {
+        PierWidthSpec::Profile {
+            elevations_m: elevs,
+            widths_perp_m: widths,
+        }
+    } else {
+        spec
+    }
+}
+
+fn resolve_nosing(
+    pier_idx: usize,
+    user: Option<&PierAttachmentsUserInput>,
+) -> Option<ResolvedPierNosing> {
+    let u = user?;
+    let length = u.nosing_lengths.as_ref()?.get(pier_idx).copied()?;
+    if length <= 1e-9 {
+        return None;
+    }
+    let width = u.nosing_widths.as_ref().and_then(|v| v.get(pier_idx)).copied();
+    Some(ResolvedPierNosing {
+        length_perp_m: length,
+        width_perp_m: width.filter(|&w| w > 1e-9),
+    })
+}
+
+fn resolve_footing_for_pier(
+    pier_idx: usize,
+    z_bed_m: f64,
+    _z_cap_m: f64,
+    user: Option<&PierAttachmentsUserInput>,
+) -> Option<(f64, f64, f64)> {
+    let u = user?;
+    let z_top = u.footing_top_elevations.as_ref()?.get(pier_idx).copied()?;
+    let width = u.footing_widths.as_ref()?.get(pier_idx).copied()?;
+    if width <= 1e-9 {
+        return None;
+    }
+    let z_bot = u
+        .footing_bottom_elevations
+        .as_ref()
+        .and_then(|v| v.get(pier_idx))
+        .copied()
+        .unwrap_or(z_bed_m.min(z_top - 1e-3));
+    Some((z_top, z_bot, width))
+}
+
 fn valid_profile(elevations: &[f64], widths: &[f64]) -> bool {
     if elevations.len() < 2 || elevations.len() != widths.len() {
         return false;
@@ -211,6 +406,33 @@ fn valid_profile(elevations: &[f64], widths: &[f64]) -> bool {
     elevations
         .windows(2)
         .all(|w| w[1] > w[0] + 1e-9)
+}
+
+fn resolve_one_pier(
+    pier_idx: usize,
+    legacy_width_perp_m: f64,
+    z_bed_m: f64,
+    z_top_default_m: f64,
+    width_user: Option<&PierWidthUserInput>,
+    attachments_user: Option<&PierAttachmentsUserInput>,
+) -> ResolvedPier {
+    let mut spec = resolve_one_pier_spec(
+        pier_idx,
+        legacy_width_perp_m,
+        z_bed_m,
+        z_top_default_m,
+        width_user,
+    );
+    if let Some((z_foot_top, z_foot_bot, w_foot)) =
+        resolve_footing_for_pier(pier_idx, z_bed_m, z_top_default_m, attachments_user)
+    {
+        spec = apply_footing_to_spec(spec, z_bed_m, z_top_default_m, z_foot_top, z_foot_bot, w_foot);
+    }
+    ResolvedPier {
+        station_m: 0.0,
+        spec,
+        nosing: resolve_nosing(pier_idx, attachments_user),
+    }
 }
 
 fn resolve_one_pier_spec(
@@ -275,17 +497,24 @@ pub fn resolve_pier_width_specs(
     pier_stations_m: &[f64],
     z_bed_m: f64,
     z_top_defaults_m: &[f64],
-    user: Option<&PierWidthUserInput>,
+    width_user: Option<&PierWidthUserInput>,
+    attachments_user: Option<&PierAttachmentsUserInput>,
 ) -> Vec<ResolvedPier> {
     pier_stations_m
         .iter()
         .enumerate()
         .map(|(i, &station_m)| {
             let z_top = z_top_defaults_m.get(i).copied().unwrap_or(z_bed_m);
-            ResolvedPier {
-                station_m,
-                spec: resolve_one_pier_spec(i, legacy_width_perp_m, z_bed_m, z_top, user),
-            }
+            let mut pier = resolve_one_pier(
+                i,
+                legacy_width_perp_m,
+                z_bed_m,
+                z_top,
+                width_user,
+                attachments_user,
+            );
+            pier.station_m = station_m;
+            pier
         })
         .collect()
 }
@@ -300,7 +529,7 @@ pub fn total_submerged_pier_area_m2(
     let cos = skew_cos.max(1e-6);
     piers
         .iter()
-        .map(|p| p.spec.submerged_area_m2(wsel_m, z_bed_m) / cos)
+        .map(|p| p.submerged_area_m2(wsel_m, z_bed_m) / cos)
         .sum()
 }
 
@@ -373,6 +602,61 @@ pub fn pier_width_user_from_rating_params(
     }
 }
 
+/// Per-bridge pier footing/nosing from steady/unsteady flat arrays.
+pub fn pier_attachments_user_for_bridge_index(
+    footing_top_elevations: &Option<Vec<Vec<f64>>>,
+    footing_widths: &Option<Vec<Vec<f64>>>,
+    footing_bottom_elevations: &Option<Vec<Vec<f64>>>,
+    nosing_lengths: &Option<Vec<Vec<f64>>>,
+    nosing_widths: &Option<Vec<Vec<f64>>>,
+    b_idx: usize,
+) -> Option<PierAttachmentsUserInput> {
+    let input = PierAttachmentsUserInput {
+        footing_top_elevations: nested_bridge_row(footing_top_elevations, b_idx),
+        footing_widths: nested_bridge_row(footing_widths, b_idx),
+        footing_bottom_elevations: nested_bridge_row(footing_bottom_elevations, b_idx),
+        nosing_lengths: nested_bridge_row(nosing_lengths, b_idx),
+        nosing_widths: nested_bridge_row(nosing_widths, b_idx),
+    };
+    if input.footing_top_elevations.is_some()
+        || input.footing_widths.is_some()
+        || input.footing_bottom_elevations.is_some()
+        || input.nosing_lengths.is_some()
+        || input.nosing_widths.is_some()
+    {
+        Some(input)
+    } else {
+        None
+    }
+}
+
+/// Pier attachments for standalone bridge / rating curve.
+pub fn pier_attachments_from_rating_params(
+    footing_top_elevations: &Option<Vec<f64>>,
+    footing_widths: &Option<Vec<f64>>,
+    footing_bottom_elevations: &Option<Vec<f64>>,
+    nosing_lengths: &Option<Vec<f64>>,
+    nosing_widths: &Option<Vec<f64>>,
+) -> Option<PierAttachmentsUserInput> {
+    let input = PierAttachmentsUserInput {
+        footing_top_elevations: footing_top_elevations.clone(),
+        footing_widths: footing_widths.clone(),
+        footing_bottom_elevations: footing_bottom_elevations.clone(),
+        nosing_lengths: nosing_lengths.clone(),
+        nosing_widths: nosing_widths.clone(),
+    };
+    if input.footing_top_elevations.is_some()
+        || input.footing_widths.is_some()
+        || input.footing_bottom_elevations.is_some()
+        || input.nosing_lengths.is_some()
+        || input.nosing_widths.is_some()
+    {
+        Some(input)
+    } else {
+        None
+    }
+}
+
 /// Sum opening-plane pier top widths at WSEL.
 pub fn total_pier_flow_width_at_wsel_m(
     piers: &[ResolvedPier],
@@ -380,10 +664,9 @@ pub fn total_pier_flow_width_at_wsel_m(
     z_bed_m: f64,
     skew_cos: f64,
 ) -> f64 {
-    let cos = skew_cos.max(1e-6);
     piers
         .iter()
-        .map(|p| p.spec.width_perp_at_wsel(wsel_m, z_bed_m) / cos)
+        .map(|p| p.flow_width_at_wsel_opening_m(wsel_m, z_bed_m, skew_cos))
         .sum()
 }
 
@@ -532,6 +815,7 @@ mod tests {
         let piers = vec![ResolvedPier {
             station_m: 5.0,
             spec: PierWidthSpec::Constant { width_perp_m: 1.0 },
+            nosing: None,
         }];
         let area = total_submerged_pier_area_m2(&piers, 3.0, 0.0, 0.5);
         assert!((area - 6.0).abs() < 1e-9);
@@ -539,7 +823,7 @@ mod tests {
 
     #[test]
     fn resolve_pier_width_specs_legacy_constant() {
-        let specs = resolve_pier_width_specs(1.5, &[5.0, 8.0], 0.0, &[4.0, 4.0], None);
+        let specs = resolve_pier_width_specs(1.5, &[5.0, 8.0], 0.0, &[4.0, 4.0], None, None);
         assert_eq!(specs.len(), 2);
         for p in &specs {
             match &p.spec {
@@ -558,7 +842,7 @@ mod tests {
             bottom_widths: Some(vec![2.0]),
             ..Default::default()
         };
-        let specs = resolve_pier_width_specs(1.5, &[5.0], 0.0, &[4.0], Some(&user));
+        let specs = resolve_pier_width_specs(1.5, &[5.0], 0.0, &[4.0], Some(&user), None);
         match &specs[0].spec {
             PierWidthSpec::Tapered {
                 top_width_perp_m,
@@ -584,7 +868,7 @@ mod tests {
             width_values: Some(vec![vec![2.0, 1.0]]),
             ..Default::default()
         };
-        let specs = resolve_pier_width_specs(1.5, &[5.0], 0.0, &[4.0], Some(&user));
+        let specs = resolve_pier_width_specs(1.5, &[5.0], 0.0, &[4.0], Some(&user), None);
         match &specs[0].spec {
             PierWidthSpec::Profile {
                 elevations_m,
@@ -606,7 +890,7 @@ mod tests {
             base_elevations: Some(vec![100.0]),
             ..Default::default()
         };
-        let specs = resolve_pier_width_specs(1.5, &[5.0], 99.0, &[104.0], Some(&user));
+        let specs = resolve_pier_width_specs(1.5, &[5.0], 99.0, &[104.0], Some(&user), None);
         match &specs[0].spec {
             PierWidthSpec::Tapered { z_top_m, z_base_m, .. } => {
                 assert!((z_top_m - 103.0).abs() < 1e-9);
@@ -623,7 +907,7 @@ mod tests {
             width_values: Some(vec![vec![2.0, 1.0]]),
             ..Default::default()
         };
-        let specs = resolve_pier_width_specs(1.0, &[3.0, 7.0], 0.0, &[4.0, 4.0], Some(&user));
+        let specs = resolve_pier_width_specs(1.0, &[3.0, 7.0], 0.0, &[4.0, 4.0], Some(&user), None);
         assert!(matches!(specs[0].spec, PierWidthSpec::Profile { .. }));
         match &specs[1].spec {
             PierWidthSpec::Constant { width_perp_m } => assert!((width_perp_m - 1.0).abs() < 1e-9),
@@ -652,5 +936,167 @@ mod tests {
         .expect("rating pier width user");
         assert_eq!(user.top_widths.as_deref(), Some([1.0].as_ref()));
         assert_eq!(user.bottom_widths.as_deref(), Some([2.0].as_ref()));
+    }
+
+    #[test]
+    fn footing_adds_area_below_shaft_base() {
+        let width_user = PierWidthUserInput {
+            top_widths: Some(vec![1.0]),
+            bottom_widths: Some(vec![2.0]),
+            base_elevations: Some(vec![0.0]),
+            ..Default::default()
+        };
+        let attachments = PierAttachmentsUserInput {
+            footing_top_elevations: Some(vec![0.0]),
+            footing_widths: Some(vec![3.0]),
+            footing_bottom_elevations: Some(vec![-1.0]),
+            ..Default::default()
+        };
+        let shaft_only =
+            resolve_pier_width_specs(1.5, &[5.0], -1.0, &[4.0], Some(&width_user), None);
+        let with_footing = resolve_pier_width_specs(
+            1.5,
+            &[5.0],
+            -1.0,
+            &[4.0],
+            Some(&width_user),
+            Some(&attachments),
+        );
+        let wsel = 2.0;
+        let a_shaft = shaft_only[0].shaft_submerged_area_m2(wsel, -1.0);
+        let a_total = with_footing[0].shaft_submerged_area_m2(wsel, -1.0);
+        // Footing -1→0 widens below shaft base at z=0 (≈2.5 m² extra vs tapered shaft alone).
+        assert!(a_total > a_shaft + 2.0, "footing={a_total} shaft={a_shaft}");
+    }
+
+    #[test]
+    fn nosing_adds_submerged_area_and_flow_width() {
+        let attachments = PierAttachmentsUserInput {
+            nosing_lengths: Some(vec![0.5]),
+            ..Default::default()
+        };
+        let piers = resolve_pier_width_specs(1.0, &[5.0], 0.0, &[4.0], None, Some(&attachments));
+        let wsel = 2.0;
+        let pier = &piers[0];
+        assert!((pier.nosing_submerged_area_m2(wsel, 0.0) - 1.0).abs() < 1e-9);
+        assert!((pier.submerged_area_m2(wsel, 0.0) - 3.0).abs() < 1e-9);
+        let w_flow = pier.flow_width_at_wsel_opening_m(wsel, 0.0, 1.0);
+        assert!((w_flow - 1.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn pier_attachments_user_for_bridge_index_extracts_row() {
+        let footing = Some(vec![vec![1.0], vec![2.0]]);
+        let nosing = Some(vec![vec![0.5]]);
+        let user = pier_attachments_user_for_bridge_index(
+            &footing,
+            &None,
+            &None,
+            &nosing,
+            &None,
+            0,
+        )
+        .expect("attachments user");
+        assert_eq!(user.footing_top_elevations.as_deref(), Some([1.0].as_ref()));
+        assert_eq!(user.nosing_lengths.as_deref(), Some([0.5].as_ref()));
+        let user1 = pier_attachments_user_for_bridge_index(
+            &footing, &None, &None, &nosing, &None, 1,
+        )
+        .expect("second bridge footing");
+        assert_eq!(user1.footing_top_elevations.as_deref(), Some([2.0].as_ref()));
+        assert!(user1.nosing_lengths.is_none());
+        assert!(pier_attachments_user_for_bridge_index(
+            &footing, &None, &None, &nosing, &None, 2,
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn pier_attachments_from_rating_params_extracts_flat_arrays() {
+        let user = pier_attachments_from_rating_params(
+            &Some(vec![1.0]),
+            &Some(vec![3.0]),
+            &None,
+            &Some(vec![0.5]),
+            &None,
+        )
+        .expect("rating attachments");
+        assert_eq!(user.footing_top_elevations.as_deref(), Some([1.0].as_ref()));
+        assert_eq!(user.footing_widths.as_deref(), Some([3.0].as_ref()));
+        assert_eq!(user.nosing_lengths.as_deref(), Some([0.5].as_ref()));
+        assert!(pier_attachments_from_rating_params(
+            &None, &None, &None, &None, &None
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn pier_attachments_user_input_serde_round_trip() {
+        let input = PierAttachmentsUserInput {
+            footing_top_elevations: Some(vec![1.0]),
+            footing_widths: Some(vec![3.0]),
+            nosing_lengths: Some(vec![0.5]),
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&input).unwrap();
+        let back: PierAttachmentsUserInput = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.footing_widths, input.footing_widths);
+        assert_eq!(back.nosing_lengths, input.nosing_lengths);
+    }
+
+    #[test]
+    fn nosing_explicit_width_adds_submerged_area() {
+        let attachments = PierAttachmentsUserInput {
+            nosing_lengths: Some(vec![0.5]),
+            nosing_widths: Some(vec![2.0]),
+            ..Default::default()
+        };
+        let piers = resolve_pier_width_specs(1.0, &[5.0], 0.0, &[4.0], None, Some(&attachments));
+        let wsel = 2.0;
+        // 0.5 × 2.0 × 2.0 m wet depth = 2.0 m²
+        assert!((piers[0].nosing_submerged_area_m2(wsel, 0.0) - 2.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn nosing_flow_width_applies_skew() {
+        let attachments = PierAttachmentsUserInput {
+            nosing_lengths: Some(vec![0.5]),
+            ..Default::default()
+        };
+        let piers = resolve_pier_width_specs(1.0, &[5.0], 0.0, &[4.0], None, Some(&attachments));
+        let wsel = 2.0;
+        let w_normal = total_pier_flow_width_at_wsel_m(&piers, wsel, 0.0, 1.0);
+        let w_skew = total_pier_flow_width_at_wsel_m(&piers, wsel, 0.0, 0.5);
+        assert!((w_normal - 1.5).abs() < 1e-9);
+        assert!((w_skew - 3.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn footing_profile_wins_when_already_covers_footing_band() {
+        let width_user = PierWidthUserInput {
+            width_elevations: Some(vec![vec![-1.0, 0.0, 4.0]]),
+            width_values: Some(vec![vec![3.0, 2.0, 1.0]]),
+            ..Default::default()
+        };
+        let attachments = PierAttachmentsUserInput {
+            footing_top_elevations: Some(vec![0.0]),
+            footing_widths: Some(vec![99.0]),
+            ..Default::default()
+        };
+        let specs = resolve_pier_width_specs(
+            1.0,
+            &[5.0],
+            -1.0,
+            &[4.0],
+            Some(&width_user),
+            Some(&attachments),
+        );
+        match &specs[0].spec {
+            PierWidthSpec::Profile { widths_perp_m, .. } => {
+                assert!((widths_perp_m[0] - 3.0).abs() < 1e-9);
+                assert!(widths_perp_m[0] < 50.0);
+            }
+            _ => panic!("expected profile"),
+        }
     }
 }

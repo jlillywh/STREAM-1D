@@ -208,6 +208,13 @@ export interface BridgeArrays {
   /** Optional cap/base elevations for top/bottom pair (omit when using width profile). */
   bridge_pier_top_elevations?: number[][];
   bridge_pier_base_elevations?: number[][];
+  /** Footing shorthand per bridge `[bridge][pier]` — top of pile cap / bottom of shaft. */
+  bridge_pier_footing_top_elevations?: number[][];
+  bridge_pier_footing_widths?: number[][];
+  bridge_pier_footing_bottom_elevations?: number[][];
+  /** Upstream nosing length (flow-normal) per bridge `[bridge][pier]`. */
+  bridge_pier_nosing_lengths?: number[][];
+  bridge_pier_nosing_widths?: number[][];
   /** HEC-RAS BU (bridge upstream face) cross section per bridge. */
   bridge_upstream_cross_sections?: CrossSection[];
   /** HEC-RAS BD (bridge downstream face) cross section per bridge. */
@@ -436,6 +443,11 @@ export interface BridgeRatingCurveInputs {
   pier_width_values?: number[][];
   pier_top_elevations?: number[];
   pier_base_elevations?: number[];
+  pier_footing_top_elevations?: number[];
+  pier_footing_widths?: number[];
+  pier_footing_bottom_elevations?: number[];
+  pier_nosing_lengths?: number[];
+  pier_nosing_widths?: number[];
   deck_stations?: number[];
   deck_low_elevations?: number[];
   deck_high_elevations?: number[];

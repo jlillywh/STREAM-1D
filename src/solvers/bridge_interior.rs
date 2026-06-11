@@ -395,6 +395,7 @@ pub fn resolve_bridge_face_solve_geometry(
     guide_banks_approach: Option<GuideBanks>,
     guide_banks_departure: Option<GuideBanks>,
     pier_widths: Option<crate::solvers::pier_geometry::PierWidthUserInput>,
+    pier_attachments: Option<crate::solvers::pier_geometry::PierAttachmentsUserInput>,
     embankment_blocked: Option<&crate::solvers::bridge_roadway_compose::ComposedEmbankmentBlocked>,
 ) -> BridgeFaceSolveGeometry {
     let mut xs_up = interior
@@ -487,6 +488,7 @@ pub fn resolve_bridge_face_solve_geometry(
         skew_deg,
         pier_stations,
         pier_widths,
+        pier_attachments,
         friction_length_m,
         xs_approach: approach_xs,
         xs_departure: departure_xs,
@@ -1294,6 +1296,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         );
         assert!((geo.z_up_user - 2.0).abs() < 1e-9);
         assert_eq!(geo.sections.opening_reach_station_origin, Some(50.0));
@@ -1444,6 +1447,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         );
         assert_eq!(geo.sections.opening_reach_station_origin, Some(42.5));
     }
@@ -1488,6 +1492,7 @@ mod tests {
             None,
             0.0,
             0.0,
+            None,
             None,
             None,
             None,
@@ -1597,6 +1602,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         );
         let up = geo.sections.ineffective_up.expect("BU bridge ineffective");
         assert!((up.left_blocks[0].station - 5.0).abs() < 1e-9);
@@ -1626,6 +1632,7 @@ mod tests {
             None,
             0.0,
             0.0,
+            None,
             None,
             None,
             None,
@@ -1663,6 +1670,7 @@ mod tests {
             None,
             0.0,
             0.0,
+            None,
             None,
             None,
             None,
@@ -1744,6 +1752,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         );
         assert!((geo.sections.friction_length_m - 6.0).abs() < 1e-9);
     }
@@ -1777,6 +1786,7 @@ mod tests {
             None,
             0.0,
             0.0,
+            None,
             None,
             None,
             None,
@@ -1888,6 +1898,7 @@ mod tests {
             Some(vec![5.0, 20.0]),
             0.0,
             0.0,
+            None,
             None,
             None,
             None,

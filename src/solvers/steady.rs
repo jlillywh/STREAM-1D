@@ -226,6 +226,18 @@ pub struct SteadyInputs {
     pub bridge_pier_top_elevations: Option<Vec<Vec<f64>>>,
     #[serde(default)]
     pub bridge_pier_base_elevations: Option<Vec<Vec<f64>>>,
+    /// Footing top elevation per bridge `[bridge][pier]` (bottom of shaft / top of pile cap).
+    #[serde(default)]
+    pub bridge_pier_footing_top_elevations: Option<Vec<Vec<f64>>>,
+    #[serde(default)]
+    pub bridge_pier_footing_widths: Option<Vec<Vec<f64>>>,
+    #[serde(default)]
+    pub bridge_pier_footing_bottom_elevations: Option<Vec<Vec<f64>>>,
+    /// Upstream nosing length per bridge `[bridge][pier]` (perpendicular to flow).
+    #[serde(default)]
+    pub bridge_pier_nosing_lengths: Option<Vec<Vec<f64>>>,
+    #[serde(default)]
+    pub bridge_pier_nosing_widths: Option<Vec<Vec<f64>>>,
     /// HEC-RAS BU (bridge upstream face) cross section per bridge. Overrides reach US geometry.
     #[serde(default)]
     pub bridge_upstream_cross_sections: Option<Vec<CrossSection>>,
@@ -911,6 +923,14 @@ fn bridge_face_geometry_for(
             &inputs.bridge_pier_width_values,
             &inputs.bridge_pier_top_elevations,
             &inputs.bridge_pier_base_elevations,
+            b_idx,
+        ),
+        crate::solvers::pier_geometry::pier_attachments_user_for_bridge_index(
+            &inputs.bridge_pier_footing_top_elevations,
+            &inputs.bridge_pier_footing_widths,
+            &inputs.bridge_pier_footing_bottom_elevations,
+            &inputs.bridge_pier_nosing_lengths,
+            &inputs.bridge_pier_nosing_widths,
             b_idx,
         ),
         crate::solvers::bridge_roadway_compose::composed_embankment_blocked_for(

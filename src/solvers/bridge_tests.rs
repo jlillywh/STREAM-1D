@@ -2,7 +2,10 @@
 
 use super::*;
 use crate::geometry::{CrossSection, GuideBankToe, GuideBanks, IneffectiveFlowAreas, row_at_elevation};
-use crate::solvers::pier_geometry::{PierWidthSpec, PierWidthUserInput, ResolvedPier};
+use crate::solvers::pier_geometry::{
+    resolve_pier_width_specs, PierAttachmentsUserInput, PierWidthSpec, PierWidthUserInput,
+    ResolvedPier,
+};
 
 fn compound_overbank_approach(ineffective: bool) -> CrossSection {
     CrossSection {
@@ -41,6 +44,7 @@ fn approach_sections_with_ineffective_overbank() -> BridgeSectionContext {
         skew_deg: 0.0,
         pier_stations: None,
         pier_widths: None,
+        pier_attachments: None,
         friction_length_m: 50.0,
         xs_approach: Some(compound_overbank_approach(true)),
         xs_departure: None,
@@ -76,6 +80,7 @@ fn approach_sections_with_guide_banks(
         skew_deg: 0.0,
         pier_stations: None,
         pier_widths: None,
+        pier_attachments: None,
         friction_length_m: 50.0,
         xs_approach: Some(approach),
         xs_departure: None,
@@ -1097,6 +1102,7 @@ fn test_bu_section_ineffective_raises_bridge_headwater() {
             None,
             None,
             None,
+            None,
     );
     let geo_bu_ineff = resolve_bridge_face_solve_geometry(
         &BridgeInteriorInput {
@@ -1119,6 +1125,7 @@ fn test_bu_section_ineffective_raises_bridge_headwater() {
         None,
         0.0,
         0.0,
+            None,
             None,
             None,
             None,
@@ -2236,6 +2243,7 @@ fn tapered_vs_mean_constant_pier_geometries() -> (BridgeGeometry, BridgeGeometry
         pier_specs: vec![ResolvedPier {
             station_m: 5.0,
             spec: PierWidthSpec::Constant { width_perp_m: 1.5 },
+            nosing: None,
         }],
         ..base.clone()
     };
@@ -2248,6 +2256,7 @@ fn tapered_vs_mean_constant_pier_geometries() -> (BridgeGeometry, BridgeGeometry
                 z_base_m: 0.0,
                 z_top_m: 4.0,
             },
+            nosing: None,
         }],
         ..base
     };
@@ -2262,6 +2271,7 @@ fn tapered_vs_rectangular_pier_geometries() -> (BridgeGeometry, BridgeGeometry) 
         pier_specs: vec![ResolvedPier {
             station_m: 5.0,
             spec: PierWidthSpec::Constant { width_perp_m: 1.0 },
+            nosing: None,
         }],
         low_chord_m: 4.0,
         low_chord_max_m: 4.0,
@@ -2305,6 +2315,7 @@ fn tapered_vs_rectangular_pier_geometries() -> (BridgeGeometry, BridgeGeometry) 
                 z_base_m: 0.0,
                 z_top_m: 4.0,
             },
+            nosing: None,
         }],
         ..rectangular.clone()
     };
@@ -2567,6 +2578,7 @@ fn profile_pier_geometry() -> BridgeGeometry {
                 elevations_m: vec![0.0, 4.0],
                 widths_perp_m: vec![2.0, 1.0],
             },
+            nosing: None,
         }],
         ..tapered
     }
@@ -2709,5 +2721,249 @@ fn test_tapered_pier_exceeds_legacy_constant_headwater_in_solve() {
     assert!(
         hw_tapered > hw_legacy + 1e-4,
         "tapered HW {hw_tapered} vs legacy mean-width HW {hw_legacy}"
+    );
+}
+
+fn pier_with_footing_geometry() -> BridgeGeometry {
+    let (_, base) = tapered_vs_rectangular_pier_geometries();
+    BridgeGeometry {
+        pier_specs: resolve_pier_width_specs(
+            1.0,
+            &[5.0],
+            0.0,
+            &[4.0],
+            Some(&PierWidthUserInput {
+                top_widths: Some(vec![1.0]),
+                bottom_widths: Some(vec![2.0]),
+                base_elevations: Some(vec![0.0]),
+                ..Default::default()
+            }),
+            Some(&PierAttachmentsUserInput {
+                footing_top_elevations: Some(vec![0.0]),
+                footing_widths: Some(vec![3.0]),
+                footing_bottom_elevations: Some(vec![-1.0]),
+                ..Default::default()
+            }),
+        ),
+        ..base
+    }
+}
+
+fn pier_with_nosing_geometry() -> BridgeGeometry {
+    let (_, base) = tapered_vs_rectangular_pier_geometries();
+    BridgeGeometry {
+        pier_specs: resolve_pier_width_specs(
+            1.0,
+            &[5.0],
+            0.0,
+            &[4.0],
+            None,
+            Some(&PierAttachmentsUserInput {
+                nosing_lengths: Some(vec![0.5]),
+                ..Default::default()
+            }),
+        ),
+        ..base
+    }
+}
+
+#[test]
+fn test_footing_increases_obstructed_area_below_shaft() {
+    let table = rectangular_table(10.0, 0.0, 50);
+    let (rectangular, _) = tapered_vs_rectangular_pier_geometries();
+    let footing = pier_with_footing_geometry();
+    let wsel = 2.0;
+    let a_shaft = obstructed_hydraulics(&table, wsel, 0.0, &rectangular, false).a_eff;
+    let a_footing = obstructed_hydraulics(&table, wsel, 0.0, &footing, false).a_eff;
+    assert!(a_footing < a_shaft);
+}
+
+/// Submerged footing band (bed → shaft base) widens pier plan area and lowers contracted opening `a_eff`.
+#[test]
+fn test_submerged_footing_reduces_opening_area() {
+    let table = rectangular_table(10.0, 0.0, 50);
+    let (rectangular, _) = tapered_vs_rectangular_pier_geometries();
+    let wsel = 2.0;
+    let channel_area = 10.0 * wsel;
+    let shaft_user = PierWidthUserInput {
+        top_widths: Some(vec![1.0]),
+        bottom_widths: Some(vec![1.0]),
+        base_elevations: Some(vec![1.0]),
+        top_elevations: Some(vec![4.0]),
+        ..Default::default()
+    };
+    let footing_attach = PierAttachmentsUserInput {
+        footing_top_elevations: Some(vec![1.0]),
+        footing_widths: Some(vec![3.0]),
+        footing_bottom_elevations: Some(vec![0.0]),
+        ..Default::default()
+    };
+    let shaft_only = BridgeGeometry {
+        pier_specs: resolve_pier_width_specs(
+            1.0,
+            &[5.0],
+            0.0,
+            &[4.0],
+            Some(&shaft_user),
+            None,
+        ),
+        ..rectangular.clone()
+    };
+    let with_footing = BridgeGeometry {
+        pier_specs: resolve_pier_width_specs(
+            1.0,
+            &[5.0],
+            0.0,
+            &[4.0],
+            Some(&shaft_user),
+            Some(&footing_attach),
+        ),
+        ..rectangular
+    };
+    let props_shaft = obstructed_hydraulics(&table, wsel, 0.0, &shaft_only, false);
+    let props_footing = obstructed_hydraulics(&table, wsel, 0.0, &with_footing, false);
+    // Shaft wet 1→2 m at 1 m wide → 1 m² pier; footing 0→1 m tapers 3→1 m → +2 m².
+    let a_pier_shaft = 1.0;
+    let a_pier_footing = 3.0;
+    let delta_opening = props_shaft.a_eff - props_footing.a_eff;
+    assert!(
+        delta_opening > 1.5,
+        "footing must reduce opening area: shaft {:.4} footing {:.4}",
+        props_shaft.a_eff,
+        props_footing.a_eff,
+    );
+    assert!(
+        (delta_opening - (a_pier_footing - a_pier_shaft)).abs() < 0.05,
+        "opening reduction {:.4} vs extra pier area {:.4}",
+        delta_opening,
+        a_pier_footing - a_pier_shaft,
+    );
+    assert!(
+        (props_shaft.a_eff - (channel_area - a_pier_shaft)).abs() < 0.05,
+        "shaft opening {:.4} vs hand {:.4}",
+        props_shaft.a_eff,
+        channel_area - a_pier_shaft,
+    );
+    assert!(
+        (props_footing.a_eff - (channel_area - a_pier_footing)).abs() < 0.05,
+        "footing opening {:.4} vs hand {:.4}",
+        props_footing.a_eff,
+        channel_area - a_pier_footing,
+    );
+}
+
+#[test]
+fn test_nosing_increases_momentum_drag() {
+    let table = rectangular_table(10.0, 0.0, 50);
+    let (rectangular, _) = tapered_vs_rectangular_pier_geometries();
+    let nosing = pier_with_nosing_geometry();
+    let wsel = 2.0;
+    let q = 15.0;
+    let drag_shaft = pier_drag_momentum_with_table(&table, q, wsel, 0.0, &rectangular, true);
+    let drag_nosing = pier_drag_momentum_with_table(&table, q, wsel, 0.0, &nosing, true);
+    assert!(drag_nosing > drag_shaft + 1e-6);
+}
+
+#[test]
+fn test_nosing_reduces_obstructed_top_width() {
+    let table = rectangular_table(10.0, 0.0, 50);
+    let (rectangular, _) = tapered_vs_rectangular_pier_geometries();
+    let nosing = pier_with_nosing_geometry();
+    let wsel = 2.0;
+    let tw_shaft = obstructed_hydraulics(&table, wsel, 0.0, &rectangular, false).top_width;
+    let tw_nosing = obstructed_hydraulics(&table, wsel, 0.0, &nosing, false).top_width;
+    assert!(
+        tw_nosing + 0.5 < tw_shaft + 1e-6,
+        "nosing top_width {tw_nosing} vs shaft {tw_shaft}"
+    );
+}
+
+#[test]
+fn test_yarnell_integrated_loss_increases_with_footing() {
+    let table = rectangular_table(10.0, 0.0, 50);
+    let (rectangular, _) = tapered_vs_rectangular_pier_geometries();
+    let footing = pier_with_footing_geometry();
+    let wsel = 2.5;
+    let q = 15.0;
+    let a_shaft = obstructed_hydraulics(&table, wsel, 0.0, &rectangular, false).a_eff;
+    let a_footing = obstructed_hydraulics(&table, wsel, 0.0, &footing, false).a_eff;
+    let hl_shaft = yarnell_pier_head_loss_integrated(q, wsel, 0.0, &rectangular, a_shaft);
+    let hl_footing = yarnell_pier_head_loss_integrated(q, wsel, 0.0, &footing, a_footing);
+    assert!(hl_footing > hl_shaft + 1e-6);
+}
+
+fn pier_shaft_only_sections() -> BridgeSectionContext {
+    BridgeSectionContext {
+        pier_stations: Some(vec![5.0]),
+        pier_widths: Some(PierWidthUserInput {
+            top_widths: Some(vec![1.0]),
+            bottom_widths: Some(vec![1.0]),
+            base_elevations: Some(vec![1.0]),
+            ..Default::default()
+        }),
+        ..Default::default()
+    }
+}
+
+fn pier_footing_nosing_sections() -> BridgeSectionContext {
+    BridgeSectionContext {
+        pier_stations: Some(vec![5.0]),
+        pier_widths: Some(PierWidthUserInput {
+            top_widths: Some(vec![1.0]),
+            bottom_widths: Some(vec![1.0]),
+            base_elevations: Some(vec![1.0]),
+            ..Default::default()
+        }),
+        pier_attachments: Some(PierAttachmentsUserInput {
+            footing_top_elevations: Some(vec![1.0]),
+            footing_widths: Some(vec![3.0]),
+            footing_bottom_elevations: Some(vec![0.0]),
+            nosing_lengths: Some(vec![0.5]),
+            ..Default::default()
+        }),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn test_footing_nosing_exceed_shaft_only_headwater_in_solve() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let table_down = rectangular_table(10.0, 0.0, 50);
+    let deck = BridgeDeckProfile {
+        stations_m: vec![0.0, 10.0],
+        low_elevations_m: vec![4.0, 4.0],
+        high_elevations_m: vec![6.0, 6.0],
+    };
+    let coupling = BridgeCouplingParams {
+        low_flow_method: 1,
+        ..Default::default()
+    };
+    let solve = |sections: &BridgeSectionContext| {
+        solve_bridge_wsel(
+            15.0,
+            4.0,
+            6.0,
+            1.0,
+            1,
+            0,
+            1.44,
+            0.5,
+            0.0,
+            0.0,
+            2.5,
+            UnitSystem::Metric,
+            &table_up,
+            &table_down,
+            &coupling,
+            50.0,
+            Some(&deck),
+            Some(sections),
+        )
+    };
+    let hw_shaft = solve(&pier_shaft_only_sections());
+    let hw_attach = solve(&pier_footing_nosing_sections());
+    assert!(
+        hw_attach > hw_shaft + 1e-4,
+        "footing+nosing HW {hw_attach} vs shaft-only {hw_shaft}"
     );
 }

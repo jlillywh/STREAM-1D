@@ -169,7 +169,7 @@ fn steady_validation_guide_bank_polyline_warning() {
 fn wasm_api_metadata_version() {
     let meta = build_api_metadata();
     assert_eq!(meta.api_version, API_VERSION);
-    assert_eq!(API_VERSION, 27);
+    assert_eq!(API_VERSION, 28);
     assert!(meta.culvert_tier1_fields.inputs.contains(&"culvert_inlet_types".to_string()));
     assert_eq!(
         meta.bridge_fields.rating_curve_entry_point,
@@ -199,6 +199,11 @@ fn wasm_api_metadata_version() {
         "bridge_pier_width_values",
         "bridge_pier_top_elevations",
         "bridge_pier_base_elevations",
+        "bridge_pier_footing_top_elevations",
+        "bridge_pier_footing_widths",
+        "bridge_pier_footing_bottom_elevations",
+        "bridge_pier_nosing_lengths",
+        "bridge_pier_nosing_widths",
     ] {
         assert!(
             meta.bridge_fields.inputs.contains(&key.to_string()),
@@ -221,6 +226,11 @@ fn wasm_api_metadata_version() {
         "pier_width_values",
         "pier_top_elevations",
         "pier_base_elevations",
+        "pier_footing_top_elevations",
+        "pier_footing_widths",
+        "pier_footing_bottom_elevations",
+        "pier_nosing_lengths",
+        "pier_nosing_widths",
     ] {
         assert!(
             meta.bridge_fields
@@ -945,4 +955,152 @@ fn wasm_tapered_pier_unsteady_deserializes_and_solves() {
     assert_eq!(result.wsel.len(), 2);
     assert_eq!(result.wsel[0].len(), 2);
     assert!(result.wsel[0][0] > 2.5);
+}
+
+#[test]
+fn wasm_footing_nosing_rating_hw_exceeds_shaft_only() {
+    use stream1d::solvers::bridge::{compute_bridge_rating_curve, BridgeRatingCurveInputs, BridgeSolveParams};
+
+    let mut shaft = BridgeSolveParams::default();
+    shaft.low_chord = 4.0;
+    shaft.high_chord = 6.0;
+    shaft.tw_wsel = 2.5;
+    shaft.pier_width = 1.0;
+    shaft.num_piers = 1;
+    shaft.low_flow_method = 1;
+    shaft.pier_stations = Some(vec![5.0]);
+    shaft.pier_top_widths = Some(vec![1.0]);
+    shaft.pier_bottom_widths = Some(vec![1.0]);
+    shaft.pier_base_elevations = Some(vec![1.0]);
+    shaft.deck_stations = Some(vec![0.0, 10.0]);
+    shaft.deck_low_elevations = Some(vec![4.0, 4.0]);
+    shaft.deck_high_elevations = Some(vec![6.0, 6.0]);
+
+    let mut attach = shaft.clone();
+    attach.pier_footing_top_elevations = Some(vec![1.0]);
+    attach.pier_footing_widths = Some(vec![3.0]);
+    attach.pier_footing_bottom_elevations = Some(vec![0.0]);
+    attach.pier_nosing_lengths = Some(vec![0.5]);
+
+    let hw_shaft = compute_bridge_rating_curve(&BridgeRatingCurveInputs {
+        q_values: vec![15.0],
+        bridge: shaft,
+    })
+    .wsel[0];
+    let hw_attach = compute_bridge_rating_curve(&BridgeRatingCurveInputs {
+        q_values: vec![15.0],
+        bridge: attach,
+    })
+    .wsel[0];
+    assert!(
+        hw_attach > hw_shaft + 1e-4,
+        "footing+nosing rating HW {hw_attach} vs shaft-only {hw_shaft}"
+    );
+}
+
+#[test]
+fn wasm_pier_footing_nosing_deserialize_and_solve() {
+    use stream1d::solvers::bridge::{compute_bridge_rating_curve, BridgeRatingCurveInputs, BridgeSolveParams};
+
+    let steady_json = r#"{
+        "cross_sections": [
+            {"station": 100, "x": [0, 10], "y": [0, 0], "n_stations": [0], "n_values": [0.03], "unit_system": "Metric"},
+            {"station": 0, "x": [0, 10], "y": [0, 0], "n_stations": [0], "n_values": [0.03], "unit_system": "Metric"}
+        ],
+        "flow_rate": 15,
+        "regime": 0,
+        "downstream_wsel": 2.5,
+        "bridge_stations": [50],
+        "bridge_low_chords": [4],
+        "bridge_high_chords": [6],
+        "bridge_pier_widths": [1.0],
+        "bridge_num_piers": [1],
+        "bridge_pier_shapes": [0],
+        "bridge_low_flow_methods": [1],
+        "bridge_pier_stations": [[5.0]],
+        "bridge_pier_top_widths": [[1.0]],
+        "bridge_pier_bottom_widths": [[1.0]],
+        "bridge_pier_base_elevations": [[1.0]],
+        "bridge_pier_footing_top_elevations": [[1.0]],
+        "bridge_pier_footing_widths": [[3.0]],
+        "bridge_pier_footing_bottom_elevations": [[0.0]],
+        "bridge_pier_nosing_lengths": [[0.5]],
+        "bridge_deck_stations": [[0, 10]],
+        "bridge_deck_low_elevations": [[4, 4]],
+        "bridge_deck_high_elevations": [[6, 6]]
+    }"#;
+    let inputs: SteadyInputs = serde_json::from_str(steady_json).expect("footing/nosing steady JSON");
+    assert_eq!(
+        inputs.bridge_pier_footing_widths.as_ref().unwrap()[0],
+        vec![3.0]
+    );
+    assert_eq!(
+        inputs.bridge_pier_nosing_lengths.as_ref().unwrap()[0],
+        vec![0.5]
+    );
+    let result = solve_steady(&inputs);
+    assert_eq!(result.wsel.len(), 2);
+    assert!(result.wsel[0] > 2.5);
+
+    let mut rating_params = BridgeSolveParams::default();
+    rating_params.low_chord = 4.0;
+    rating_params.high_chord = 6.0;
+    rating_params.tw_wsel = 2.5;
+    rating_params.pier_width = 1.0;
+    rating_params.num_piers = 1;
+    rating_params.low_flow_method = 1;
+    rating_params.pier_stations = Some(vec![5.0]);
+    rating_params.pier_top_widths = Some(vec![1.0]);
+    rating_params.pier_bottom_widths = Some(vec![1.0]);
+    rating_params.pier_base_elevations = Some(vec![1.0]);
+    rating_params.pier_footing_top_elevations = Some(vec![1.0]);
+    rating_params.pier_footing_widths = Some(vec![3.0]);
+    rating_params.pier_footing_bottom_elevations = Some(vec![0.0]);
+    rating_params.pier_nosing_lengths = Some(vec![0.5]);
+    rating_params.deck_stations = Some(vec![0.0, 10.0]);
+    rating_params.deck_low_elevations = Some(vec![4.0, 4.0]);
+    rating_params.deck_high_elevations = Some(vec![6.0, 6.0]);
+    let curve = compute_bridge_rating_curve(&BridgeRatingCurveInputs {
+        q_values: vec![15.0],
+        bridge: rating_params,
+    });
+    assert_eq!(curve.wsel.len(), 1);
+    assert!(curve.wsel[0] > 2.5);
+
+    use stream1d::solvers::{solve_unsteady, UnsteadyInputs};
+
+    let unsteady_json = r#"{
+        "cross_sections": [
+            {"station": 100, "x": [0, 10], "y": [0, 0], "n_stations": [0], "n_values": [0.03], "unit_system": "Metric"},
+            {"station": 0, "x": [0, 10], "y": [0, 0], "n_stations": [0], "n_values": [0.03], "unit_system": "Metric"}
+        ],
+        "initial_wsel": [2.5, 2.5],
+        "initial_q": [15.0, 15.0],
+        "dt": 60.0,
+        "num_steps": 2,
+        "upstream_q_hydrograph": [15.0, 15.0],
+        "downstream_wsel_hydrograph": [2.5, 2.5],
+        "bridge_stations": [50.0],
+        "bridge_low_chords": [4.0],
+        "bridge_high_chords": [6.0],
+        "bridge_pier_widths": [1.0],
+        "bridge_num_piers": [1],
+        "bridge_pier_shapes": [0],
+        "bridge_low_flow_methods": [1],
+        "bridge_pier_stations": [[5.0]],
+        "bridge_pier_footing_top_elevations": [[1.0]],
+        "bridge_pier_footing_widths": [[3.0]],
+        "bridge_pier_nosing_lengths": [[0.5]],
+        "bridge_deck_stations": [[0.0, 10.0]],
+        "bridge_deck_low_elevations": [[4.0, 4.0]],
+        "bridge_deck_high_elevations": [[6.0, 6.0]]
+    }"#;
+    let unsteady: UnsteadyInputs = serde_json::from_str(unsteady_json).expect("footing/nosing unsteady JSON");
+    assert_eq!(
+        unsteady.bridge.bridge_pier_nosing_lengths.as_ref().unwrap()[0],
+        vec![0.5]
+    );
+    let unsteady_result = solve_unsteady(&unsteady);
+    assert_eq!(unsteady_result.wsel.len(), 2);
+    assert!(unsteady_result.wsel[0][0] > 2.5);
 }

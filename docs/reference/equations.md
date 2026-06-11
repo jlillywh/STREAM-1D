@@ -346,6 +346,19 @@ Full working fixture: [`examples/wasm/steady_bridge_bu_bd_v22.json`](examples/wa
 * `bridge_skew_angles` — skew from normal to flow, degrees per bridge (0–59°, same convention as `culvert_skew_angles`). Adjusts projected opening width ($W' = W\cos\theta$), weir length, deck profile segments, friction reach length ($L' = L/\cos\theta$), and flow-normal pier blockage ($W_{pier}' = W_{pier}/\cos\theta$).
 * `bridge_pier_stations` — pier centerline stations across the opening per bridge `[bridge][pier]` in the same horizontal frame as `bridge_deck_stations`. When omitted, piers are evenly spaced across the deck opening span. Pier count is taken from the station array length when provided.
 
+#### J2. Tapered pier widths (API v27)
+Per-pier shaft width vs elevation: legacy constant `bridge_pier_widths`, linear taper via `bridge_pier_top_widths` / `bridge_pier_bottom_widths` (optional `bridge_pier_top_elevations` / `bridge_pier_base_elevations`), or piecewise `bridge_pier_width_elevations` / `bridge_pier_width_values`. Submerged plan area $A_{shaft}(WSEL) = \int w(z)\,dz$ from pier base to WSEL feeds Yarnell $\alpha$, momentum drag, and obstructed opening area. Rating curve: `pier_top_widths`, `pier_bottom_widths`, etc. See [`pier_tapered_width.md`](../development/pier_tapered_width.md).
+
+#### J3. Pier footings and nosing (API v28)
+Optional attachments per pier (same `[bridge][pier]` indexing as v27):
+
+| Field | Effect |
+|-------|--------|
+| `bridge_pier_footing_top_elevations`, `bridge_pier_footing_widths`, `bridge_pier_footing_bottom_elevations` | Footing shorthand below shaft base — composes into width profile when no user profile already extends below `footing_top` |
+| `bridge_pier_nosing_lengths`, `bridge_pier_nosing_widths` | Upstream plan extension — adds $A_{nosing} = L_\perp W_{nose} h_{wet}$ and increases opening-plane top width at WSEL |
+
+Total pier obstruction: $A_{pier} = A_{shaft} + A_{nosing}$ (plan polygons §C not yet implemented). Yarnell $K$ and momentum $C_D$ remain from `bridge_pier_shapes`. Skew: perpendicular widths convert to opening plane via $W' = W/\cos\theta$. Rating curve keys: `pier_footing_*`, `pier_nosing_*`. See [`pier_footings_nosing.md`](../development/pier_footings_nosing.md).
+
 #### K. Bridge Rating Curve
 * **Rating curve:** `computeBridgeRatingCurve({ q_values, ...bridge fields })` samples upstream headwater vs discharge at fixed tailwater for a single bridge opening. Uses the same hydraulics as the steady bridge solver (`solve_bridge_coupled`) without a full reach profile.
 * **Input fields** (flattened, not `bridge_*` prefixed): `low_chord`, `high_chord`, `z_up`, `z_down`, `tw_wsel`, `units`, plus optional pier/deck/ineffective/skew/coupling fields (`pier_width`, `num_piers`, `deck_stations`, `skew_deg`, `pier_stations`, `ineffective_left_station` or `ineffective_left_stations` / `ineffective_left_elevations` vectors, etc.). **Abutments** use the same per-side keys as steady bridge fields but without the `bridge_` prefix: `abutment_block_width` (legacy total), `abutment_left_width`, `abutment_right_width`, `abutment_left_station`, `abutment_right_station`, `abutment_left_top_elevation`, `abutment_right_top_elevation`, and optional `abutment_left_top_profile_stations` / `_elevations` (and right pair). Defaults to rectangular approach/departure channels via `channel_width` (10 user units) when `xs_up` / `xs_down` are omitted.

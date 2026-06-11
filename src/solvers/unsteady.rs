@@ -153,6 +153,16 @@ pub struct UnsteadyBridgeInputs {
     #[serde(default)]
     pub bridge_pier_base_elevations: Option<Vec<Vec<f64>>>,
     #[serde(default)]
+    pub bridge_pier_footing_top_elevations: Option<Vec<Vec<f64>>>,
+    #[serde(default)]
+    pub bridge_pier_footing_widths: Option<Vec<Vec<f64>>>,
+    #[serde(default)]
+    pub bridge_pier_footing_bottom_elevations: Option<Vec<Vec<f64>>>,
+    #[serde(default)]
+    pub bridge_pier_nosing_lengths: Option<Vec<Vec<f64>>>,
+    #[serde(default)]
+    pub bridge_pier_nosing_widths: Option<Vec<Vec<f64>>>,
+    #[serde(default)]
     pub bridge_upstream_cross_sections: Option<Vec<CrossSection>>,
     #[serde(default)]
     pub bridge_downstream_cross_sections: Option<Vec<CrossSection>>,
@@ -335,6 +345,14 @@ fn bridge_face_geometry_for(
             &b.bridge_pier_width_values,
             &b.bridge_pier_top_elevations,
             &b.bridge_pier_base_elevations,
+            b_idx,
+        ),
+        crate::solvers::pier_geometry::pier_attachments_user_for_bridge_index(
+            &b.bridge_pier_footing_top_elevations,
+            &b.bridge_pier_footing_widths,
+            &b.bridge_pier_footing_bottom_elevations,
+            &b.bridge_pier_nosing_lengths,
+            &b.bridge_pier_nosing_widths,
             b_idx,
         ),
         crate::solvers::bridge_roadway_compose::composed_embankment_blocked_for(
