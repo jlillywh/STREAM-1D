@@ -121,6 +121,154 @@ fn test_yarnell_zero_piers_no_loss() {
 }
 
 #[test]
+fn pier_shape_coefficients_match_hecras_table() {
+    const CASES: &[(i32, f64, f64)] = &[
+        (0, 1.25, 2.00),
+        (1, 0.90, 1.20),
+        (2, 0.95, 1.33),
+        (3, 1.05, 1.60),
+        (4, 1.05, 1.33),
+        (5, 2.50, 2.00),
+        (6, 0.90, 0.60),
+        (7, 0.90, 0.32),
+        (8, 0.90, 0.29),
+        (9, 1.05, 1.00),
+        (10, 1.05, 1.39),
+        (11, 1.05, 1.72),
+    ];
+    for &(code, k, cd) in CASES {
+        let shape = PierShape::from_i32(code);
+        assert!(
+            (shape.yarnell_coefficient() - k).abs() < 1e-9,
+            "K mismatch for code {code}"
+        );
+        assert!(
+            (shape.drag_coefficient() - cd).abs() < 1e-9,
+            "C_D mismatch for code {code}"
+        );
+    }
+}
+
+fn momentum_pier_geometry(shape: PierShape) -> BridgeGeometry {
+    BridgeGeometry {
+        low_chord_m: 5.0,
+        low_chord_max_m: 5.0,
+        high_chord_m: 7.0,
+        high_chord_max_m: 7.0,
+        pier_width_m: 0.5,
+        num_piers: 2,
+        pier_shape: shape,
+        abutments: BridgeAbutments::default(),
+        weir_coeff_m: 1.44,
+        orifice_coeff: 0.5,
+        z_up_m: 0.0,
+        z_down_m: 0.0,
+        low_flow_method: LowFlowMethod::Momentum,
+        high_flow_method: HighFlowMethod::PressureWeir,
+        length_m: 50.0,
+        wspro_coeff_c: 0.8,
+        coeff_contraction: 0.1,
+        coeff_expansion: 0.3,
+        pressure_coeff_inlet: 0.0,
+        pressure_coeff_submerged: 0.8,
+        max_weir_submergence: 0.98,
+        deck: None,
+        pier_stations_m: vec![],
+        pier_specs: vec![],
+        skew_deg: 0.0,
+        skew_cos: 1.0,
+        ineffective_up: None,
+        ineffective_down: None,
+        xs_up: None,
+        xs_down: None,
+        xs_approach: None,
+        xs_departure: None,
+        guide_banks_approach: None,
+        guide_banks_departure: None,
+        table_approach: None,
+        table_departure: None,
+        deck_vents: Vec::new(),
+    }
+}
+
+fn momentum_drag_for_shape(shape: PierShape) -> f64 {
+    let table = rectangular_table(10.0, 0.0, 50);
+    let geom = momentum_pier_geometry(shape);
+    pier_drag_momentum_with_table(&table, 15.0, 3.0, geom.z_up_m, &geom, true)
+}
+
+/// API v29 pier shapes `4`–`11`: one behavioral case each (see `extended_pier_shape_catalog.md`).
+
+#[test]
+fn test_pier_shape_4_twin_no_diaphragm_lower_momentum_drag_than_triangular_90() {
+    let twin_open = momentum_drag_for_shape(PierShape::TwinCylinderNoDiaphragm);
+    let triangular = momentum_drag_for_shape(PierShape::Triangular);
+    let yarnell_twin = yarnell_pier_head_loss(15.0, 3.0, 0.0, 0.5, 2, PierShape::TwinCylinderNoDiaphragm, 30.0);
+    let yarnell_tri = yarnell_pier_head_loss(15.0, 3.0, 0.0, 0.5, 2, PierShape::Triangular, 30.0);
+    assert!((yarnell_twin - yarnell_tri).abs() < 1e-9, "same Yarnell K=1.05");
+    assert!(
+        twin_open < triangular - 1e-6,
+        "C_D 1.33 vs 1.60: twin_open={twin_open}, triangular={triangular}"
+    );
+}
+
+#[test]
+fn test_pier_shape_5_trestle_yarnell_exceeds_square() {
+    let square = yarnell_pier_head_loss(15.0, 3.0, 0.0, 0.5, 2, PierShape::Square, 30.0);
+    let trestle = yarnell_pier_head_loss(15.0, 3.0, 0.0, 0.5, 2, PierShape::TenPileTrestle, 30.0);
+    assert!(
+        trestle > square + 1e-4,
+        "K=2.50 vs 1.25: trestle={trestle}, square={square}"
+    );
+}
+
+#[test]
+fn test_pier_shape_6_elliptical_2to1_lower_momentum_drag_than_semicircular() {
+    let elliptical = momentum_drag_for_shape(PierShape::Elliptical2to1);
+    let circular = momentum_drag_for_shape(PierShape::Semicircular);
+    assert!(
+        elliptical < circular - 1e-6,
+        "C_D 0.60 vs 1.20: elliptical={elliptical}, circular={circular}"
+    );
+}
+
+#[test]
+fn test_pier_shape_7_elliptical_4to1_lower_drag_than_2to1() {
+    let e4 = momentum_drag_for_shape(PierShape::Elliptical4to1);
+    let e2 = momentum_drag_for_shape(PierShape::Elliptical2to1);
+    assert!(e4 < e2 - 1e-6, "C_D 0.32 vs 0.60: e4={e4}, e2={e2}");
+}
+
+#[test]
+fn test_pier_shape_8_elliptical_8to1_lowest_elliptical_drag() {
+    let e8 = momentum_drag_for_shape(PierShape::Elliptical8to1);
+    let e4 = momentum_drag_for_shape(PierShape::Elliptical4to1);
+    assert!(e8 < e4 - 1e-6, "C_D 0.29 vs 0.32: e8={e8}, e4={e4}");
+}
+
+#[test]
+fn test_pier_shape_9_triangular_30_lower_drag_than_90() {
+    let t30 = momentum_drag_for_shape(PierShape::Triangular30);
+    let t90 = momentum_drag_for_shape(PierShape::Triangular);
+    assert!(t30 < t90 - 1e-6, "C_D 1.00 vs 1.60: t30={t30}, t90={t90}");
+}
+
+#[test]
+fn test_pier_shape_10_triangular_60_between_30_and_90() {
+    let t30 = momentum_drag_for_shape(PierShape::Triangular30);
+    let t60 = momentum_drag_for_shape(PierShape::Triangular60);
+    let t90 = momentum_drag_for_shape(PierShape::Triangular);
+    assert!(t60 > t30 + 1e-6 && t60 < t90 - 1e-6, "C_D 1.39 between 1.00 and 1.60");
+}
+
+#[test]
+fn test_pier_shape_11_triangular_120_highest_triangular_drag() {
+    let t120 = momentum_drag_for_shape(PierShape::Triangular120);
+    let t90 = momentum_drag_for_shape(PierShape::Triangular);
+    assert!(t120 > t90 + 1e-6, "C_D 1.72 vs 1.60: t120={t120}, t90={t90}");
+}
+
+#[test]
 fn test_yarnell_square_pier_loss_exceeds_semicircular() {
     let square = yarnell_pier_head_loss(15.0, 3.0, 0.0, 0.5, 2, PierShape::Square, 30.0);
     let semi = yarnell_pier_head_loss(15.0, 3.0, 0.0, 0.5, 2, PierShape::Semicircular, 30.0);

@@ -57,13 +57,27 @@ pub fn apply_bridge_skew(skew_deg: f64, width_m: f64, length_m: f64) -> (f64, f6
     apply_barrel_skew(skew_deg, width_m, length_m)
 }
 
-/// Supported pier shape types (Yarnell K and momentum drag coefficients per HEC-RAS).
+/// Supported pier shape types (Yarnell $K$ and momentum $C_D$ per HEC-RAS 6.x low-flow tables).
+///
+/// Values `0`–`3` are unchanged from API v1. Values `4`–`11` added in API v29
+/// (`docs/development/extended_pier_shape_catalog.md`).
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum PierShape {
     Square = 0,
     Semicircular = 1,
+    /// Twin-cylinder piers **with** connecting diaphragm.
     TwinCylinder = 2,
+    /// 90° triangular nose and tail.
     Triangular = 3,
+    /// Twin-cylinder piers **without** diaphragm ($K$ matches 90° triangular; $C_D$ elongated).
+    TwinCylinderNoDiaphragm = 4,
+    TenPileTrestle = 5,
+    Elliptical2to1 = 6,
+    Elliptical4to1 = 7,
+    Elliptical8to1 = 8,
+    Triangular30 = 9,
+    Triangular60 = 10,
+    Triangular120 = 11,
 }
 
 impl PierShape {
@@ -72,27 +86,51 @@ impl PierShape {
             1 => PierShape::Semicircular,
             2 => PierShape::TwinCylinder,
             3 => PierShape::Triangular,
+            4 => PierShape::TwinCylinderNoDiaphragm,
+            5 => PierShape::TenPileTrestle,
+            6 => PierShape::Elliptical2to1,
+            7 => PierShape::Elliptical4to1,
+            8 => PierShape::Elliptical8to1,
+            9 => PierShape::Triangular30,
+            10 => PierShape::Triangular60,
+            11 => PierShape::Triangular120,
             _ => PierShape::Square,
         }
     }
 
-    /// Yarnell pier shape coefficient K (HEC-RAS).
+    /// Yarnell pier shape coefficient $K$ (HEC-RAS Yarnell table).
+    ///
+    /// Elliptical variants have no HEC Yarnell row — uses semicircular $K=0.90$ when Yarnell
+    /// low flow is selected. Ten-pile trestle uses the documented $K=2.50$ row.
     pub fn yarnell_coefficient(&self) -> f64 {
         match self {
             PierShape::Square => 1.25,
             PierShape::Semicircular => 0.90,
             PierShape::TwinCylinder => 0.95,
-            PierShape::Triangular => 1.05,
+            PierShape::Triangular | PierShape::TwinCylinderNoDiaphragm => 1.05,
+            PierShape::Triangular30 | PierShape::Triangular60 | PierShape::Triangular120 => 1.05,
+            PierShape::TenPileTrestle => 2.50,
+            PierShape::Elliptical2to1 | PierShape::Elliptical4to1 | PierShape::Elliptical8to1 => {
+                0.90
+            }
         }
     }
 
-    /// Momentum pier drag coefficient C_D (HEC-RAS pier drag table).
+    /// Momentum pier drag coefficient $C_D$ (HEC-RAS pier drag table).
+    ///
+    /// Ten-pile trestle has no HEC momentum row — uses square-nose $C_D=2.00$.
     pub fn drag_coefficient(&self) -> f64 {
         match self {
             PierShape::Semicircular => 1.20,
-            PierShape::TwinCylinder => 1.33,
+            PierShape::TwinCylinder | PierShape::TwinCylinderNoDiaphragm => 1.33,
             PierShape::Triangular => 1.60,
-            PierShape::Square => 2.00,
+            PierShape::Triangular30 => 1.00,
+            PierShape::Triangular60 => 1.39,
+            PierShape::Triangular120 => 1.72,
+            PierShape::Elliptical2to1 => 0.60,
+            PierShape::Elliptical4to1 => 0.32,
+            PierShape::Elliptical8to1 => 0.29,
+            PierShape::Square | PierShape::TenPileTrestle => 2.00,
         }
     }
 }

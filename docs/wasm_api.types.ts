@@ -136,6 +136,12 @@ export interface BridgeArrays {
   bridge_high_chords?: number[];
   bridge_pier_widths?: number[];
   bridge_num_piers?: number[];
+  /**
+   * Pier nose shape per bridge for Yarnell K and momentum C_D.
+   * 0 square, 1 semicircular, 2 twin-cylinder w/ diaphragm, 3 triangular 90°,
+   * 4 twin-cylinder w/o diaphragm, 5 ten-pile trestle, 6–8 elliptical 2:1/4:1/8:1,
+   * 9–11 triangular 30°/60°/120° (API v29).
+   */
   bridge_pier_shapes?: number[];
   bridge_weir_coeffs?: number[];
   bridge_orifice_coeffs?: number[];
@@ -411,6 +417,7 @@ export interface BridgeRatingCurveInputs {
   units: UnitSystem;
   pier_width?: number;
   num_piers?: number;
+  /** Same codes as `bridge_pier_shapes` (0–11, API v29). */
   pier_shape_type?: number;
   weir_coeff?: number;
   orifice_coeff?: number;

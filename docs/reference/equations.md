@@ -122,7 +122,8 @@ Set `bridge_low_flow_methods` per bridge: `0` = auto (classify A/B/C; Class A us
 For Class A low flow with piers and auto/Yarnell method selected, the water surface rise from the downstream section to the upstream section is computed with the HEC-RAS Yarnell equation:
 $$H_{3-2} = 2K(K + 10\omega - 0.6)(\alpha + 15\alpha^4)\frac{V^2}{2g}$$
 where:
-* $K$ is the Yarnell pier shape coefficient ($0.90$ semicircular, $0.95$ twin-cylinder with diaphragm, $1.05$ triangular, $1.25$ square).
+* $K$ is the Yarnell pier shape coefficient from `bridge_pier_shapes` (HEC-RAS table): $0.90$ semicircular; $0.95$ twin-cylinder with diaphragm; $1.05$ twin-cylinder without diaphragm, 90° triangular, and 30°/60°/120° triangular (momentum-only angles use the 90° $K$ when Yarnell is selected); $1.25$ square; $2.50$ ten-pile trestle bent. Elliptical noses ($C_D$ only in HEC-RAS) use $K=0.90$ if Yarnell is run. Full enum: [`extended_pier_shape_catalog.md`](../development/extended_pier_shape_catalog.md).
+* Momentum low flow (`2`) uses pier drag $C_D$ from the same field: circular $1.20$; elongated / twin-cylinder $1.33$; elliptical 2:1 / 4:1 / 8:1 → $0.60$ / $0.32$ / $0.29$; square and trestle $2.00$; triangular 30° / 60° / 90° / 120° → $1.00$ / $1.39$ / $1.60$ / $1.72$.
 * $\omega = (V^2/2g) / y$ is the velocity-head-to-depth ratio at the downstream section.
 * $\alpha = A_{piers} / (A_{flow} - A_{piers})$ is the pier obstruction ratio over unobstructed flow area.
 * $V$ is the mean velocity at the downstream section ($Q / A_{flow}$).

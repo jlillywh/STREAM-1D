@@ -19,5 +19,6 @@ One canonical source per topic — link instead of copying tables elsewhere.
 | Tapered pier width API (v27) | [`development/pier_tapered_width.md`](development/pier_tapered_width.md) |
 | Pier footings, nosing, fender/wing walls API (design) | [`development/pier_footings_nosing.md`](development/pier_footings_nosing.md) |
 | Deck vents & slotted openings API (design) | [`development/deck_vents_slotted_openings.md`](development/deck_vents_slotted_openings.md) |
+| Extended pier shape catalog — Shape ID table 0–11 (API v29) | [`development/extended_pier_shape_catalog.md`](development/extended_pier_shape_catalog.md) |
 
 **When changing behavior:** update the canonical doc above, bump `api_changelog.md` if `API_VERSION` changes, extend `tests/wasm_json_contract.rs` / geometry tests — do not restate the same tables in README or `tech_spec.md`.

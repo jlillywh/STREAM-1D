@@ -21,6 +21,7 @@ All profile stations (10 per event) are checked within **±0.04 ft** vs HEC-RAS 
 | Unified roadway embankment (v26) | `tests/bridge_roadway_embankment_verification.rs`, `src/solvers/bridge_roadway_compose.rs`, `tests/wasm_json_contract.rs` | Steady/unsteady/rating compose; precedence (`derive_*`, flat wins, face overrides); blocked merge at solve; JSON contract; WSEL parity vs decomposed flat fields |
 | Tapered pier widths (v27) | `src/solvers/pier_geometry.rs`, `src/solvers/bridge_tests.rs`, `tests/wasm_json_contract.rs` | Profile integration; tapered vs rectangular `a_eff` / HW; WASM steady/unsteady/rating |
 | Pier footings and nosing (v28) | `src/solvers/pier_geometry.rs`, `src/solvers/bridge_tests.rs`, `tests/wasm_json_contract.rs` | Footing compose + profile precedence; nosing area/flow width/skew; `a_eff` / top width / Yarnell / momentum / steady HW; WASM metadata + shaft-vs-attachment HW |
+| Extended pier shapes (v29) | `src/solvers/bridge.rs`, `src/solvers/bridge_tests.rs` | `pier_shape_coefficients_match_hecras_table`; `test_pier_shape_4` … `test_pier_shape_11` (one case per new enum) |
 | Node WASM smoke | `examples/wasm/bridge_smoke_test.mjs`, `node_smoke_test.mjs` | Culvert Tier 1 + bridge BU/BD steady solve after `build_wasm.sh` |
 
 ```bash
