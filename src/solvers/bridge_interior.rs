@@ -4,7 +4,9 @@ use crate::geometry::{
     apply_reach_modifier_policy, interpolate_cross_section, resolve_guide_banks, CrossSection,
     DensifyReachModifierPolicy, GeometryTable, GuideBanks, IneffectiveBlock, IneffectiveFlowAreas,
 };
-use crate::solvers::bridge::BridgeSectionContext;
+use crate::solvers::bridge::{
+    BridgeFrictionLengths, BridgeFrictionWeighting, BridgeSectionContext,
+};
 use crate::utils::{structure_in_reach_interval, UnitSystem, FT_TO_M, STRUCTURE_STATION_TOL};
 
 fn ineffective_from_cross_section(
@@ -150,6 +152,12 @@ pub struct BridgeFaceSolveParams<'a> {
     pub pier_stations: Option<Vec<f64>>,
     pub interval_length_m: f64,
     pub bridge_length_user: f64,
+    /// Friction weighting: 0 = opening only, 1 = HEC-RAS approach + opening + departure.
+    pub friction_weighting: BridgeFrictionWeighting,
+    /// Override approach friction length (user units). 0 = auto from river stations.
+    pub approach_friction_length_user: f64,
+    /// Override departure friction length (user units). 0 = auto from river stations.
+    pub departure_friction_length_user: f64,
     pub approach_xs: Option<CrossSection>,
     pub departure_xs: Option<CrossSection>,
     pub guide_banks_approach: Option<GuideBanks>,
@@ -184,6 +192,9 @@ impl<'a> BridgeFaceSolveParams<'a> {
             pier_stations: None,
             interval_length_m: 0.0,
             bridge_length_user: 0.0,
+            friction_weighting: BridgeFrictionWeighting::OpeningOnly,
+            approach_friction_length_user: 0.0,
+            departure_friction_length_user: 0.0,
             approach_xs: None,
             departure_xs: None,
             guide_banks_approach: None,
@@ -379,6 +390,54 @@ pub fn resolve_bridge_friction_length_metric(
     0.0
 }
 
+fn segment_station_distance_m(a: &CrossSection, b: &CrossSection, raw_units: UnitSystem) -> f64 {
+    let sa = xs_river_station_to_metric(a.station, a.unit_system, raw_units);
+    let sb = xs_river_station_to_metric(b.station, b.unit_system, raw_units);
+    (sa - sb).abs()
+}
+
+/// Resolve opening / approach / departure friction reach segments (metric, before skew).
+pub fn resolve_bridge_friction_lengths_metric(
+    interior: &BridgeInteriorInput,
+    interval_length_m: f64,
+    bridge_length_user: f64,
+    approach_xs: Option<&CrossSection>,
+    departure_xs: Option<&CrossSection>,
+    bu_xs: Option<&CrossSection>,
+    bd_xs: Option<&CrossSection>,
+    weighting: BridgeFrictionWeighting,
+    approach_friction_length_user: f64,
+    departure_friction_length_user: f64,
+    raw_units: UnitSystem,
+) -> BridgeFrictionLengths {
+    let opening_m = resolve_bridge_friction_length_metric(
+        interior,
+        interval_length_m,
+        bridge_length_user,
+        raw_units,
+    );
+    let approach_m = if approach_friction_length_user > STRUCTURE_STATION_TOL {
+        user_length_to_metric(approach_friction_length_user, raw_units)
+    } else if let (Some(ap), Some(bu)) = (approach_xs, bu_xs) {
+        segment_station_distance_m(ap, bu, raw_units)
+    } else {
+        0.0
+    };
+    let departure_m = if departure_friction_length_user > STRUCTURE_STATION_TOL {
+        user_length_to_metric(departure_friction_length_user, raw_units)
+    } else if let (Some(dep), Some(bd)) = (departure_xs, bd_xs) {
+        segment_station_distance_m(bd, dep, raw_units)
+    } else {
+        0.0
+    };
+    BridgeFrictionLengths {
+        weighting,
+        opening_m,
+        approach_m,
+        departure_m,
+    }
+}
+
 /// Resolve approach / departure cuts and guide banks for one bridge interval.
 ///
 /// Approach / departure `CrossSection` precedence:
@@ -458,6 +517,9 @@ pub fn resolve_bridge_face_solve_geometry(
         pier_stations,
         interval_length_m,
         bridge_length_user,
+        friction_weighting,
+        approach_friction_length_user,
+        departure_friction_length_user,
         approach_xs,
         departure_xs,
         guide_banks_approach,
@@ -539,12 +601,20 @@ pub fn resolve_bridge_face_solve_geometry(
         raw_units,
     );
 
-    let friction_length_m = resolve_bridge_friction_length_metric(
+    let friction_lengths = resolve_bridge_friction_lengths_metric(
         interior,
         interval_length_m,
         bridge_length_user,
+        approach_xs.as_ref(),
+        departure_xs.as_ref(),
+        xs_up.as_ref(),
+        xs_down.as_ref(),
+        friction_weighting,
+        approach_friction_length_user,
+        departure_friction_length_user,
         raw_units,
     );
+    let friction_length_m = friction_lengths.opening_m;
 
     let pier_stations = remap_opening_stations_option(pier_stations, opening_origin);
 
@@ -561,6 +631,7 @@ pub fn resolve_bridge_face_solve_geometry(
         pier_attachments,
         deck_vents,
         friction_length_m,
+        friction_lengths,
         xs_approach: approach_xs,
         xs_departure: departure_xs,
         guide_banks_approach,
@@ -1689,6 +1760,70 @@ mod tests {
         };
         let len = resolve_bridge_friction_length_metric(&interior, 0.0, 0.0, UnitSystem::Metric);
         assert!((len - 7.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn friction_lengths_auto_approach_departure_from_stations() {
+        let mut bu = box_xs(0.0, 10.0, 0.0, 5.0);
+        bu.station = 50.0;
+        let mut bd = box_xs(0.0, 10.0, 0.0, 5.0);
+        bd.station = 46.0;
+        let mut approach = box_xs(0.0, 10.0, 0.0, 5.0);
+        approach.station = 54.0;
+        let mut departure = box_xs(0.0, 10.0, 0.0, 5.0);
+        departure.station = 42.0;
+        let interior = BridgeInteriorInput {
+            bu: Some(bu),
+            bd: Some(bd),
+            internal: vec![],
+            ..Default::default()
+        };
+        let lens = resolve_bridge_friction_lengths_metric(
+            &interior,
+            0.0,
+            0.0,
+            Some(&approach),
+            Some(&departure),
+            interior.bu.as_ref(),
+            interior.bd.as_ref(),
+            BridgeFrictionWeighting::HecRasSegments,
+            0.0,
+            0.0,
+            UnitSystem::Metric,
+        );
+        assert!((lens.opening_m - 4.0).abs() < 1e-9);
+        assert!((lens.approach_m - 4.0).abs() < 1e-9);
+        assert!((lens.departure_m - 4.0).abs() < 1e-9);
+        assert_eq!(lens.weighting, BridgeFrictionWeighting::HecRasSegments);
+    }
+
+    #[test]
+    fn friction_lengths_user_overrides_approach_departure() {
+        let mut bu = box_xs(0.0, 10.0, 0.0, 5.0);
+        bu.station = 50.0;
+        let mut bd = box_xs(0.0, 10.0, 0.0, 5.0);
+        bd.station = 46.0;
+        let interior = BridgeInteriorInput {
+            bu: Some(bu),
+            bd: Some(bd),
+            internal: vec![],
+            ..Default::default()
+        };
+        let lens = resolve_bridge_friction_lengths_metric(
+            &interior,
+            0.0,
+            0.0,
+            None,
+            None,
+            interior.bu.as_ref(),
+            interior.bd.as_ref(),
+            BridgeFrictionWeighting::HecRasSegments,
+            12.0,
+            8.0,
+            UnitSystem::Metric,
+        );
+        assert!((lens.approach_m - 12.0).abs() < 1e-9);
+        assert!((lens.departure_m - 8.0).abs() < 1e-9);
     }
 
     #[test]

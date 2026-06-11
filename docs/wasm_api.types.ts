@@ -171,6 +171,24 @@ export interface BridgeArrays {
    * (summing interior cuts); this field does not override a shorter face spacing.
    */
   bridge_lengths?: number[];
+  /**
+   * HEC-RAS bridge friction weighting per bridge (energy / WSPRO / Class B energy path only).
+   * **Omit or `0` (default):** opening friction only (BU→BD), matching HEC-RAS when approach/departure
+   * friction weighting is not enabled.
+   * **`1`:** three segments — approach→BU + BU→BD + BD→departure — using approach/departure cuts
+   * (`bridge_approach_cross_sections`, `bridge_departure_cross_sections`, or nearest reach nodes).
+   */
+  bridge_friction_weighting?: number[];
+  /**
+   * Override approach friction reach length per bridge (user units). `0` = auto from
+   * `|station(approach) − station(BU)|`. Only used when `bridge_friction_weighting[b] === 1`.
+   */
+  bridge_approach_friction_lengths?: number[];
+  /**
+   * Override departure friction reach length per bridge (user units). `0` = auto from
+   * `|station(BD) − station(departure)|`. Only used when `bridge_friction_weighting[b] === 1`.
+   */
+  bridge_departure_friction_lengths?: number[];
   /** WSPRO contracted-opening discharge coefficient C per bridge (typical 0.7–0.9). */
   bridge_wspro_coeffs?: number[];
   /** Sluice-gate pressure coefficient when only upstream is submerged. 0 = auto (HEC-RAS Y3/Z). */
@@ -436,6 +454,15 @@ export interface BridgeRatingCurveInputs {
   /** High-flow method: 0 = pressure/weir, 1 = energy. */
   high_flow_method?: number;
   length?: number;
+  /**
+   * Friction weighting for `computeBridgeRatingCurve`: omit/`0` = opening only (HEC-RAS default),
+   * `1` = approach + opening + departure segments.
+   */
+  friction_weighting?: number;
+  /** Approach segment length override (user units). `0` = auto from approach/BU river stations. */
+  approach_friction_length?: number;
+  /** Departure segment length override (user units). `0` = auto from BD/departure river stations. */
+  departure_friction_length?: number;
   wspro_coeff?: number;
   coeff_contraction?: number;
   coeff_expansion?: number;

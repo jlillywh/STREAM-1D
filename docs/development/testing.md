@@ -26,6 +26,7 @@ All profile stations (10 per event) are checked within **±0.04 ft** vs HEC-RAS 
 | Pier footings and nosing (v28) | `src/solvers/pier_geometry.rs`, `src/solvers/bridge_tests.rs`, `tests/wasm_json_contract.rs` | Footing compose + profile precedence; nosing area/flow width/skew; `a_eff` / top width / Yarnell / momentum / steady HW; WASM metadata + shaft-vs-attachment HW |
 | Extended pier shapes (v29) | `src/solvers/bridge.rs`, `src/solvers/bridge_tests.rs` | `pier_shape_coefficients_match_hecras_table`; `test_pier_shape_4` … `test_pier_shape_11` (one case per new enum) |
 | **High-flow pressure / weir (Phase 4)** | `tests/bridge_high_flow_hecras_verification.rs` | [`verification/fixtures/bridge_high_flow_hecras.json`](../verification/fixtures/bridge_high_flow_hecras.json) — **6 cases**, ±2 mm HW |
+| **Friction weighting (v30, §4.2)** | `tests/bridge_friction_weighting_hecras_verification.rs`, `src/solvers/bridge_tests.rs` (`test_energy_friction_weighting_*`, `test_friction_weighting_default_equals_opening_only_at_same_q`) | [`verification/fixtures/bridge_friction_weighting_hecras.json`](../verification/fixtures/bridge_friction_weighting_hecras.json) — omit/`0` ≡ HEC-RAS default; `1` raises HW at same $Q$ |
 | Node WASM smoke | `examples/wasm/bridge_smoke_test.mjs`, `node_smoke_test.mjs` | Culvert Tier 1 + bridge BU/BD steady solve after `build_wasm.sh` |
 
 ```bash

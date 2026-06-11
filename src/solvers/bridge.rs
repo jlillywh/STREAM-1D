@@ -36,6 +36,8 @@ pub struct BridgeSectionContext {
     pub pier_stations: Option<Vec<f64>>,
     /// Reach friction length BU → BD (metric), including interior cut spacing when provided.
     pub friction_length_m: f64,
+    /// Opening / approach / departure friction segments (metric, before skew in `friction_length_m` only).
+    pub friction_lengths: BridgeFrictionLengths,
     /// Approach cross section (HEC-RAS section 4 equivalent) when resolved.
     pub xs_approach: Option<CrossSection>,
     /// Departure / exit cross section when resolved.
@@ -50,6 +52,45 @@ pub struct BridgeSectionContext {
     pub pier_attachments: Option<PierAttachmentsUserInput>,
     /// Optional deck vent / slotted-opening segments (user units; converted in `build_bridge_geometry`).
     pub deck_vents: Option<DeckVentUserInput>,
+}
+
+/// How energy / WSPRO friction reach is split between the bridge opening and approach/departure (API v30).
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
+pub enum BridgeFrictionWeighting {
+    /// Friction loss uses BU→BD opening length only (legacy default).
+    #[default]
+    OpeningOnly = 0,
+    /// HEC-RAS three-segment friction: approach→BU + BU→BD + BD→departure.
+    HecRasSegments = 1,
+}
+
+impl BridgeFrictionWeighting {
+    pub fn from_i32(v: i32) -> Self {
+        match v {
+            1 => Self::HecRasSegments,
+            _ => Self::OpeningOnly,
+        }
+    }
+}
+
+/// Metric friction reach segments for one bridge interval.
+#[derive(Debug, Clone, Copy)]
+pub struct BridgeFrictionLengths {
+    pub weighting: BridgeFrictionWeighting,
+    pub opening_m: f64,
+    pub approach_m: f64,
+    pub departure_m: f64,
+}
+
+impl Default for BridgeFrictionLengths {
+    fn default() -> Self {
+        Self {
+            weighting: BridgeFrictionWeighting::OpeningOnly,
+            opening_m: 0.0,
+            approach_m: 0.0,
+            departure_m: 0.0,
+        }
+    }
 }
 
 /// HEC-RAS-style bridge skew: projected opening width × cos(θ), friction length ÷ cos(θ).
@@ -247,6 +288,12 @@ pub struct BridgeCouplingParams {
     pub pressure_coeff_submerged: f64,
     /// Switch to energy method when weir submergence ratio exceeds this (HEC-RAS default 0.98).
     pub max_weir_submergence: f64,
+    /// Friction weighting between opening and approach/departure reaches (API v30).
+    pub friction_weighting: BridgeFrictionWeighting,
+    /// Override approach friction length (user units). 0 = auto from river stations.
+    pub approach_friction_length: f64,
+    /// Override departure friction length (user units). 0 = auto from river stations.
+    pub departure_friction_length: f64,
 }
 
 impl Default for BridgeCouplingParams {
@@ -262,6 +309,9 @@ impl Default for BridgeCouplingParams {
             pressure_coeff_inlet: 0.0,
             pressure_coeff_submerged: 0.8,
             max_weir_submergence: 0.98,
+            friction_weighting: BridgeFrictionWeighting::OpeningOnly,
+            approach_friction_length: 0.0,
+            departure_friction_length: 0.0,
         }
     }
 }
@@ -337,6 +387,15 @@ pub struct BridgeSolveParams {
     pub pressure_coeff_inlet: f64,
     #[serde(default = "default_max_weir_submergence")]
     pub max_weir_submergence: f64,
+    /// Friction weighting: 0 = opening only, 1 = HEC-RAS approach + opening + departure segments.
+    #[serde(default)]
+    pub friction_weighting: i32,
+    /// Override approach friction length (user units). 0 = auto from river stations.
+    #[serde(default)]
+    pub approach_friction_length: f64,
+    /// Override departure friction length (user units). 0 = auto from river stations.
+    #[serde(default)]
+    pub departure_friction_length: f64,
     #[serde(default)]
     pub skew_deg: f64,
     #[serde(default)]
@@ -514,6 +573,9 @@ impl Default for BridgeSolveParams {
             low_flow_method: 0,
             high_flow_method: 0,
             length: 0.0,
+            friction_weighting: 0,
+            approach_friction_length: 0.0,
+            departure_friction_length: 0.0,
             wspro_coeff: default_wspro_coeff(),
             coeff_contraction: default_coeff_contraction(),
             coeff_expansion: default_coeff_expansion(),
@@ -811,6 +873,10 @@ pub struct BridgeGeometry {
     pub low_flow_method: LowFlowMethod,
     pub high_flow_method: HighFlowMethod,
     pub length_m: f64,
+    pub friction_weighting: BridgeFrictionWeighting,
+    pub friction_opening_m: f64,
+    pub friction_approach_m: f64,
+    pub friction_departure_m: f64,
     pub wspro_coeff_c: f64,
     pub coeff_contraction: f64,
     pub coeff_expansion: f64,
@@ -832,6 +898,63 @@ pub struct BridgeGeometry {
     pub table_departure: Option<GeometryTable>,
     /// Supplemental pressure-flow paths through deck vents / slots (metric).
     pub deck_vents: Vec<ResolvedDeckVent>,
+    /// Interior cut tables (US → DS) for sub-segment opening friction.
+    pub internal_opening_tables: Vec<GeometryTable>,
+    /// Skew-adjusted segment lengths between consecutive opening nodes (BU → … → BD).
+    pub internal_opening_segment_lengths_m: Vec<f64>,
+    /// Bed elevation (metric) at each interior opening cut.
+    pub internal_opening_z_m: Vec<f64>,
+}
+
+impl Default for BridgeGeometry {
+    fn default() -> Self {
+        Self {
+            low_chord_m: 5.0,
+            low_chord_max_m: 5.0,
+            high_chord_m: 7.0,
+            high_chord_max_m: 7.0,
+            pier_width_m: 0.0,
+            num_piers: 0,
+            pier_stations_m: Vec::new(),
+            pier_specs: Vec::new(),
+            skew_deg: 0.0,
+            skew_cos: 1.0,
+            pier_shape: PierShape::Square,
+            abutments: BridgeAbutments::default(),
+            weir_coeff_m: 1.44,
+            orifice_coeff: 0.8,
+            z_up_m: 0.0,
+            z_down_m: 0.0,
+            low_flow_method: LowFlowMethod::Auto,
+            high_flow_method: HighFlowMethod::PressureWeir,
+            length_m: 10.0,
+            friction_weighting: BridgeFrictionWeighting::OpeningOnly,
+            friction_opening_m: 10.0,
+            friction_approach_m: 0.0,
+            friction_departure_m: 0.0,
+            wspro_coeff_c: 0.8,
+            coeff_contraction: 0.1,
+            coeff_expansion: 0.3,
+            pressure_coeff_inlet: 0.0,
+            pressure_coeff_submerged: 0.8,
+            max_weir_submergence: 0.98,
+            deck: None,
+            ineffective_up: None,
+            ineffective_down: None,
+            xs_up: None,
+            xs_down: None,
+            xs_approach: None,
+            xs_departure: None,
+            guide_banks_approach: None,
+            guide_banks_departure: None,
+            table_approach: None,
+            table_departure: None,
+            deck_vents: Vec::new(),
+            internal_opening_tables: Vec::new(),
+            internal_opening_segment_lengths_m: Vec::new(),
+            internal_opening_z_m: Vec::new(),
+        }
+    }
 }
 
 const APPROACH_DEPARTURE_TABLE_SLICES: usize = 50;
@@ -1178,6 +1301,152 @@ fn friction_loss(q: f64, k1: f64, k2: f64, length: f64) -> f64 {
     length * (q / k_avg).powi(2)
 }
 
+/// Skew-adjusted segment lengths along explicit BU → internal → BD river stations (metric).
+fn internal_opening_friction_segments(
+    xs_up: Option<&CrossSection>,
+    internal: &[CrossSection],
+    xs_down: Option<&CrossSection>,
+    skew_deg: f64,
+) -> (Vec<GeometryTable>, Vec<f64>, Vec<f64>) {
+    if internal.is_empty() {
+        return (Vec::new(), Vec::new(), Vec::new());
+    }
+    let mut nodes: Vec<&CrossSection> = Vec::new();
+    if let Some(bu) = xs_up {
+        nodes.push(bu);
+    }
+    for xs in internal {
+        nodes.push(xs);
+    }
+    if let Some(bd) = xs_down {
+        nodes.push(bd);
+    }
+    if nodes.len() < 3 {
+        return (Vec::new(), Vec::new(), Vec::new());
+    }
+
+    let mut stations: Vec<f64> = nodes.iter().map(|xs| xs.station).collect();
+    stations.sort_by(|a, b| b.partial_cmp(a).unwrap());
+    let segment_lengths_m: Vec<f64> = stations
+        .windows(2)
+        .map(|w| {
+            let seg = (w[0] - w[1]).abs();
+            apply_bridge_skew(skew_deg, 1.0, seg).1
+        })
+        .collect();
+
+    let mut tables = Vec::with_capacity(internal.len());
+    let mut z_m = Vec::with_capacity(internal.len());
+    for xs in internal {
+        tables.push(xs.generate_lookup_table(APPROACH_DEPARTURE_TABLE_SLICES));
+        z_m.push(crate::solvers::bridge_interior::cross_section_min_bed(xs));
+    }
+    (tables, segment_lengths_m, z_m)
+}
+
+fn bridge_opening_friction_loss(
+    q_metric: f64,
+    wsel_bu: f64,
+    tw_bd: f64,
+    geom: &BridgeGeometry,
+    table_up: &GeometryTable,
+    table_down: &GeometryTable,
+) -> f64 {
+    let opening_l = if geom.friction_opening_m > 1e-6 {
+        geom.friction_opening_m
+    } else {
+        geom.length_m
+    };
+    let k_bu = obstructed_conveyance(table_up, wsel_bu, geom.z_up_m, geom, true);
+    let k_bd = obstructed_conveyance(table_down, tw_bd, geom.z_down_m, geom, false);
+    if geom.internal_opening_segment_lengths_m.is_empty() {
+        return friction_loss(q_metric, k_bd, k_bu, opening_l);
+    }
+
+    let seg_lens = &geom.internal_opening_segment_lengths_m;
+    let total: f64 = seg_lens.iter().sum();
+    let mut cum = 0.0;
+    let mut conveyances = Vec::with_capacity(seg_lens.len() + 1);
+    conveyances.push(k_bu);
+    for (i, int_table) in geom.internal_opening_tables.iter().enumerate() {
+        cum += seg_lens[i];
+        let frac = if total > 1e-6 { cum / total } else { 0.0 };
+        let wsel = wsel_bu + frac * (tw_bd - wsel_bu);
+        let z = geom
+            .internal_opening_z_m
+            .get(i)
+            .copied()
+            .unwrap_or(geom.z_up_m);
+        conveyances.push(obstructed_conveyance(int_table, wsel, z, geom, true));
+    }
+    conveyances.push(k_bd);
+
+    seg_lens
+        .iter()
+        .enumerate()
+        .map(|(i, &l)| friction_loss(q_metric, conveyances[i + 1], conveyances[i], l))
+        .sum()
+}
+
+fn cut_conveyance_at_wsel(
+    xs: &CrossSection,
+    table: &GeometryTable,
+    guide_banks: Option<&GuideBanks>,
+    wsel: f64,
+) -> f64 {
+    let ineffective = ineffective_on_cut(Some(xs));
+    let guide_banks = guide_banks.filter(|g| g.is_configured());
+    let row = lookup_row(table, Some(xs), ineffective, guide_banks, wsel);
+    row.conveyance.max(0.0)
+}
+
+/// Energy / WSPRO friction through the bridge reach (opening-only or HEC-RAS three-segment).
+fn bridge_energy_friction_loss(
+    q_metric: f64,
+    wsel_up: f64,
+    tw_m: f64,
+    geom: &BridgeGeometry,
+    table_up: &GeometryTable,
+    table_down: &GeometryTable,
+) -> f64 {
+    let hf_opening = bridge_opening_friction_loss(q_metric, wsel_up, tw_m, geom, table_up, table_down);
+    if geom.friction_weighting == BridgeFrictionWeighting::OpeningOnly {
+        return hf_opening;
+    }
+    let k_bu = obstructed_conveyance(table_up, wsel_up, geom.z_up_m, geom, true);
+    let k_bd = obstructed_conveyance(table_down, tw_m, geom.z_down_m, geom, false);
+    let mut hf = hf_opening;
+    if geom.friction_approach_m > 1e-6 {
+        if let (Some(xs), Some(table)) = (geom.xs_approach.as_ref(), geom.table_approach.as_ref()) {
+            let k_ap = cut_conveyance_at_wsel(
+                xs,
+                table,
+                geom.guide_banks_approach.as_ref(),
+                wsel_up,
+            );
+            if k_ap > 1e-6 {
+                hf += friction_loss(q_metric, k_bu, k_ap, geom.friction_approach_m);
+            }
+        }
+    }
+    if geom.friction_departure_m > 1e-6 {
+        if let (Some(xs), Some(table)) = (geom.xs_departure.as_ref(), geom.table_departure.as_ref())
+        {
+            let z_dep = crate::solvers::bridge_interior::cross_section_min_bed(xs);
+            let k_dep = cut_conveyance_at_wsel(
+                xs,
+                table,
+                geom.guide_banks_departure.as_ref(),
+                tw_m.max(z_dep + 1e-4),
+            );
+            if k_dep > 1e-6 {
+                hf += friction_loss(q_metric, k_dep, k_bd, geom.friction_departure_m);
+            }
+        }
+    }
+    hf
+}
+
 /// WSPRO idealized contraction loss (HEC-RAS eq. 10) for approach area A1 and bridge opening A2.
 fn wspro_contraction_loss(q: f64, a_approach: f64, a_bridge: f64, c: f64) -> f64 {
     if a_approach < 1e-6 || a_bridge < 1e-6 || c < 1e-6 {
@@ -1200,16 +1469,10 @@ fn solve_low_flow_energy_or_wspro(
     table_down: &GeometryTable,
     use_wspro: bool,
 ) -> f64 {
-    let length = if geom.length_m > 1e-3 {
-        geom.length_m
-    } else {
-        10.0
-    };
     let props_down = obstructed_hydraulics(table_down, tw_m, geom.z_down_m, geom, false);
     if props_down.a_eff < 1e-6 {
         return tw_m;
     }
-    let k_down = obstructed_conveyance(table_down, tw_m, geom.z_down_m, geom, false);
     let e_down = tw_m + velocity_head(q_metric, props_down.a_eff);
 
     let residual = |wsel_up: f64| -> f64 {
@@ -1217,9 +1480,8 @@ fn solve_low_flow_energy_or_wspro(
         if props_up.a_eff < 1e-6 {
             return 1e6;
         }
-        let k_up = obstructed_conveyance(table_up, wsel_up, geom.z_up_m, geom, true);
         let e_up = wsel_up + velocity_head(q_metric, props_up.a_eff);
-        let hf = friction_loss(q_metric, k_down, k_up, length);
+        let hf = bridge_energy_friction_loss(q_metric, wsel_up, tw_m, geom, table_up, table_down);
         let h_other = if use_wspro {
             let opening_wsel = wsel_up.min(tw_m).min(geom.low_chord_m);
             let (props_opening, _) =
@@ -1977,7 +2239,7 @@ fn solve_low_flow_class_b(
     let use_energy = matches!(
         geom.low_flow_method,
         LowFlowMethod::Energy | LowFlowMethod::Wspro
-    );
+    ) || geom.friction_weighting == BridgeFrictionWeighting::HecRasSegments;
 
     if !use_energy {
         let (_, m_crit_up) = critical_specific_force(table_up, geom.z_up_m, q_metric, geom, true);
@@ -2421,6 +2683,9 @@ fn coupling_from_params(params: &BridgeSolveParams) -> BridgeCouplingParams {
         pressure_coeff_inlet: params.pressure_coeff_inlet,
         pressure_coeff_submerged: 0.8,
         max_weir_submergence: params.max_weir_submergence,
+        friction_weighting: BridgeFrictionWeighting::from_i32(params.friction_weighting),
+        approach_friction_length: params.approach_friction_length,
+        departure_friction_length: params.departure_friction_length,
     }
 }
 
@@ -2652,12 +2917,20 @@ pub fn solve_bridge_from_params(params: &BridgeSolveParams) -> BridgeSolveResult
         opening_reach_station_origin: opening_origin,
         ..Default::default()
     };
-    let friction_length_m = crate::solvers::bridge_interior::resolve_bridge_friction_length_metric(
+    let friction_lengths = crate::solvers::bridge_interior::resolve_bridge_friction_lengths_metric(
         &interior,
         0.0,
         params.length,
+        None,
+        None,
+        Some(&xs_up),
+        Some(&xs_down),
+        BridgeFrictionWeighting::from_i32(params.friction_weighting),
+        params.approach_friction_length,
+        params.departure_friction_length,
         params.units,
     );
+    let friction_length_m = friction_lengths.opening_m;
     let sections = BridgeSectionContext {
         ineffective_up: ineffective_upstream_from_params(&params),
         ineffective_down: ineffective_downstream_from_params(&params),
@@ -2693,6 +2966,7 @@ pub fn solve_bridge_from_params(params: &BridgeSolveParams) -> BridgeSolveResult
             &params.deck_vent_types,
         ),
         friction_length_m,
+        friction_lengths,
         xs_approach: None,
         xs_departure: None,
         guide_banks_approach: None,
@@ -2967,7 +3241,25 @@ fn build_bridge_geometry(
             }
         });
     let skew_deg = sections.map(|s| s.skew_deg).unwrap_or(0.0);
-    let (_, length_m) = apply_bridge_skew(skew_deg, 1.0, length_base_m);
+    let friction_lengths = sections
+        .map(|s| s.friction_lengths)
+        .unwrap_or(BridgeFrictionLengths {
+            weighting: coupling.friction_weighting,
+            opening_m: length_base_m,
+            approach_m: 0.0,
+            departure_m: 0.0,
+        });
+    let opening_base_m = if friction_lengths.opening_m > 1e-3 {
+        friction_lengths.opening_m
+    } else {
+        length_base_m
+    };
+    let (_, length_m) = apply_bridge_skew(skew_deg, 1.0, opening_base_m);
+    let (_, friction_opening_m) = apply_bridge_skew(skew_deg, 1.0, opening_base_m);
+    let (_, friction_approach_m) = apply_bridge_skew(skew_deg, 1.0, friction_lengths.approach_m);
+    let (_, friction_departure_m) =
+        apply_bridge_skew(skew_deg, 1.0, friction_lengths.departure_m);
+    let friction_weighting = coupling.friction_weighting;
     let skew_cos = {
         let deg = skew_deg.clamp(0.0, 59.0);
         deg.to_radians().cos().max(0.52)
@@ -3040,6 +3332,27 @@ fn build_bridge_geometry(
             xs
         }
     });
+    let internal_metric: Vec<CrossSection> = sections
+        .map(|s| {
+            s.internal_xs
+                .iter()
+                .map(|xs| {
+                    if units == UnitSystem::USCustomary {
+                        xs.to_metric()
+                    } else {
+                        xs.clone()
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let (internal_opening_tables, internal_opening_segment_lengths_m, internal_opening_z_m) =
+        internal_opening_friction_segments(
+            xs_up.as_ref(),
+            &internal_metric,
+            xs_down.as_ref(),
+            skew_deg,
+        );
     let to_metric_xs = |xs: CrossSection| {
         if units == UnitSystem::USCustomary {
             xs.to_metric()
@@ -3150,6 +3463,10 @@ fn build_bridge_geometry(
             low_flow_method: LowFlowMethod::from_i32(coupling.low_flow_method),
             high_flow_method: HighFlowMethod::from_i32(coupling.high_flow_method),
             length_m,
+            friction_weighting,
+            friction_opening_m,
+            friction_approach_m,
+            friction_departure_m,
             wspro_coeff_c: coupling.wspro_coeff,
             coeff_contraction: coupling.coeff_contraction,
             coeff_expansion: coupling.coeff_expansion,
@@ -3168,6 +3485,9 @@ fn build_bridge_geometry(
             table_approach: table_approach.clone(),
             table_departure: table_departure.clone(),
             deck_vents: deck_vents.clone(),
+            internal_opening_tables: internal_opening_tables.clone(),
+            internal_opening_segment_lengths_m: internal_opening_segment_lengths_m.clone(),
+            internal_opening_z_m: internal_opening_z_m.clone(),
         }
     } else {
         BridgeGeometry {
@@ -3190,6 +3510,10 @@ fn build_bridge_geometry(
             low_flow_method: LowFlowMethod::from_i32(coupling.low_flow_method),
             high_flow_method: HighFlowMethod::from_i32(coupling.high_flow_method),
             length_m,
+            friction_weighting,
+            friction_opening_m,
+            friction_approach_m,
+            friction_departure_m,
             wspro_coeff_c: coupling.wspro_coeff,
             coeff_contraction: coupling.coeff_contraction,
             coeff_expansion: coupling.coeff_expansion,
@@ -3208,6 +3532,9 @@ fn build_bridge_geometry(
             table_approach,
             table_departure,
             deck_vents,
+            internal_opening_tables,
+            internal_opening_segment_lengths_m,
+            internal_opening_z_m,
         }
     }
 }

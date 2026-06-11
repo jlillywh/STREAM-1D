@@ -1,0 +1,18 @@
+{
+  "tolerance_m": 0.005,
+  "cases": [
+    {
+      "name": "energy_opening_only_vs_three_segment_friction",
+      "notes": "Q=20 cms, TW=2.5 m, energy method; 20 m approach / 25 m departure vs 10 m BU opening; omit or 0 = HEC-RAS default (opening friction only), 1 = approach+opening+departure segments.",
+      "flow_rate_cms": 20.0,
+      "downstream_wsel_m": 2.5,
+      "bridge_center_station_m": 50.0,
+      "bu_station_m": 52.0,
+      "bd_station_m": 48.0,
+      "approach_station_m": 70.0,
+      "departure_station_m": 30.0,
+      "channel_width_m": 10.0,
+      "approach_width_m": 20.0
+    }
+  ]
+}

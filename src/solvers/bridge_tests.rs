@@ -166,6 +166,7 @@ fn momentum_pier_geometry(shape: PierShape) -> BridgeGeometry {
         low_flow_method: LowFlowMethod::Momentum,
         high_flow_method: HighFlowMethod::PressureWeir,
         length_m: 50.0,
+        friction_opening_m: 50.0,
         wspro_coeff_c: 0.8,
         coeff_contraction: 0.1,
         coeff_expansion: 0.3,
@@ -187,7 +188,7 @@ fn momentum_pier_geometry(shape: PierShape) -> BridgeGeometry {
         guide_banks_departure: None,
         table_approach: None,
         table_departure: None,
-        deck_vents: Vec::new(),
+        ..Default::default()
     }
 }
 
@@ -294,6 +295,7 @@ fn test_classify_low_flow_subcritical_is_class_a() {
         low_flow_method: LowFlowMethod::Auto,
         high_flow_method: HighFlowMethod::PressureWeir,
         length_m: 100.0,
+        friction_opening_m: 100.0,
         wspro_coeff_c: 0.8,
         coeff_contraction: 0.1,
         coeff_expansion: 0.3,
@@ -315,7 +317,7 @@ fn test_classify_low_flow_subcritical_is_class_a() {
         guide_banks_departure: None,
         table_approach: None,
         table_departure: None,
-        deck_vents: Vec::new(),
+        ..Default::default()
     };
     assert_eq!(
         classify_low_flow(15.0, 3.0, &geom, &table, &table),
@@ -342,6 +344,7 @@ fn test_asymmetric_abutments_reduce_area_more_on_wide_side() {
         low_flow_method: LowFlowMethod::Momentum,
         high_flow_method: HighFlowMethod::PressureWeir,
         length_m: 100.0,
+        friction_opening_m: 100.0,
         wspro_coeff_c: 0.8,
         coeff_contraction: 0.1,
         coeff_expansion: 0.3,
@@ -363,7 +366,7 @@ fn test_asymmetric_abutments_reduce_area_more_on_wide_side() {
         guide_banks_departure: None,
         table_approach: None,
         table_departure: None,
-        deck_vents: Vec::new(),
+        ..Default::default()
     };
     let narrow_left = BridgeGeometry {
         abutments: resolve_abutments(
@@ -412,6 +415,7 @@ fn test_per_side_abutment_tops_affect_obstructed_hydraulics() {
         low_flow_method: LowFlowMethod::Momentum,
         high_flow_method: HighFlowMethod::PressureWeir,
         length_m: 100.0,
+        friction_opening_m: 100.0,
         wspro_coeff_c: 0.8,
         coeff_contraction: 0.1,
         coeff_expansion: 0.3,
@@ -433,7 +437,7 @@ fn test_per_side_abutment_tops_affect_obstructed_hydraulics() {
         guide_banks_departure: None,
         table_approach: None,
         table_departure: None,
-        deck_vents: Vec::new(),
+        ..Default::default()
     };
     let geom_both = BridgeGeometry {
         abutments: resolve_abutments(
@@ -492,6 +496,7 @@ fn test_abutment_reduces_opening_area() {
         low_flow_method: LowFlowMethod::Momentum,
         high_flow_method: HighFlowMethod::PressureWeir,
         length_m: 100.0,
+        friction_opening_m: 100.0,
         wspro_coeff_c: 0.8,
         coeff_contraction: 0.1,
         coeff_expansion: 0.3,
@@ -513,7 +518,7 @@ fn test_abutment_reduces_opening_area() {
         guide_banks_departure: None,
         table_approach: None,
         table_departure: None,
-        deck_vents: Vec::new(),
+        ..Default::default()
     };
     let props_no = obstructed_hydraulics(&table, 3.0, 0.0, &geom_no_abut, false);
     let geom_abut = BridgeGeometry {
@@ -587,6 +592,432 @@ fn test_solve_bridge_wsel_energy_no_obstructions() {
         wsel_up > 2.5,
         "energy method should raise upstream WSEL above tailwater, got {wsel_up}"
     );
+}
+
+#[test]
+fn test_energy_friction_weighting_segments_raise_hw() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let table_down = rectangular_table(10.0, 0.0, 50);
+    let approach = CrossSection {
+        station: 70.0,
+        x: vec![0.0, 0.0, 20.0, 20.0],
+        y: vec![5.0, 0.0, 0.0, 5.0],
+        n_stations: vec![0.0],
+        n_values: vec![0.03],
+        unit_system: UnitSystem::Metric,
+        is_overbank: None,
+        blocked_obstructions: None,
+        ineffective_flow_areas: None,
+        guide_banks: None,
+    };
+    let departure = CrossSection {
+        station: 30.0,
+        x: vec![0.0, 0.0, 20.0, 20.0],
+        y: vec![5.0, 0.0, 0.0, 5.0],
+        n_stations: vec![0.0],
+        n_values: vec![0.03],
+        unit_system: UnitSystem::Metric,
+        is_overbank: None,
+        blocked_obstructions: None,
+        ineffective_flow_areas: None,
+        guide_banks: None,
+    };
+    let sections = BridgeSectionContext {
+        friction_length_m: 20.0,
+        friction_lengths: BridgeFrictionLengths {
+            weighting: BridgeFrictionWeighting::HecRasSegments,
+            opening_m: 20.0,
+            approach_m: 30.0,
+            departure_m: 25.0,
+        },
+        xs_approach: Some(approach),
+        xs_departure: Some(departure),
+        ..Default::default()
+    };
+    let coupling_opening = BridgeCouplingParams {
+        low_flow_method: 3,
+        friction_weighting: BridgeFrictionWeighting::OpeningOnly,
+        ..Default::default()
+    };
+    let coupling_segments = BridgeCouplingParams {
+        low_flow_method: 3,
+        friction_weighting: BridgeFrictionWeighting::HecRasSegments,
+        ..Default::default()
+    };
+    let args = |coupling: &BridgeCouplingParams, sections: Option<&BridgeSectionContext>| {
+        solve_bridge_wsel(
+            20.0,
+            5.0,
+            7.0,
+            0.0,
+            0,
+            0,
+            1.44,
+            0.5,
+            0.0,
+            0.0,
+            2.5,
+            UnitSystem::Metric,
+            &table_up,
+            &table_down,
+            coupling,
+            20.0,
+            None,
+            sections,
+        )
+    };
+    let hw_opening = args(&coupling_opening, Some(&sections));
+    let hw_segments = args(&coupling_segments, Some(&sections));
+    assert!(
+        hw_segments > hw_opening,
+        "HEC-RAS segment friction should raise HW: opening={hw_opening}, segments={hw_segments}"
+    );
+}
+
+#[test]
+fn test_friction_weighting_default_equals_opening_only_at_same_q() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let table_down = rectangular_table(10.0, 0.0, 50);
+    let approach = CrossSection {
+        station: 70.0,
+        x: vec![0.0, 0.0, 20.0, 20.0],
+        y: vec![5.0, 0.0, 0.0, 5.0],
+        n_stations: vec![0.0],
+        n_values: vec![0.03],
+        unit_system: UnitSystem::Metric,
+        is_overbank: None,
+        blocked_obstructions: None,
+        ineffective_flow_areas: None,
+        guide_banks: None,
+    };
+    let departure = CrossSection {
+        station: 30.0,
+        x: vec![0.0, 0.0, 20.0, 20.0],
+        y: vec![5.0, 0.0, 0.0, 5.0],
+        n_stations: vec![0.0],
+        n_values: vec![0.03],
+        unit_system: UnitSystem::Metric,
+        is_overbank: None,
+        blocked_obstructions: None,
+        ineffective_flow_areas: None,
+        guide_banks: None,
+    };
+    let sections = BridgeSectionContext {
+        friction_length_m: 20.0,
+        friction_lengths: BridgeFrictionLengths {
+            weighting: BridgeFrictionWeighting::HecRasSegments,
+            opening_m: 20.0,
+            approach_m: 30.0,
+            departure_m: 25.0,
+        },
+        xs_approach: Some(approach),
+        xs_departure: Some(departure),
+        ..Default::default()
+    };
+    let mut coupling_default = BridgeCouplingParams::default();
+    coupling_default.low_flow_method = 3;
+    let coupling_opening = BridgeCouplingParams {
+        low_flow_method: 3,
+        friction_weighting: BridgeFrictionWeighting::OpeningOnly,
+        ..Default::default()
+    };
+    let args = |coupling: &BridgeCouplingParams| {
+        solve_bridge_wsel(
+            20.0,
+            5.0,
+            7.0,
+            0.0,
+            0,
+            0,
+            1.44,
+            0.5,
+            0.0,
+            0.0,
+            2.5,
+            UnitSystem::Metric,
+            &table_up,
+            &table_down,
+            coupling,
+            20.0,
+            None,
+            Some(&sections),
+        )
+    };
+    let hw_default = args(&coupling_default);
+    let hw_opening = args(&coupling_opening);
+    assert!(
+        (hw_default - hw_opening).abs() < 1e-9,
+        "omitted/default weighting should match explicit 0: default={hw_default}, opening={hw_opening}"
+    );
+}
+
+#[test]
+fn test_wspro_friction_weighting_segments_raise_hw() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let table_down = rectangular_table(10.0, 0.0, 50);
+    let approach = CrossSection {
+        station: 70.0,
+        x: vec![0.0, 0.0, 20.0, 20.0],
+        y: vec![5.0, 0.0, 0.0, 5.0],
+        n_stations: vec![0.0],
+        n_values: vec![0.03],
+        unit_system: UnitSystem::Metric,
+        is_overbank: None,
+        blocked_obstructions: None,
+        ineffective_flow_areas: None,
+        guide_banks: None,
+    };
+    let departure = CrossSection {
+        station: 30.0,
+        x: vec![0.0, 0.0, 20.0, 20.0],
+        y: vec![5.0, 0.0, 0.0, 5.0],
+        n_stations: vec![0.0],
+        n_values: vec![0.03],
+        unit_system: UnitSystem::Metric,
+        is_overbank: None,
+        blocked_obstructions: None,
+        ineffective_flow_areas: None,
+        guide_banks: None,
+    };
+    let sections = BridgeSectionContext {
+        friction_length_m: 20.0,
+        friction_lengths: BridgeFrictionLengths {
+            weighting: BridgeFrictionWeighting::HecRasSegments,
+            opening_m: 20.0,
+            approach_m: 30.0,
+            departure_m: 25.0,
+        },
+        xs_approach: Some(approach),
+        xs_departure: Some(departure),
+        ..Default::default()
+    };
+    let coupling_opening = BridgeCouplingParams {
+        low_flow_method: 4,
+        abutment: BridgeAbutmentUserInput {
+            legacy_total_width: 2.0,
+            ..Default::default()
+        },
+        friction_weighting: BridgeFrictionWeighting::OpeningOnly,
+        ..Default::default()
+    };
+    let coupling_segments = BridgeCouplingParams {
+        low_flow_method: 4,
+        abutment: BridgeAbutmentUserInput {
+            legacy_total_width: 2.0,
+            ..Default::default()
+        },
+        friction_weighting: BridgeFrictionWeighting::HecRasSegments,
+        ..Default::default()
+    };
+    let solve = |coupling: &BridgeCouplingParams| {
+        solve_bridge_wsel(
+            20.0,
+            5.0,
+            7.0,
+            0.0,
+            0,
+            0,
+            1.44,
+            0.5,
+            0.0,
+            0.0,
+            2.5,
+            UnitSystem::Metric,
+            &table_up,
+            &table_down,
+            coupling,
+            20.0,
+            None,
+            Some(&sections),
+        )
+    };
+    let hw_opening = solve(&coupling_opening);
+    let hw_segments = solve(&coupling_segments);
+    assert!(
+        hw_segments > hw_opening,
+        "WSPRO segment friction should raise HW: opening={hw_opening}, segments={hw_segments}"
+    );
+}
+
+fn class_b_friction_sections() -> BridgeSectionContext {
+    let approach = CrossSection {
+        station: 70.0,
+        x: vec![0.0, 0.0, 20.0, 20.0],
+        y: vec![5.0, 0.0, 0.0, 5.0],
+        n_stations: vec![0.0],
+        n_values: vec![0.03],
+        unit_system: UnitSystem::Metric,
+        is_overbank: None,
+        blocked_obstructions: None,
+        ineffective_flow_areas: None,
+        guide_banks: None,
+    };
+    let departure = CrossSection {
+        station: 30.0,
+        x: vec![0.0, 0.0, 20.0, 20.0],
+        y: vec![5.0, 0.0, 0.0, 5.0],
+        n_stations: vec![0.0],
+        n_values: vec![0.03],
+        unit_system: UnitSystem::Metric,
+        is_overbank: None,
+        blocked_obstructions: None,
+        ineffective_flow_areas: None,
+        guide_banks: None,
+    };
+    BridgeSectionContext {
+        friction_length_m: 20.0,
+        friction_lengths: BridgeFrictionLengths {
+            weighting: BridgeFrictionWeighting::HecRasSegments,
+            opening_m: 20.0,
+            approach_m: 30.0,
+            departure_m: 25.0,
+        },
+        xs_approach: Some(approach),
+        xs_departure: Some(departure),
+        ..Default::default()
+    }
+}
+
+/// Class B with energy method (search uses opening-only geometry; sections added in test).
+fn class_b_energy_case() -> (f64, f64, f64, i32, GeometryTable, GeometryTable) {
+    let coupling = BridgeCouplingParams {
+        low_flow_method: 3,
+        ..Default::default()
+    };
+    for &width in &[5.0, 6.0, 7.0, 8.0, 10.0] {
+        let table_up = rectangular_table(width, 0.0, 50);
+        let table_down = rectangular_table(width, 0.0, 50);
+        for &(pier_w, num_piers) in &[(1.5, 2), (2.0, 2), (2.0, 3), (2.5, 2)] {
+            let geom = build_bridge_geometry(
+                5.0,
+                7.0,
+                pier_w,
+                num_piers,
+                0,
+                1.44,
+                0.5,
+                0.0,
+                0.0,
+                UnitSystem::Metric,
+                &coupling,
+                15.0,
+                None,
+                None,
+            );
+            let mut q = 10.0;
+            while q <= 65.0 {
+                let mut tw = 0.85;
+                while tw <= 2.5 {
+                    if classify_low_flow(q, tw, &geom, &table_up, &table_down) == LowFlowClass::B {
+                        return (q, tw, pier_w, num_piers, table_up, table_down);
+                    }
+                    tw += 0.05;
+                }
+                q += 1.0;
+            }
+        }
+    }
+    panic!("no Class B case found for energy friction test");
+}
+
+#[test]
+fn test_class_b_energy_friction_segments_raise_hw() {
+    let (q, tw, pier_w, num_piers, table_up, table_down) = class_b_energy_case();
+    let sections = class_b_friction_sections();
+    let coupling_opening = BridgeCouplingParams {
+        low_flow_method: 3,
+        friction_weighting: BridgeFrictionWeighting::OpeningOnly,
+        ..Default::default()
+    };
+    let coupling_segments = BridgeCouplingParams {
+        low_flow_method: 3,
+        friction_weighting: BridgeFrictionWeighting::HecRasSegments,
+        ..Default::default()
+    };
+    let geom_opening = build_bridge_geometry(
+        5.0,
+        7.0,
+        pier_w,
+        num_piers,
+        0,
+        1.44,
+        0.5,
+        0.0,
+        0.0,
+        UnitSystem::Metric,
+        &coupling_opening,
+        20.0,
+        None,
+        Some(&sections),
+    );
+    let geom_segments = build_bridge_geometry(
+        5.0,
+        7.0,
+        pier_w,
+        num_piers,
+        0,
+        1.44,
+        0.5,
+        0.0,
+        0.0,
+        UnitSystem::Metric,
+        &coupling_segments,
+        20.0,
+        None,
+        Some(&sections),
+    );
+    let geom_classify = build_bridge_geometry(
+        5.0,
+        7.0,
+        pier_w,
+        num_piers,
+        0,
+        1.44,
+        0.5,
+        0.0,
+        0.0,
+        UnitSystem::Metric,
+        &coupling_segments,
+        15.0,
+        None,
+        None,
+    );
+    assert_eq!(
+        classify_low_flow(q, tw, &geom_classify, &table_up, &table_down),
+        LowFlowClass::B
+    );
+
+    let wsel_sample = (tw + 1.5).min(geom_segments.low_chord_m - 0.05);
+    let hf_opening = bridge_energy_friction_loss(
+        q,
+        wsel_sample,
+        tw,
+        &geom_opening,
+        &table_up,
+        &table_down,
+    );
+    let hf_segments = bridge_energy_friction_loss(
+        q,
+        wsel_sample,
+        tw,
+        &geom_segments,
+        &table_up,
+        &table_down,
+    );
+    assert!(
+        hf_segments > hf_opening + 1e-6,
+        "Class B energy friction: segments={hf_segments} should exceed opening={hf_opening}"
+    );
+
+    let hw_opening = solve_low_flow_class_b(q, tw, &geom_opening, &table_up, &table_down);
+    let hw_segments = solve_low_flow_class_b(q, tw, &geom_segments, &table_up, &table_down);
+    let ceiling = geom_segments.low_chord_m + 20.0;
+    if hw_opening < ceiling - 0.5 && hw_segments < ceiling - 0.5 {
+        assert!(
+            hw_segments > hw_opening,
+            "Class B energy HW with converged solve: opening={hw_opening}, segments={hw_segments}"
+        );
+    }
 }
 
 #[test]
@@ -1707,6 +2138,7 @@ fn test_obstructed_area_hand_calc_asymmetric_and_one_sided() {
         low_flow_method: LowFlowMethod::Wspro,
         high_flow_method: HighFlowMethod::PressureWeir,
         length_m: 50.0,
+        friction_opening_m: 50.0,
         wspro_coeff_c: 0.8,
         coeff_contraction: 0.1,
         coeff_expansion: 0.3,
@@ -1728,7 +2160,7 @@ fn test_obstructed_area_hand_calc_asymmetric_and_one_sided() {
         guide_banks_departure: None,
         table_approach: None,
         table_departure: None,
-        deck_vents: Vec::new(),
+        ..Default::default()
     };
 
     let asymmetric = BridgeGeometry {
@@ -1846,6 +2278,7 @@ fn test_wspro_headwater_hand_calc_reference_cases() {
         low_flow_method: LowFlowMethod::Wspro,
         high_flow_method: HighFlowMethod::PressureWeir,
         length_m: 50.0,
+        friction_opening_m: 50.0,
         wspro_coeff_c: 0.8,
         coeff_contraction: 0.1,
         coeff_expansion: 0.3,
@@ -1867,7 +2300,7 @@ fn test_wspro_headwater_hand_calc_reference_cases() {
         guide_banks_departure: None,
         table_approach: None,
         table_departure: None,
-        deck_vents: Vec::new(),
+        ..Default::default()
     };
 
     for (name, mut coupling, a_eff_tw, expected_hw) in cases {
@@ -2321,6 +2754,7 @@ fn tapered_vs_mean_constant_pier_geometries() -> (BridgeGeometry, BridgeGeometry
         low_flow_method: LowFlowMethod::Yarnell,
         high_flow_method: HighFlowMethod::PressureWeir,
         length_m: 50.0,
+        friction_opening_m: 50.0,
         wspro_coeff_c: 0.8,
         coeff_contraction: 0.1,
         coeff_expansion: 0.3,
@@ -2340,7 +2774,7 @@ fn tapered_vs_mean_constant_pier_geometries() -> (BridgeGeometry, BridgeGeometry
         guide_banks_departure: None,
         table_approach: None,
         table_departure: None,
-        deck_vents: Vec::new(),
+        ..Default::default()
     };
     let mean_constant = BridgeGeometry {
         pier_specs: vec![ResolvedPier {
@@ -2389,6 +2823,7 @@ fn tapered_vs_rectangular_pier_geometries() -> (BridgeGeometry, BridgeGeometry) 
         low_flow_method: LowFlowMethod::Momentum,
         high_flow_method: HighFlowMethod::PressureWeir,
         length_m: 50.0,
+        friction_opening_m: 50.0,
         wspro_coeff_c: 0.8,
         coeff_contraction: 0.1,
         coeff_expansion: 0.3,
@@ -2408,7 +2843,7 @@ fn tapered_vs_rectangular_pier_geometries() -> (BridgeGeometry, BridgeGeometry) 
         guide_banks_departure: None,
         table_approach: None,
         table_departure: None,
-        deck_vents: Vec::new(),
+        ..Default::default()
     };
     let tapered = BridgeGeometry {
         pier_specs: vec![ResolvedPier {
@@ -2646,6 +3081,7 @@ fn test_legacy_constant_pier_area_unchanged_via_empty_specs() {
         low_flow_method: LowFlowMethod::Momentum,
         high_flow_method: HighFlowMethod::PressureWeir,
         length_m: 50.0,
+        friction_opening_m: 50.0,
         wspro_coeff_c: 0.8,
         coeff_contraction: 0.1,
         coeff_expansion: 0.3,
@@ -2665,7 +3101,7 @@ fn test_legacy_constant_pier_area_unchanged_via_empty_specs() {
         guide_banks_departure: None,
         table_approach: None,
         table_departure: None,
-        deck_vents: Vec::new(),
+        ..Default::default()
     };
     let wsel = 3.0;
     let props = obstructed_hydraulics(&table, wsel, 0.0, &geom, false);

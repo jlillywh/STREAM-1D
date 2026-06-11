@@ -26,6 +26,7 @@ jupyter notebook python/stream1d_verification.ipynb
 | **Bridge BU/BD faces** | HEC-RAS Yarnell / explicit face cuts | [`fixtures/bridge_bu_bd_hecras.json`](fixtures/bridge_bu_bd_hecras.json) | `tests/bridge_bu_bd_hecras_verification.rs` | ±2 mm HW |
 | **Bridge high flow** | HEC-RAS 6.x high-flow methodology (sluice, orifice, Bradley weir, energy) | [`fixtures/bridge_high_flow_hecras.json`](fixtures/bridge_high_flow_hecras.json) | `tests/bridge_high_flow_hecras_verification.rs` | ±2 mm HW |
 | **Guide-bank contraction** | Steady profile vs reach-only contraction coefficient | [`fixtures/bridge_guide_bank_contraction.json`](fixtures/bridge_guide_bank_contraction.json) | `tests/bridge_guide_bank_contraction_verification.rs` | ±2 mm WSEL |
+| **Friction weighting (v30)** | Steady profile: omit/`0` vs `1` at same $Q$ (HEC-RAS §4.2) | [`fixtures/bridge_friction_weighting_hecras.json`](fixtures/bridge_friction_weighting_hecras.json) | `tests/bridge_friction_weighting_hecras_verification.rs` | ±5 mm (omit≡0); segments > opening |
 | **Roadway embankment (v26)** | Hand-authored equivalent to decomposed flat fields | [`fixtures/bridge_roadway_embankment.json`](fixtures/bridge_roadway_embankment.json) | `tests/bridge_roadway_embankment_verification.rs` | ±2 mm WSEL |
 | **Opening alignment** | Preprocessor + skew/offset geometry invariants | (inline in test) | `tests/bridge_opening_alignment_verification.rs` | exact layout |
 

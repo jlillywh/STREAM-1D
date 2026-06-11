@@ -60,6 +60,18 @@
       "quantity": "wsel"
     },
     {
+      "id": "bridge_friction_weighting",
+      "title": "Bridge friction weighting — opening only vs three segments (API v30)",
+      "source_of_truth": "Steady profile ordering: omit/0 ≡ HEC-RAS default; 1 > 0 at same Q",
+      "fixture": "fixtures/bridge_friction_weighting_hecras.json",
+      "tests": [
+        "tests/bridge_friction_weighting_hecras_verification.rs",
+        "src/solvers/bridge_tests.rs"
+      ],
+      "tolerance": "±5 mm WSEL (omit≡0); segments > opening at same Q",
+      "quantity": "wsel"
+    },
+    {
       "id": "bridge_roadway_embankment",
       "title": "Unified roadway embankment compose (API v26)",
       "source_of_truth": "Hand-authored equivalent to flat bridge fields",
