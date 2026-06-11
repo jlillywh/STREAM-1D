@@ -1,9 +1,11 @@
 # API changelog
 
-JSON/Python input schema version (`api_version` in WASM metadata). Current version: **25**.
+JSON/Python input schema version (`api_version` in WASM metadata). Current version: **27**.
 
 | Version | Change |
 |---------|--------|
+| 27 | Tapered pier widths: `bridge_pier_top_widths` / `bridge_pier_bottom_widths`, optional `bridge_pier_width_elevations` / `bridge_pier_width_values`, and cap/base elevations; rating curve keys `pier_top_widths`, etc. — integrated submerged pier area in Yarnell / momentum / pressure — see [`pier_tapered_width.md`](../development/pier_tapered_width.md) |
+| 26 | `bridge_roadway_embankments` per bridge (steady/unsteady) and `roadway_embankment` on bridge rating curve — unified deck + abutment + ineffective + embankment blocked tops from grade profiles — see [`equations.md` §G2](equations.md) |
 | 25 | `densify_reach_modifier_policy` on steady/unsteady inputs (`0` none, `1` upstream, `2` downstream, `3` nearest); reach ineffective/blocked/guide banks on `max_spacing` interior nodes; interpolated bridge BU/BD inherit `bridge_ineffective_*` — see [`equations.md` §H1](equations.md) |
 | 24 | Guide banks on approach/departure cuts (`CrossSection.guide_banks`, `bridge_approach_*` / `bridge_departure_*` fields); resolved on `BridgeSectionContext`; guided active area in WSPRO/energy when guide banks configured |
 | 23 | Bridge opening anchor modes (`bridge_opening_anchor_modes`, `bridge_opening_anchor_reach_stations`); reach river station ↔ opening origin resolution; `validateSteadyInputs` returns `{ warnings }` (bridge opening vs parent XS width) |

@@ -18,11 +18,13 @@ All profile stations (10 per event) are checked within **±0.04 ft** vs HEC-RAS 
 | 3-section vs 2-face reach layout | `tests/bridge_bu_bd_hecras_verification.rs` (`three_section_bridge_reach_matches_two_face_baseline`) | BU+internal+BD inserts extra node; BU/BD headwater and friction path match 2-face baseline |
 | WASM / JSON contract | `tests/wasm_json_contract.rs` | Steady BU/BD v22 fixture, unsteady BU/BD deserialize, `ineffective_flow_areas` on `CrossSection`; `api_version` metadata |
 | Reach ineffective flow | `src/geometry/processor.rs`, `src/solvers/bridge_tests.rs`, `src/solvers/steady.rs` | Blocked vs ineffective semantics; approach-cut storage/conveyance split; BU ineffective headwater; `solve_step` modifier search (plain, ineffective, supercritical, blocked obstruction, mixed regime) |
+| Unified roadway embankment (v26) | `tests/bridge_roadway_embankment_verification.rs`, `src/solvers/bridge_roadway_compose.rs`, `tests/wasm_json_contract.rs` | Steady/unsteady/rating compose; precedence (`derive_*`, flat wins, face overrides); blocked merge at solve; JSON contract; WSEL parity vs decomposed flat fields |
 | Node WASM smoke | `examples/wasm/bridge_smoke_test.mjs`, `node_smoke_test.mjs` | Culvert Tier 1 + bridge BU/BD steady solve after `build_wasm.sh` |
 
 ```bash
 cargo test --test bridge_abutment_hecras_verification
 cargo test --test bridge_bu_bd_hecras_verification
+cargo test --test bridge_roadway_embankment_verification
 cargo test bridge_abutment --lib
 cargo test --test wasm_json_contract
 node examples/wasm/bridge_smoke_test.mjs   # requires pkg-node from build_wasm.sh

@@ -51,44 +51,43 @@ fn steady_inputs(case: &BenchmarkCase, with_guide_banks: bool) -> SteadyInputs {
     let bu = channel_xs(case.bu_station_m, 0.05, case.channel_width_m);
     let bd = channel_xs(case.bd_station_m, 0.0, case.channel_width_m);
     let approach = channel_xs(case.bu_station_m + 10.0, 0.1, case.approach_width_m);
-    SteadyInputs {
-        cross_sections: vec![
-            channel_xs(200.0, 0.2, case.approach_width_m),
-            channel_xs(100.0, 0.1, case.approach_width_m),
-            channel_xs(0.0, 0.0, case.channel_width_m),
-        ],
-        flow_rate: case.flow_rate_cms,
-        num_slices: Some(50),
-        regime: 0,
-        downstream_wsel: Some(case.downstream_wsel_m),
-        bridge_stations: Some(vec![case.bridge_center_station_m]),
-        bridge_low_chords: Some(vec![5.0]),
-        bridge_high_chords: Some(vec![7.0]),
-        bridge_weir_coeffs: Some(vec![1.44]),
-        bridge_orifice_coeffs: Some(vec![0.5]),
-        bridge_low_flow_methods: Some(vec![3]),
-        coeff_contraction: Some(case.coeff_contraction),
-        coeff_expansion: Some(0.0),
-        bridge_upstream_cross_sections: Some(vec![bu]),
-        bridge_downstream_cross_sections: Some(vec![bd]),
-        bridge_approach_cross_sections: Some(vec![approach]),
-        bridge_approach_guide_banks: if with_guide_banks {
-            Some(vec![GuideBanks {
-                left_toe: Some(GuideBankToe {
-                    station: case.guide_left_toe_m,
-                    elevation: 0.0,
-                }),
-                right_toe: Some(GuideBankToe {
-                    station: case.guide_right_toe_m,
-                    elevation: 0.0,
-                }),
-                ..Default::default()
-            }])
-        } else {
-            None
-        },
-        ..Default::default()
-    }
+    let mut inputs = SteadyInputs::default();
+    inputs.cross_sections = vec![
+        channel_xs(200.0, 0.2, case.approach_width_m),
+        channel_xs(100.0, 0.1, case.approach_width_m),
+        channel_xs(0.0, 0.0, case.channel_width_m),
+    ];
+    inputs.flow_rate = case.flow_rate_cms;
+    inputs.num_slices = Some(50);
+    inputs.regime = 0;
+    inputs.downstream_wsel = Some(case.downstream_wsel_m);
+    inputs.bridge_stations = Some(vec![case.bridge_center_station_m]);
+    inputs.bridge_low_chords = Some(vec![5.0]);
+    inputs.bridge_high_chords = Some(vec![7.0]);
+    inputs.bridge_weir_coeffs = Some(vec![1.44]);
+    inputs.bridge_orifice_coeffs = Some(vec![0.5]);
+    inputs.bridge_low_flow_methods = Some(vec![3]);
+    inputs.coeff_contraction = Some(case.coeff_contraction);
+    inputs.coeff_expansion = Some(0.0);
+    inputs.bridge_upstream_cross_sections = Some(vec![bu]);
+    inputs.bridge_downstream_cross_sections = Some(vec![bd]);
+    inputs.bridge_approach_cross_sections = Some(vec![approach]);
+    inputs.bridge_approach_guide_banks = if with_guide_banks {
+        Some(vec![GuideBanks {
+            left_toe: Some(GuideBankToe {
+                station: case.guide_left_toe_m,
+                elevation: 0.0,
+            }),
+            right_toe: Some(GuideBankToe {
+                station: case.guide_right_toe_m,
+                elevation: 0.0,
+            }),
+            ..Default::default()
+        }])
+    } else {
+        None
+    };
+    inputs
 }
 
 /// Upstream approach WSEL on the densified profile (node immediately above BU).

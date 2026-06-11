@@ -194,6 +194,19 @@ Optional piecewise-linear deck/roadway profiles per bridge (HEC-RAS deck editor 
 
 When provided (≥ 2 points each), the solver uses profile extrema: **minimum** low chord for free-flow limits, **maximum** low chord for pressure-flow EGL trigger, **minimum** high chord for weir onset, and segment-wise **effective weir length** and **trapezoidal opening area** for pressure flow. Scalar `bridge_low_chords` / `bridge_high_chords` remain required fallbacks when profiles are omitted.
 
+#### G2. Unified roadway embankment (API v26)
+
+Optional `bridge_roadway_embankments[b]` (steady/unsteady) and `roadway_embankment` (bridge rating curve) compose flat bridge fields before hydraulics:
+
+| Source | Composed output |
+|--------|-----------------|
+| `deck` | `bridge_deck_*`, scalar `bridge_low_chords` / `bridge_high_chords` when omitted |
+| `left` / `right`.abutment | Per-side `bridge_abutment_*` when that side's flat width omitted |
+| `left` / `right`.embankment_profile` | `bridge_ineffective_*` activation blocks (each profile point → station + elevation); opening-frame `blocked_obstructions` top on BU/BD when `derive_blocked` ≠ false |
+| `ineffective_faces` | Per-face overrides for upstream/downstream ineffective |
+
+**Precedence:** explicit flat fields win when fully specified. Design: [`roadway_embankment_unified.md`](../development/roadway_embankment_unified.md). Migration from v19/v20 flat fields: [`migration_v19_v20_roadway_embankment.md`](../development/migration_v19_v20_roadway_embankment.md).
+
 #### H0. Geometry modifiers — blocked vs ineffective vs bridge ineffective
 
 Three HEC-RAS cross-section modifiers change how properties are computed. They are **not interchangeable**.

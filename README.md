@@ -10,7 +10,7 @@ This repository is the solver only. It does not include a GUI, project database,
 
 | Analysis | Structures |
 |----------|------------|
-| Steady GVF (subcritical, supercritical, mixed) | Culverts (FHWA inlet/outlet), bridges (HEC-RAS Class A/B/C, pressure, weir) |
+| Steady GVF (subcritical, supercritical, mixed) | Culverts (FHWA inlet/outlet), bridges (HEC-RAS Class A/B/C, pressure, weir, tapered piers) |
 | Unsteady routing (single reach) | Inline culverts and bridges |
 
 ## Limitations (read before comparing to HEC-RAS)
@@ -111,7 +111,7 @@ Culvert, bridge, junction, and rating-curve examples: [`docs/python/getting_star
 
 **Cross sections** — river station; (*x*, *y*) polyline; Manning *n* zones; optional `is_overbank`, `blocked_obstructions`, `ineffective_flow_areas`, `guide_banks`. Modifier semantics: [`docs/reference/equations.md`](docs/reference/equations.md) §H0.
 
-**Steady** — `flow_rate`, `regime` (0 subcritical, 1 supercritical, 2 mixed), downstream boundary (`downstream_wsel`, normal depth, rating curve, etc.), optional `max_spacing` and `densify_reach_modifier_policy` (0 none, 1 upstream, 2 downstream, 3 nearest). Structure fields: `culvert_*`, `bridge_*`.
+**Steady** — `flow_rate`, `regime` (0 subcritical, 1 supercritical, 2 mixed), downstream boundary (`downstream_wsel`, normal depth, rating curve, etc.), optional `max_spacing` and `densify_reach_modifier_policy` (0 none, 1 upstream, 2 downstream, 3 nearest). Structure fields: `culvert_*`, `bridge_*`. Tapered piers: legacy `bridge_pier_widths`, or `bridge_pier_top_widths` / `bridge_pier_bottom_widths` per pier, or piecewise `bridge_pier_width_elevations` / `bridge_pier_width_values` — see [`docs/development/pier_tapered_width.md`](docs/development/pier_tapered_width.md).
 
 **Unsteady** — `initial_wsel`, `initial_q`, `dt`, `num_steps`, `upstream_q_hydrograph`, `downstream_wsel_hydrograph`, same `max_spacing` / `densify_reach_modifier_policy` as steady. Same structure fields as steady.
 
@@ -127,6 +127,7 @@ Field reference: [`python/stream1d/__init__.py`](python/stream1d/__init__.py), [
 | Bridge abutments (WSPRO) | [`python/verification/bridge_abutment_hecras.json`](python/verification/bridge_abutment_hecras.json) | ±2 mm HW |
 | Bridge BU/BD faces | [`python/verification/bridge_bu_bd_hecras.json`](python/verification/bridge_bu_bd_hecras.json) | ±2 mm HW |
 | Bridge opening ↔ reach alignment (skew + offset origin) | [`tests/bridge_opening_alignment_verification.rs`](tests/bridge_opening_alignment_verification.rs) | preprocessor + validation |
+| Roadway embankment fill (unified API, no manual BU blocked polylines) | [`python/verification/bridge_roadway_embankment.json`](python/verification/bridge_roadway_embankment.json) | ±2 mm WSEL vs hand-authored equivalent |
 
 ```bash
 PYTHONPATH=python python python/test_hecras_culvert_verification.py
@@ -153,6 +154,7 @@ WASM API: [`docs/web/wasm_integration.md`](docs/web/wasm_integration.md).
 | [`docs/reference/equations.md`](docs/reference/equations.md) | GVF, Saint-Venant, culvert and bridge theory |
 | [`docs/reference/hecras_parity.md`](docs/reference/hecras_parity.md) | Scope vs HEC-RAS |
 | [`docs/reference/api_changelog.md`](docs/reference/api_changelog.md) | Input schema versions |
+| [`docs/development/pier_tapered_width.md`](docs/development/pier_tapered_width.md) | Tapered pier width API (v27) |
 | [`docs/BRIDGE_INTERIOR_SECTIONS_API.md`](docs/BRIDGE_INTERIOR_SECTIONS_API.md) | Advanced: BU/BD, opening alignment, guide banks |
 | [`docs/web/wasm_integration.md`](docs/web/wasm_integration.md) | WASM build and JavaScript usage |
 | [`docs/development/testing.md`](docs/development/testing.md) | Test suites and CI |

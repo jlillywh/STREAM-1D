@@ -3,7 +3,7 @@
 use serde::Serialize;
 
 /// API contract version — increment when SteadyInputs / SteadyResult fields change.
-pub const API_VERSION: u32 = 25;
+pub const API_VERSION: u32 = 27;
 
 /// Engine package version (keep in sync with `Cargo.toml`).
 pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -254,6 +254,12 @@ pub fn build_api_metadata() -> WasmApiMetadata {
                 "bridge_ineffective_right_elevations_downstream".to_string(),
                 "bridge_skew_angles".to_string(),
                 "bridge_pier_stations".to_string(),
+                "bridge_pier_top_widths".to_string(),
+                "bridge_pier_bottom_widths".to_string(),
+                "bridge_pier_width_elevations".to_string(),
+                "bridge_pier_width_values".to_string(),
+                "bridge_pier_top_elevations".to_string(),
+                "bridge_pier_base_elevations".to_string(),
                 "bridge_upstream_cross_sections".to_string(),
                 "bridge_downstream_cross_sections".to_string(),
                 "bridge_internal_cross_sections".to_string(),
@@ -266,6 +272,7 @@ pub fn build_api_metadata() -> WasmApiMetadata {
                 "bridge_departure_reach_stations".to_string(),
                 "bridge_approach_guide_banks".to_string(),
                 "bridge_departure_guide_banks".to_string(),
+                "bridge_roadway_embankments".to_string(),
             ],
             unsteady_outputs: vec![
                 "bridge_flow_regimes".to_string(),
@@ -316,6 +323,12 @@ pub fn build_api_metadata() -> WasmApiMetadata {
                 "max_weir_submergence".to_string(),
                 "skew_deg".to_string(),
                 "pier_stations".to_string(),
+                "pier_top_widths".to_string(),
+                "pier_bottom_widths".to_string(),
+                "pier_width_elevations".to_string(),
+                "pier_width_values".to_string(),
+                "pier_top_elevations".to_string(),
+                "pier_base_elevations".to_string(),
                 "deck_stations".to_string(),
                 "deck_low_elevations".to_string(),
                 "deck_high_elevations".to_string(),
@@ -330,6 +343,7 @@ pub fn build_api_metadata() -> WasmApiMetadata {
                 "xs_down".to_string(),
                 "opening_reach_station_origin".to_string(),
                 "xs_internal".to_string(),
+                "roadway_embankment".to_string(),
             ],
             rating_curve_outputs: vec![
                 "q".to_string(),
@@ -368,7 +382,7 @@ mod tests {
     fn test_api_metadata_serializes() {
         let json = serde_json::to_string(&build_api_metadata()).unwrap();
         assert!(json.contains("culvert_inlet_types"));
-        assert!(json.contains("\"api_version\":25"));
+        assert!(json.contains("\"api_version\":27"));
         assert!(json.contains("structure_coupling_orders"));
     }
 

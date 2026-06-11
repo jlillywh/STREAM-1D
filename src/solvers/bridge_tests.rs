@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::geometry::{CrossSection, GuideBankToe, GuideBanks, IneffectiveFlowAreas, row_at_elevation};
+use crate::solvers::pier_geometry::{PierWidthSpec, PierWidthUserInput, ResolvedPier};
 
 fn compound_overbank_approach(ineffective: bool) -> CrossSection {
     CrossSection {
@@ -39,6 +40,7 @@ fn approach_sections_with_ineffective_overbank() -> BridgeSectionContext {
         opening_reach_station_origin: None,
         skew_deg: 0.0,
         pier_stations: None,
+        pier_widths: None,
         friction_length_m: 50.0,
         xs_approach: Some(compound_overbank_approach(true)),
         xs_departure: None,
@@ -73,6 +75,7 @@ fn approach_sections_with_guide_banks(
         opening_reach_station_origin: None,
         skew_deg: 0.0,
         pier_stations: None,
+        pier_widths: None,
         friction_length_m: 50.0,
         xs_approach: Some(approach),
         xs_departure: None,
@@ -168,6 +171,7 @@ fn test_classify_low_flow_subcritical_is_class_a() {
         max_weir_submergence: 0.98,
         deck: None,
         pier_stations_m: vec![],
+        pier_specs: vec![],
         skew_deg: 0.0,
         skew_cos: 1.0,
         ineffective_up: None,
@@ -214,6 +218,7 @@ fn test_asymmetric_abutments_reduce_area_more_on_wide_side() {
         max_weir_submergence: 0.98,
         deck: None,
         pier_stations_m: vec![],
+        pier_specs: vec![],
         skew_deg: 0.0,
         skew_cos: 1.0,
         ineffective_up: None,
@@ -282,6 +287,7 @@ fn test_per_side_abutment_tops_affect_obstructed_hydraulics() {
         max_weir_submergence: 0.98,
         deck: None,
         pier_stations_m: vec![],
+        pier_specs: vec![],
         skew_deg: 0.0,
         skew_cos: 1.0,
         ineffective_up: None,
@@ -360,6 +366,7 @@ fn test_abutment_reduces_opening_area() {
         max_weir_submergence: 0.98,
         deck: None,
         pier_stations_m: vec![],
+        pier_specs: vec![],
         skew_deg: 0.0,
         skew_cos: 1.0,
         ineffective_up: None,
@@ -1084,10 +1091,12 @@ fn test_bu_section_ineffective_raises_bridge_headwater() {
         None,
         0.0,
         0.0,
-        None,
-        None,
-        None,
-        None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
     );
     let geo_bu_ineff = resolve_bridge_face_solve_geometry(
         &BridgeInteriorInput {
@@ -1110,10 +1119,12 @@ fn test_bu_section_ineffective_raises_bridge_headwater() {
         None,
         0.0,
         0.0,
-        None,
-        None,
-        None,
-        None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
     );
 
     let hw_none = solve_bridge_wsel(
@@ -1597,6 +1608,7 @@ fn test_obstructed_area_hand_calc_asymmetric_and_one_sided() {
         max_weir_submergence: 0.98,
         deck: None,
         pier_stations_m: vec![],
+        pier_specs: vec![],
         skew_deg: 0.0,
         skew_cos: 1.0,
         ineffective_up: None,
@@ -1734,6 +1746,7 @@ fn test_wspro_headwater_hand_calc_reference_cases() {
         max_weir_submergence: 0.98,
         deck: None,
         pier_stations_m: vec![],
+        pier_specs: vec![],
         skew_deg: 0.0,
         skew_cos: 1.0,
         ineffective_up: None,
@@ -2176,5 +2189,525 @@ fn approach_ineffective_raises_energy_headwater() {
     assert!(
         hw_ineff > hw_open + 1e-4,
         "approach overbank ineffective should raise HW via contraction loss: open={hw_open}, ineff={hw_ineff}"
+    );
+}
+
+/// Taper top=1 / bottom=2 vs constant prism at mean width 1.5 (same pier height 0→4 m).
+fn tapered_vs_mean_constant_pier_geometries() -> (BridgeGeometry, BridgeGeometry) {
+    let base = BridgeGeometry {
+        pier_width_m: 1.5,
+        num_piers: 1,
+        pier_stations_m: vec![5.0],
+        pier_specs: vec![],
+        low_chord_m: 4.0,
+        low_chord_max_m: 4.0,
+        high_chord_m: 6.0,
+        high_chord_max_m: 6.0,
+        pier_shape: PierShape::Square,
+        abutments: BridgeAbutments::default(),
+        weir_coeff_m: 1.44,
+        orifice_coeff: 0.5,
+        z_up_m: 0.0,
+        z_down_m: 0.0,
+        low_flow_method: LowFlowMethod::Yarnell,
+        high_flow_method: HighFlowMethod::PressureWeir,
+        length_m: 50.0,
+        wspro_coeff_c: 0.8,
+        coeff_contraction: 0.1,
+        coeff_expansion: 0.3,
+        pressure_coeff_inlet: 0.0,
+        pressure_coeff_submerged: 0.8,
+        max_weir_submergence: 0.98,
+        deck: None,
+        skew_deg: 0.0,
+        skew_cos: 1.0,
+        ineffective_up: None,
+        ineffective_down: None,
+        xs_up: None,
+        xs_down: None,
+        xs_approach: None,
+        xs_departure: None,
+        guide_banks_approach: None,
+        guide_banks_departure: None,
+        table_approach: None,
+        table_departure: None,
+    };
+    let mean_constant = BridgeGeometry {
+        pier_specs: vec![ResolvedPier {
+            station_m: 5.0,
+            spec: PierWidthSpec::Constant { width_perp_m: 1.5 },
+        }],
+        ..base.clone()
+    };
+    let tapered = BridgeGeometry {
+        pier_specs: vec![ResolvedPier {
+            station_m: 5.0,
+            spec: PierWidthSpec::Tapered {
+                top_width_perp_m: 1.0,
+                bottom_width_perp_m: 2.0,
+                z_base_m: 0.0,
+                z_top_m: 4.0,
+            },
+        }],
+        ..base
+    };
+    (mean_constant, tapered)
+}
+
+fn tapered_vs_rectangular_pier_geometries() -> (BridgeGeometry, BridgeGeometry) {
+    let rectangular = BridgeGeometry {
+        pier_width_m: 1.0,
+        num_piers: 1,
+        pier_stations_m: vec![5.0],
+        pier_specs: vec![ResolvedPier {
+            station_m: 5.0,
+            spec: PierWidthSpec::Constant { width_perp_m: 1.0 },
+        }],
+        low_chord_m: 4.0,
+        low_chord_max_m: 4.0,
+        high_chord_m: 6.0,
+        high_chord_max_m: 6.0,
+        pier_shape: PierShape::Square,
+        abutments: BridgeAbutments::default(),
+        weir_coeff_m: 1.44,
+        orifice_coeff: 0.5,
+        z_up_m: 0.0,
+        z_down_m: 0.0,
+        low_flow_method: LowFlowMethod::Momentum,
+        high_flow_method: HighFlowMethod::PressureWeir,
+        length_m: 50.0,
+        wspro_coeff_c: 0.8,
+        coeff_contraction: 0.1,
+        coeff_expansion: 0.3,
+        pressure_coeff_inlet: 0.0,
+        pressure_coeff_submerged: 0.8,
+        max_weir_submergence: 0.98,
+        deck: None,
+        skew_deg: 0.0,
+        skew_cos: 1.0,
+        ineffective_up: None,
+        ineffective_down: None,
+        xs_up: None,
+        xs_down: None,
+        xs_approach: None,
+        xs_departure: None,
+        guide_banks_approach: None,
+        guide_banks_departure: None,
+        table_approach: None,
+        table_departure: None,
+    };
+    let tapered = BridgeGeometry {
+        pier_specs: vec![ResolvedPier {
+            station_m: 5.0,
+            spec: PierWidthSpec::Tapered {
+                top_width_perp_m: 1.0,
+                bottom_width_perp_m: 2.0,
+                z_base_m: 0.0,
+                z_top_m: 4.0,
+            },
+        }],
+        ..rectangular.clone()
+    };
+    (rectangular, tapered)
+}
+
+#[test]
+fn test_tapered_vs_mean_constant_equal_net_area_at_low_chord() {
+    let table = rectangular_table(10.0, 0.0, 50);
+    let (mean_const, taper) = tapered_vs_mean_constant_pier_geometries();
+    let a_mean = net_opening_area_at_low_chord(&mean_const, &table, &table);
+    let a_taper = net_opening_area_at_low_chord(&taper, &table, &table);
+    assert!((a_mean - 34.0).abs() < 0.1, "mean constant net: {a_mean}");
+    assert!((a_taper - a_mean).abs() < 0.1, "full pier: taper {a_taper} vs mean {a_mean}");
+}
+
+#[test]
+fn test_tapered_vs_mean_constant_partial_wsel_more_blockage() {
+    let table = rectangular_table(10.0, 0.0, 50);
+    let (mean_const, taper) = tapered_vs_mean_constant_pier_geometries();
+    let wsel = 2.5;
+    let props_mean = obstructed_hydraulics(&table, wsel, 0.0, &mean_const, false);
+    let props_taper = obstructed_hydraulics(&table, wsel, 0.0, &taper, false);
+    assert!(props_taper.a_eff < props_mean.a_eff);
+    // WSEL=2.5: taper surface width 1.375 m < mean constant 1.5 m → more conveyance top width.
+    assert!(props_taper.top_width > props_mean.top_width);
+}
+
+#[test]
+fn test_tapered_vs_mean_constant_yarnell_higher_at_partial_depth() {
+    let table = rectangular_table(10.0, 0.0, 50);
+    let (mean_const, taper) = tapered_vs_mean_constant_pier_geometries();
+    let q = 15.0;
+    let tw = 2.5;
+    let flow_mean = yarnell_downstream_flow_area_m2(&table, tw, mean_const.z_down_m, &mean_const);
+    let flow_taper = yarnell_downstream_flow_area_m2(&table, tw, taper.z_down_m, &taper);
+    let hl_mean = yarnell_pier_head_loss_integrated(q, tw, mean_const.z_down_m, &mean_const, flow_mean);
+    let hl_taper = yarnell_pier_head_loss_integrated(q, tw, taper.z_down_m, &taper, flow_taper);
+    assert!(hl_taper > hl_mean + 1e-6);
+}
+
+#[test]
+fn test_tapered_vs_mean_constant_solve_yarnell_headwater() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let table_down = rectangular_table(10.0, 0.0, 50);
+    let deck = BridgeDeckProfile {
+        stations_m: vec![0.0, 10.0],
+        low_elevations_m: vec![4.0, 4.0],
+        high_elevations_m: vec![6.0, 6.0],
+    };
+    let coupling = BridgeCouplingParams {
+        low_flow_method: 1,
+        ..Default::default()
+    };
+    let mean_sections = BridgeSectionContext {
+        pier_stations: Some(vec![5.0]),
+        ..Default::default()
+    };
+    let taper_sections = BridgeSectionContext {
+        pier_stations: Some(vec![5.0]),
+        pier_widths: Some(PierWidthUserInput {
+            top_widths: Some(vec![1.0]),
+            bottom_widths: Some(vec![2.0]),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let solve = |sections: &BridgeSectionContext, pier_width: f64| {
+        solve_bridge_wsel(
+            15.0,
+            4.0,
+            6.0,
+            pier_width,
+            1,
+            0,
+            1.44,
+            0.5,
+            0.0,
+            0.0,
+            2.5,
+            UnitSystem::Metric,
+            &table_up,
+            &table_down,
+            &coupling,
+            50.0,
+            Some(&deck),
+            Some(sections),
+        )
+    };
+    let hw_mean = solve(&mean_sections, 1.5);
+    let hw_taper = solve(&taper_sections, 1.5);
+    assert!(
+        hw_taper > hw_mean + 1e-4,
+        "partial-depth Yarnell: taper HW {hw_taper} vs mean-width constant {hw_mean}"
+    );
+}
+
+#[test]
+fn test_tapered_pier_yarnell_head_loss_exceeds_rectangular() {
+    let table = rectangular_table(10.0, 0.0, 50);
+    let (rect, taper) = tapered_vs_rectangular_pier_geometries();
+    let q = 15.0;
+    let tw = 2.5;
+    let flow_rect = yarnell_downstream_flow_area_m2(&table, tw, rect.z_down_m, &rect);
+    let flow_taper = yarnell_downstream_flow_area_m2(&table, tw, taper.z_down_m, &taper);
+    let hl_rect = yarnell_pier_head_loss_integrated(q, tw, rect.z_down_m, &rect, flow_rect);
+    let hl_taper = yarnell_pier_head_loss_integrated(q, tw, taper.z_down_m, &taper, flow_taper);
+    assert!(hl_taper > hl_rect + 1e-6);
+}
+
+#[test]
+fn test_tapered_pier_momentum_drag_exceeds_rectangular() {
+    let table = rectangular_table(10.0, 0.0, 50);
+    let (rect, taper) = tapered_vs_rectangular_pier_geometries();
+    let q = 15.0;
+    let wsel = 2.5;
+    let drag_rect = pier_drag_momentum_with_table(&table, q, wsel, rect.z_up_m, &rect, true);
+    let drag_taper = pier_drag_momentum_with_table(&table, q, wsel, taper.z_up_m, &taper, true);
+    assert!(drag_taper > drag_rect + 1e-6);
+}
+
+#[test]
+fn test_tapered_pier_pressure_net_area_less_than_rectangular() {
+    let table = rectangular_table(10.0, 0.0, 50);
+    let (rect, taper) = tapered_vs_rectangular_pier_geometries();
+    let a_rect = net_opening_area_at_low_chord(&rect, &table, &table);
+    let a_taper = net_opening_area_at_low_chord(&taper, &table, &table);
+    assert!(a_taper < a_rect);
+    assert!((a_rect - 36.0).abs() < 0.1, "rect net @ low chord: {a_rect}");
+    // Trapezoid pier: 0.5 * (2 + 1) * 4 m height = 6 m² → 40 − 6 = 34 m²
+    assert!((a_taper - 34.0).abs() < 0.1, "taper net @ low chord: {a_taper}");
+}
+
+#[test]
+fn test_tapered_pier_solve_yarnell_raises_headwater() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let table_down = rectangular_table(10.0, 0.0, 50);
+    let deck = BridgeDeckProfile {
+        stations_m: vec![0.0, 10.0],
+        low_elevations_m: vec![4.0, 4.0],
+        high_elevations_m: vec![6.0, 6.0],
+    };
+    let coupling = BridgeCouplingParams {
+        low_flow_method: 1,
+        ..Default::default()
+    };
+    let rect_sections = BridgeSectionContext {
+        pier_stations: Some(vec![5.0]),
+        ..Default::default()
+    };
+    let taper_sections = BridgeSectionContext {
+        pier_stations: Some(vec![5.0]),
+        pier_widths: Some(PierWidthUserInput {
+            top_widths: Some(vec![1.0]),
+            bottom_widths: Some(vec![2.0]),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let args = |sections: &BridgeSectionContext| {
+        solve_bridge_wsel(
+            15.0,
+            4.0,
+            6.0,
+            1.0,
+            1,
+            0,
+            1.44,
+            0.5,
+            0.0,
+            0.0,
+            2.5,
+            UnitSystem::Metric,
+            &table_up,
+            &table_down,
+            &coupling,
+            50.0,
+            Some(&deck),
+            Some(sections),
+        )
+    };
+    let hw_rect = args(&rect_sections);
+    let hw_taper = args(&taper_sections);
+    assert!(
+        hw_taper > hw_rect + 1e-4,
+        "tapered Yarnell HW {hw_taper} vs rectangular {hw_rect}"
+    );
+}
+
+#[test]
+fn test_tapered_pier_obstructed_area_exceeds_rectangular() {
+    let table = rectangular_table(10.0, 0.0, 50);
+    let (rectangular, tapered) = tapered_vs_rectangular_pier_geometries();
+    let wsel = 2.0;
+    let props_rect = obstructed_hydraulics(&table, wsel, 0.0, &rectangular, false);
+    let props_taper = obstructed_hydraulics(&table, wsel, 0.0, &tapered, false);
+    assert!(props_taper.a_eff < props_rect.a_eff);
+    // Mid-depth tapered submerged area 0.5*(2+1.5)*2 = 3.5 vs rectangular 1*2 = 2
+    let a_rect_piers = 2.0;
+    let a_taper_piers = 3.5;
+    let base = 10.0 * wsel;
+    assert!((props_rect.a_eff - (base - a_rect_piers)).abs() < 0.05);
+    assert!((props_taper.a_eff - (base - a_taper_piers)).abs() < 0.05);
+}
+
+#[test]
+fn test_legacy_constant_pier_area_unchanged_via_empty_specs() {
+    let table = rectangular_table(10.0, 0.0, 50);
+    let geom = BridgeGeometry {
+        pier_width_m: 0.5,
+        num_piers: 2,
+        pier_stations_m: vec![],
+        pier_specs: vec![],
+        low_chord_m: 5.0,
+        low_chord_max_m: 5.0,
+        high_chord_m: 7.0,
+        high_chord_max_m: 7.0,
+        pier_shape: PierShape::Square,
+        abutments: BridgeAbutments::default(),
+        weir_coeff_m: 1.44,
+        orifice_coeff: 0.5,
+        z_up_m: 0.0,
+        z_down_m: 0.0,
+        low_flow_method: LowFlowMethod::Momentum,
+        high_flow_method: HighFlowMethod::PressureWeir,
+        length_m: 50.0,
+        wspro_coeff_c: 0.8,
+        coeff_contraction: 0.1,
+        coeff_expansion: 0.3,
+        pressure_coeff_inlet: 0.0,
+        pressure_coeff_submerged: 0.8,
+        max_weir_submergence: 0.98,
+        deck: None,
+        skew_deg: 0.0,
+        skew_cos: 1.0,
+        ineffective_up: None,
+        ineffective_down: None,
+        xs_up: None,
+        xs_down: None,
+        xs_approach: None,
+        xs_departure: None,
+        guide_banks_approach: None,
+        guide_banks_departure: None,
+        table_approach: None,
+        table_departure: None,
+    };
+    let wsel = 3.0;
+    let props = obstructed_hydraulics(&table, wsel, 0.0, &geom, false);
+    let a_piers_legacy = 2.0 * 0.5 * wsel;
+    let base = 10.0 * wsel;
+    assert!((props.a_eff - (base - a_piers_legacy)).abs() < 0.1);
+}
+
+fn profile_pier_geometry() -> BridgeGeometry {
+    let (_, tapered) = tapered_vs_rectangular_pier_geometries();
+    BridgeGeometry {
+        pier_specs: vec![ResolvedPier {
+            station_m: 5.0,
+            spec: PierWidthSpec::Profile {
+                elevations_m: vec![0.0, 4.0],
+                widths_perp_m: vec![2.0, 1.0],
+            },
+        }],
+        ..tapered
+    }
+}
+
+#[test]
+fn test_profile_pier_obstructed_area_matches_tapered_trapezoid() {
+    let table = rectangular_table(10.0, 0.0, 50);
+    let (_, tapered) = tapered_vs_rectangular_pier_geometries();
+    let profile = profile_pier_geometry();
+    let wsel = 2.0;
+    let a_taper = obstructed_hydraulics(&table, wsel, 0.0, &tapered, false).a_eff;
+    let a_profile = obstructed_hydraulics(&table, wsel, 0.0, &profile, false).a_eff;
+    assert!((a_taper - a_profile).abs() < 1e-6, "taper={a_taper}, profile={a_profile}");
+}
+
+#[test]
+fn test_tapered_pier_skew_increases_opening_plane_blockage() {
+    let table = rectangular_table(10.0, 0.0, 50);
+    let (_, mut geom) = tapered_vs_rectangular_pier_geometries();
+    let wsel = 2.0;
+    geom.skew_cos = 1.0;
+    geom.skew_deg = 0.0;
+    let props_normal = obstructed_hydraulics(&table, wsel, 0.0, &geom, false);
+    geom.skew_cos = 0.5;
+    geom.skew_deg = 60.0;
+    let props_skew = obstructed_hydraulics(&table, wsel, 0.0, &geom, false);
+    assert!(props_skew.a_eff < props_normal.a_eff);
+    let pier_block_normal = 10.0 * wsel - props_normal.a_eff;
+    let pier_block_skew = 10.0 * wsel - props_skew.a_eff;
+    assert!((pier_block_skew - 2.0 * pier_block_normal).abs() < 0.1);
+}
+
+#[test]
+fn test_profile_pier_solve_yarnell_raises_headwater() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let table_down = rectangular_table(10.0, 0.0, 50);
+    let deck = BridgeDeckProfile {
+        stations_m: vec![0.0, 10.0],
+        low_elevations_m: vec![4.0, 4.0],
+        high_elevations_m: vec![6.0, 6.0],
+    };
+    let coupling = BridgeCouplingParams {
+        low_flow_method: 1,
+        ..Default::default()
+    };
+    let rect_sections = BridgeSectionContext {
+        pier_stations: Some(vec![5.0]),
+        ..Default::default()
+    };
+    let profile_sections = BridgeSectionContext {
+        pier_stations: Some(vec![5.0]),
+        pier_widths: Some(PierWidthUserInput {
+            width_elevations: Some(vec![vec![0.0, 4.0]]),
+            width_values: Some(vec![vec![2.0, 1.0]]),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let solve = |sections: &BridgeSectionContext| {
+        solve_bridge_wsel(
+            15.0,
+            4.0,
+            6.0,
+            1.0,
+            1,
+            0,
+            1.44,
+            0.5,
+            0.0,
+            0.0,
+            2.5,
+            UnitSystem::Metric,
+            &table_up,
+            &table_down,
+            &coupling,
+            50.0,
+            Some(&deck),
+            Some(sections),
+        )
+    };
+    let hw_rect = solve(&rect_sections);
+    let hw_profile = solve(&profile_sections);
+    assert!(
+        hw_profile > hw_rect + 1e-4,
+        "profile Yarnell HW {hw_profile} vs rectangular {hw_rect}"
+    );
+}
+
+#[test]
+fn test_tapered_pier_exceeds_legacy_constant_headwater_in_solve() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let table_down = rectangular_table(10.0, 0.0, 50);
+    let deck = BridgeDeckProfile {
+        stations_m: vec![0.0, 10.0],
+        low_elevations_m: vec![4.0, 4.0],
+        high_elevations_m: vec![6.0, 6.0],
+    };
+    let coupling = BridgeCouplingParams {
+        low_flow_method: 1,
+        ..Default::default()
+    };
+    let legacy_sections = BridgeSectionContext {
+        pier_stations: Some(vec![5.0]),
+        ..Default::default()
+    };
+    let tapered_sections = BridgeSectionContext {
+        pier_stations: Some(vec![5.0]),
+        pier_widths: Some(PierWidthUserInput {
+            top_widths: Some(vec![1.0]),
+            bottom_widths: Some(vec![2.0]),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let solve = |sections: &BridgeSectionContext| {
+        solve_bridge_wsel(
+            15.0,
+            4.0,
+            6.0,
+            1.5,
+            1,
+            0,
+            1.44,
+            0.5,
+            0.0,
+            0.0,
+            2.5,
+            UnitSystem::Metric,
+            &table_up,
+            &table_down,
+            &coupling,
+            50.0,
+            Some(&deck),
+            Some(sections),
+        )
+    };
+    let hw_legacy = solve(&legacy_sections);
+    let hw_tapered = solve(&tapered_sections);
+    assert!(
+        hw_tapered > hw_legacy + 1e-4,
+        "tapered HW {hw_tapered} vs legacy mean-width HW {hw_legacy}"
     );
 }

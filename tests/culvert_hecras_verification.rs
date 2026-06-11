@@ -133,30 +133,29 @@ fn build_conspan_inputs_from_json(v: &serde_json::Value) -> SteadyInputs {
     }
 
     let params = &v["parameters"];
-    SteadyInputs {
-        cross_sections,
-        flow_rate: 1000.0,
-        num_slices: Some(params["vertical_slices"].as_u64().unwrap_or(100) as usize),
-        coeff_contraction: Some(0.1),
-        coeff_expansion: Some(0.3),
-        regime: params["flow_regime"].as_i64().unwrap_or(0) as u8,
-        downstream_wsel: Some(30.51),
-        max_spacing: Some(params["max_spacing"].as_f64().unwrap_or(100.0)),
-        downstream_bc_type: Some(0),
-        culvert_stations: Some(culvert_stations),
-        culvert_shape_types: Some(culvert_shape_types),
-        culvert_spans: Some(culvert_spans),
-        culvert_rises: Some(culvert_rises),
-        culvert_roughness_ns: Some(culvert_roughness_ns),
-        culvert_lengths: Some(culvert_lengths),
-        culvert_entrance_loss_coeffs: Some(culvert_entrance_loss_coeffs),
-        culvert_exit_loss_coeffs: Some(culvert_exit_loss_coeffs),
-        culvert_barrels: Some(culvert_barrels),
-        culvert_roughness_n_bottoms: Some(culvert_roughness_n_bottoms),
-        culvert_depth_bottom_ns: Some(culvert_depth_bottom_ns),
-        culvert_depth_blockeds: Some(culvert_depth_blockeds),
-        ..Default::default()
-    }
+    let mut inputs = SteadyInputs::default();
+    inputs.cross_sections = cross_sections;
+    inputs.flow_rate = 1000.0;
+    inputs.num_slices = Some(params["vertical_slices"].as_u64().unwrap_or(100) as usize);
+    inputs.coeff_contraction = Some(0.1);
+    inputs.coeff_expansion = Some(0.3);
+    inputs.regime = params["flow_regime"].as_i64().unwrap_or(0) as u8;
+    inputs.downstream_wsel = Some(30.51);
+    inputs.max_spacing = Some(params["max_spacing"].as_f64().unwrap_or(100.0));
+    inputs.downstream_bc_type = Some(0);
+    inputs.culvert_stations = Some(culvert_stations);
+    inputs.culvert_shape_types = Some(culvert_shape_types);
+    inputs.culvert_spans = Some(culvert_spans);
+    inputs.culvert_rises = Some(culvert_rises);
+    inputs.culvert_roughness_ns = Some(culvert_roughness_ns);
+    inputs.culvert_lengths = Some(culvert_lengths);
+    inputs.culvert_entrance_loss_coeffs = Some(culvert_entrance_loss_coeffs);
+    inputs.culvert_exit_loss_coeffs = Some(culvert_exit_loss_coeffs);
+    inputs.culvert_barrels = Some(culvert_barrels);
+    inputs.culvert_roughness_n_bottoms = Some(culvert_roughness_n_bottoms);
+    inputs.culvert_depth_bottom_ns = Some(culvert_depth_bottom_ns);
+    inputs.culvert_depth_blockeds = Some(culvert_depth_blockeds);
+    inputs
 }
 
 #[test]
