@@ -1,6 +1,6 @@
 //! HEC-RAS alignment for explicit BU/BD bridge faces (API v22).
 //!
-//! Benchmarks: `python/verification/bridge_bu_bd_hecras.json`
+//! Benchmarks: `verification/fixtures/bridge_bu_bd_hecras.json`
 //! Layout regression: 3-section reach (BU + internal + BD) vs 2-face baseline.
 
 use stream1d::geometry::CrossSection;
@@ -122,7 +122,7 @@ fn yarnell_reach_inputs(
 #[test]
 fn bridge_bu_bd_hecras_benchmarks() {
     let file: BenchmarkFile =
-        serde_json::from_str(include_str!("../python/verification/bridge_bu_bd_hecras.json"))
+        serde_json::from_str(include_str!("../verification/fixtures/bridge_bu_bd_hecras.json"))
             .expect("bridge BU/BD benchmark JSON");
 
     for case in &file.cases {

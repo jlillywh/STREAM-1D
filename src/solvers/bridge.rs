@@ -146,6 +146,45 @@ pub enum LowFlowClass {
     C,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub(crate) enum BridgeFlowRegimeKind {
+    LowA,
+    LowB,
+    LowC,
+    Pressure,
+    Weir,
+    Energy,
+}
+
+impl BridgeFlowRegimeKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::LowA => "low_a",
+            Self::LowB => "low_b",
+            Self::LowC => "low_c",
+            Self::Pressure => "pressure",
+            Self::Weir => "weir",
+            Self::Energy => "energy",
+        }
+    }
+}
+
+impl LowFlowClass {
+    fn flow_regime(self) -> BridgeFlowRegimeKind {
+        match self {
+            Self::A => BridgeFlowRegimeKind::LowA,
+            Self::B => BridgeFlowRegimeKind::LowB,
+            Self::C => BridgeFlowRegimeKind::LowC,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct BridgeHeadwaterSolve {
+    pub wsel_m: f64,
+    pub regime: BridgeFlowRegimeKind,
+}
+
 /// Low-flow method selection for Class A profile through the bridge opening.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum LowFlowMethod {
@@ -1549,7 +1588,67 @@ pub(crate) fn bradley_weir_submergence_factor(submergence_ratio: f64) -> f64 {
 fn weir_submergence_ratio(tw_m: f64, e_upstream: f64, crest_m: f64) -> f64 {
     let tail_above = (tw_m - crest_m).max(0.0);
     let head_above = (e_upstream - crest_m).max(1e-6);
-    (tail_above / head_above).clamp(0.0, 1.5)
+    (tail_above / head_above).clamp(0.0, 1.0)
+}
+
+/// Maximum Bradley submergence ratio over deck segments where $E_{up}$ clears the local crest.
+fn max_active_weir_submergence_ratio(tw_m: f64, e_upstream: f64, geom: &BridgeGeometry) -> f64 {
+    if let Some(deck) = geom.deck.as_ref().filter(|d| d.is_valid()) {
+        let mut max_ratio = 0.0_f64;
+        for i in 0..deck.stations_m.len().saturating_sub(1) {
+            let w = (deck.stations_m[i + 1] - deck.stations_m[i]) * geom.skew_cos;
+            if w <= 0.0 {
+                continue;
+            }
+            let s_mid = 0.5 * (deck.stations_m[i] + deck.stations_m[i + 1]);
+            let crest = interpolate_profile(
+                &deck.stations_m,
+                &deck.high_elevations_m,
+                s_mid,
+            );
+            if e_upstream > crest + 1e-6 {
+                max_ratio = max_ratio.max(weir_submergence_ratio(tw_m, e_upstream, crest));
+            }
+        }
+        max_ratio
+    } else if e_upstream > geom.high_chord_m + 1e-6 {
+        weir_submergence_ratio(tw_m, e_upstream, geom.high_chord_m)
+    } else {
+        0.0
+    }
+}
+
+fn weir_submergence_exceeds_cap(tw_m: f64, e_upstream: f64, geom: &BridgeGeometry) -> bool {
+    max_active_weir_submergence_ratio(tw_m, e_upstream, geom) >= geom.max_weir_submergence
+}
+
+/// Segment-wise Bradley weir overtopping (HEC-RAS effective length per crest segment).
+fn segment_weir_discharge_m3s(tw_m: f64, e_upstream: f64, geom: &BridgeGeometry) -> f64 {
+    if let Some(deck) = geom.deck.as_ref().filter(|d| d.is_valid()) {
+        let mut q = 0.0;
+        for i in 0..deck.stations_m.len().saturating_sub(1) {
+            let w = (deck.stations_m[i + 1] - deck.stations_m[i]) * geom.skew_cos;
+            if w <= 0.0 {
+                continue;
+            }
+            let s_mid = 0.5 * (deck.stations_m[i] + deck.stations_m[i + 1]);
+            let crest = interpolate_profile(
+                &deck.stations_m,
+                &deck.high_elevations_m,
+                s_mid,
+            );
+            let h = (e_upstream - crest).max(0.0);
+            if h <= 1e-6 {
+                continue;
+            }
+            let sub_ratio = weir_submergence_ratio(tw_m, e_upstream, crest);
+            let factor = bradley_weir_submergence_factor(sub_ratio);
+            q += geom.weir_coeff_m * factor * w * h.powf(1.5);
+        }
+        q
+    } else {
+        0.0
+    }
 }
 
 fn main_pressure_flow_discharge(
@@ -1564,7 +1663,7 @@ fn main_pressure_flow_discharge(
         return 0.0;
     }
 
-    if tw_m >= geom.low_chord_m {
+    if tw_m >= geom.low_chord_max_m {
         let e_up = upstream_energy_grade(wsel_up, q_metric, geom, table_up, geom.z_up_m, true);
         let head = (e_up - tw_m).max(0.0);
         geom.pressure_coeff_submerged * a_net * (2.0 * G_METRIC * head).sqrt()
@@ -1668,13 +1767,17 @@ fn weir_flow_discharge(
     l_weir: f64,
 ) -> f64 {
     let e_up = upstream_energy_grade(wsel_up, q_metric, geom, table_up, geom.z_up_m, true);
+    if geom.deck.as_ref().is_some_and(|d| d.is_valid()) {
+        return segment_weir_discharge_m3s(tw_m, e_up, geom);
+    }
     let h_weir = (e_up - geom.high_chord_m).max(0.0);
     if h_weir <= 1e-6 {
         return 0.0;
     }
+    let l = l_weir.max(1e-3);
     let sub_ratio = weir_submergence_ratio(tw_m, e_up, geom.high_chord_m);
     let factor = bradley_weir_submergence_factor(sub_ratio);
-    geom.weir_coeff_m * factor * l_weir * h_weir.powf(1.5)
+    geom.weir_coeff_m * factor * l * h_weir.powf(1.5)
 }
 
 fn solve_pressure_headwater(
@@ -1704,26 +1807,63 @@ fn solve_pressure_headwater(
     best
 }
 
-fn apply_low_flow_pressure_check(
+fn weir_head_active_at_energy(e_upstream: f64, geom: &BridgeGeometry) -> bool {
+    if let Some(deck) = geom.deck.as_ref().filter(|d| d.is_valid()) {
+        for i in 0..deck.stations_m.len().saturating_sub(1) {
+            let s_mid = 0.5 * (deck.stations_m[i] + deck.stations_m[i + 1]);
+            let crest = interpolate_profile(
+                &deck.stations_m,
+                &deck.high_elevations_m,
+                s_mid,
+            );
+            if e_upstream > crest + 1e-6 {
+                return true;
+            }
+        }
+        false
+    } else {
+        e_upstream > geom.high_chord_m + 1e-6
+    }
+}
+
+fn solve_bridge_headwater_metric(
     q_metric: f64,
-    tw_m: f64,
-    wsel_low: f64,
+    tw_clamped: f64,
     geom: &BridgeGeometry,
     table_up: &GeometryTable,
     table_down: &GeometryTable,
-) -> f64 {
+) -> BridgeHeadwaterSolve {
+    if tw_clamped < geom.low_chord_m {
+        solve_low_flow(q_metric, tw_clamped, geom, table_up, table_down)
+    } else {
+        solve_high_flow(q_metric, geom, tw_clamped, table_up, table_down)
+    }
+}
+
+fn reconcile_low_flow_with_high_flow(
+    q_metric: f64,
+    tw_m: f64,
+    wsel_low: f64,
+    low_class: LowFlowClass,
+    geom: &BridgeGeometry,
+    table_up: &GeometryTable,
+    table_down: &GeometryTable,
+) -> BridgeHeadwaterSolve {
     let egl = upstream_energy_grade(wsel_low, q_metric, geom, table_up, geom.z_up_m, true);
     if egl <= geom.low_chord_max_m {
-        return wsel_low;
+        return BridgeHeadwaterSolve {
+            wsel_m: wsel_low,
+            regime: low_class.flow_regime(),
+        };
     }
-    if geom.high_flow_method == HighFlowMethod::Energy {
-        return solve_high_flow_energy(q_metric, tw_m, geom, table_up, table_down);
-    }
-    let pressure_hw = solve_pressure_headwater(q_metric, tw_m, geom, table_up, table_down);
-    if pressure_hw > wsel_low {
-        pressure_hw
+    let high = solve_high_flow(q_metric, geom, tw_m, table_up, table_down);
+    if high.wsel_m > wsel_low + 1e-6 {
+        high
     } else {
-        wsel_low
+        BridgeHeadwaterSolve {
+            wsel_m: wsel_low,
+            regime: low_class.flow_regime(),
+        }
     }
 }
 
@@ -1923,18 +2063,16 @@ fn solve_low_flow(
     geom: &BridgeGeometry,
     table_up: &GeometryTable,
     table_down: &GeometryTable,
-) -> f64 {
+) -> BridgeHeadwaterSolve {
     let class = classify_low_flow(q_metric, tw_m, geom, table_up, table_down);
     let wsel_up = match class {
         LowFlowClass::A => solve_low_flow_class_a(q_metric, tw_m, geom, table_up, table_down),
         LowFlowClass::B => solve_low_flow_class_b(q_metric, tw_m, geom, table_up, table_down),
         LowFlowClass::C => solve_low_flow_class_c(q_metric, tw_m, geom, table_up, table_down),
     };
-    if wsel_up < geom.low_chord_m {
-        apply_low_flow_pressure_check(q_metric, tw_m, wsel_up, geom, table_up, table_down)
-    } else {
-        solve_high_flow(q_metric, geom, tw_m, table_up, table_down)
-    }
+    reconcile_low_flow_with_high_flow(
+        q_metric, tw_m, wsel_up, class, geom, table_up, table_down,
+    )
 }
 
 /// HEC-RAS high-flow headwater: pressure/weir (default) or explicit energy method.
@@ -1944,38 +2082,52 @@ fn solve_high_flow(
     tw_clamped: f64,
     table_up: &GeometryTable,
     table_down: &GeometryTable,
-) -> f64 {
+) -> BridgeHeadwaterSolve {
     if geom.high_flow_method == HighFlowMethod::Energy {
-        return solve_high_flow_energy(q_metric, tw_clamped, geom, table_up, table_down);
+        return BridgeHeadwaterSolve {
+            wsel_m: solve_high_flow_energy(q_metric, tw_clamped, geom, table_up, table_down),
+            regime: BridgeFlowRegimeKind::Energy,
+        };
     }
 
     let a_net = net_opening_area_at_low_chord(geom, table_up, table_down);
+    let fallback_weir_width = table_up.interpolate(geom.high_chord_m).top_width.max(1.0);
     let pressure_only = solve_pressure_headwater(q_metric, tw_clamped, geom, table_up, table_down);
+    let e_pressure =
+        upstream_energy_grade(pressure_only, q_metric, geom, table_up, geom.z_up_m, true);
 
-    if pressure_only < geom.high_chord_m {
-        let e_up = upstream_energy_grade(pressure_only, q_metric, geom, table_up, geom.z_up_m, true);
-        if weir_submergence_ratio(tw_clamped, e_up, geom.high_chord_m) >= geom.max_weir_submergence {
-            return solve_high_flow_energy_fallback(
+    if weir_submergence_exceeds_cap(tw_clamped, e_pressure, geom) {
+        return BridgeHeadwaterSolve {
+            wsel_m: solve_high_flow_energy_fallback(
                 q_metric,
                 tw_clamped,
                 geom,
                 table_up,
                 table_down,
-            );
-        }
-        return pressure_only;
+            ),
+            regime: BridgeFlowRegimeKind::Energy,
+        };
     }
 
-    let fallback_weir_width = table_up.interpolate(geom.high_chord_m).top_width.max(1.0);
+    let q_weir_at_pressure = weir_flow_discharge(
+        pressure_only,
+        tw_clamped,
+        q_metric,
+        geom,
+        table_up,
+        fallback_weir_width,
+    );
+    if q_weir_at_pressure <= 1e-9 {
+        return BridgeHeadwaterSolve {
+            wsel_m: pressure_only,
+            regime: BridgeFlowRegimeKind::Pressure,
+        };
+    }
 
-    let residual = |h_up: f64| -> f64 {
+    let combined_q_at = |h_up: f64| -> f64 {
         let e_up = upstream_energy_grade(h_up, q_metric, geom, table_up, geom.z_up_m, true);
-        if weir_submergence_ratio(tw_clamped, e_up, geom.high_chord_m) >= geom.max_weir_submergence
-        {
-            return -1.0;
-        }
         let l_weir = effective_weir_length_m(geom, e_up, fallback_weir_width);
-        let q_total = combined_high_flow_discharge(
+        combined_high_flow_discharge(
             h_up,
             tw_clamped,
             q_metric,
@@ -1984,26 +2136,45 @@ fn solve_high_flow(
             a_net,
             Some(l_weir),
         )
-        .total_m3s();
-        q_total - q_metric
+        .total_m3s()
     };
 
-    let mut low = geom.high_chord_m;
-    let mut high = geom.high_chord_m + 50.0;
-    let mut best_h = low;
+    let mut low = tw_clamped.max(geom.z_up_m + 1e-4);
+    let mut high = pressure_only.max(geom.high_chord_m).max(low + 1e-3);
+    if combined_q_at(high) < q_metric {
+        high = high + 50.0;
+    } else if combined_q_at(low) > q_metric {
+        // Weir adds capacity below the pressure-only headwater.
+        high = pressure_only;
+    }
+
+    let residual = |h_up: f64| -> f64 {
+        if weir_submergence_exceeds_cap(
+            tw_clamped,
+            upstream_energy_grade(h_up, q_metric, geom, table_up, geom.z_up_m, true),
+            geom,
+        ) {
+            return -1.0;
+        }
+        combined_q_at(h_up) - q_metric
+    };
+
+    let mut best_h = high;
 
     for _ in 0..50 {
         let mid = 0.5 * (low + high);
         let e_up = upstream_energy_grade(mid, q_metric, geom, table_up, geom.z_up_m, true);
-        if weir_submergence_ratio(tw_clamped, e_up, geom.high_chord_m) >= geom.max_weir_submergence
-        {
-            return solve_high_flow_energy_fallback(
-                q_metric,
-                tw_clamped,
-                geom,
-                table_up,
-                table_down,
-            );
+        if weir_submergence_exceeds_cap(tw_clamped, e_up, geom) {
+            return BridgeHeadwaterSolve {
+                wsel_m: solve_high_flow_energy_fallback(
+                    q_metric,
+                    tw_clamped,
+                    geom,
+                    table_up,
+                    table_down,
+                ),
+                regime: BridgeFlowRegimeKind::Energy,
+            };
         }
         let res = residual(mid);
         if res.abs() < 1e-8 {
@@ -2018,7 +2189,39 @@ fn solve_high_flow(
         best_h = mid;
     }
 
-    best_h
+    let e_best = upstream_energy_grade(best_h, q_metric, geom, table_up, geom.z_up_m, true);
+    if weir_submergence_exceeds_cap(tw_clamped, e_best, geom) {
+        return BridgeHeadwaterSolve {
+            wsel_m: solve_high_flow_energy_fallback(
+                q_metric,
+                tw_clamped,
+                geom,
+                table_up,
+                table_down,
+            ),
+            regime: BridgeFlowRegimeKind::Energy,
+        };
+    }
+
+    let l_weir = effective_weir_length_m(geom, e_best, fallback_weir_width);
+    let parts = combined_high_flow_discharge(
+        best_h,
+        tw_clamped,
+        q_metric,
+        geom,
+        table_up,
+        a_net,
+        Some(l_weir),
+    );
+    let regime = if parts.q_weir_m3s > 1e-6 {
+        BridgeFlowRegimeKind::Weir
+    } else {
+        BridgeFlowRegimeKind::Pressure
+    };
+    BridgeHeadwaterSolve {
+        wsel_m: best_h,
+        regime,
+    }
 }
 
 /// Result of a bridge headwater–tailwater coupling solve (steady or unsteady post-step).
@@ -2031,6 +2234,7 @@ pub struct BridgeSolveResult {
     pub flow_regime: String,
 }
 
+#[allow(dead_code)]
 fn bridge_flow_regime_label(
     tw_user: f64,
     wsel_up_user: f64,
@@ -2116,8 +2320,7 @@ pub fn solve_bridge_coupled(
     deck: Option<&BridgeDeckProfile>,
     sections: Option<&BridgeSectionContext>,
 ) -> BridgeSolveResult {
-    let wsel_up = solve_bridge_wsel(
-        q,
+    let geom = build_bridge_geometry(
         low_chord,
         high_chord,
         pier_width,
@@ -2127,39 +2330,40 @@ pub fn solve_bridge_coupled(
         orifice_coeff,
         z_down,
         z_up,
-        tw_wsel,
         units,
-        table_up,
-        table_down,
         coupling,
         interval_length_m,
         deck,
         sections,
     );
-    let flow_regime = bridge_flow_regime_label(
-        tw_wsel,
-        wsel_up,
-        low_chord,
-        high_chord,
-        units,
-        q,
+    let tw_m = if units == UnitSystem::USCustomary {
+        tw_wsel * FT_TO_M
+    } else {
+        tw_wsel
+    };
+    let tw_clamped = tw_m.max(geom.z_down_m + 1e-4);
+    let q_metric = if units == UnitSystem::USCustomary {
+        q * CFS_TO_CMS
+    } else {
+        q
+    };
+    let solved = solve_bridge_headwater_metric(
+        q_metric,
+        tw_clamped,
+        &geom,
         table_up,
         table_down,
-        coupling,
-        interval_length_m,
-        pier_width,
-        num_piers,
-        pier_shape_type,
-        weir_coeff,
-        orifice_coeff,
-        z_down,
-        z_up,
     );
+    let wsel_up = if units == UnitSystem::USCustomary {
+        solved.wsel_m / FT_TO_M
+    } else {
+        solved.wsel_m
+    };
     BridgeSolveResult {
         wsel_up,
         wsel_down: tw_wsel,
         head_loss: (wsel_up - tw_wsel).max(0.0),
-        flow_regime,
+        flow_regime: solved.regime.as_str().to_string(),
     }
 }
 
@@ -2607,16 +2811,18 @@ pub fn solve_bridge_wsel(
         q
     };
 
-    let wsel_up_metric = if tw_clamped < geom.low_chord_m {
-        solve_low_flow(q_metric, tw_clamped, &geom, table_up, table_down)
-    } else {
-        solve_high_flow(q_metric, &geom, tw_clamped, table_up, table_down)
-    };
+    let solved = solve_bridge_headwater_metric(
+        q_metric,
+        tw_clamped,
+        &geom,
+        table_up,
+        table_down,
+    );
 
     if units == UnitSystem::USCustomary {
-        wsel_up_metric / FT_TO_M
+        solved.wsel_m / FT_TO_M
     } else {
-        wsel_up_metric
+        solved.wsel_m
     }
 }
 
@@ -3021,7 +3227,7 @@ fn solve_low_flow_tailwater(
     let mut best = low;
     for _ in 0..50 {
         let mid = 0.5 * (low + high);
-        let hw_calc = solve_low_flow(q_metric, mid, geom, table_up, table_down);
+        let hw_calc = solve_bridge_headwater_metric(q_metric, mid, geom, table_up, table_down).wsel_m;
         if (hw_calc - hw_m).abs() < 1e-4 {
             return mid;
         }
@@ -3073,8 +3279,10 @@ fn solve_high_flow_tailwater(
     }
 
     let a_net = net_opening_area_at_low_chord(geom, table_up, table_down);
+    let fallback_weir_width = table_down.interpolate(geom.high_chord_m).top_width.max(1.0);
+    let e_up = upstream_energy_grade(hw_m, q_metric, geom, table_up, geom.z_up_m, true);
 
-    if hw_m < geom.high_chord_m {
+    if !weir_head_active_at_energy(e_up, geom) {
         let mut low = geom.z_down_m + 1e-4;
         let mut high = hw_m;
         let mut best = low;
@@ -3094,14 +3302,13 @@ fn solve_high_flow_tailwater(
         return best;
     }
 
-    let fallback_weir_width = table_down.interpolate(geom.high_chord_m).top_width.max(1.0);
     let residual = |tw: f64| -> f64 {
         let e_up = upstream_energy_grade(hw_m, q_metric, geom, table_up, geom.z_up_m, true);
-        if weir_submergence_ratio(tw, e_up, geom.high_chord_m) >= geom.max_weir_submergence {
+        if weir_submergence_exceeds_cap(tw, e_up, geom) {
             return -1.0;
         }
         let l_weir = effective_weir_length_m(geom, e_up, fallback_weir_width);
-        let q_total = combined_high_flow_discharge(
+        combined_high_flow_discharge(
             hw_m,
             tw,
             q_metric,
@@ -3110,8 +3317,8 @@ fn solve_high_flow_tailwater(
             a_net,
             Some(l_weir),
         )
-        .total_m3s();
-        q_total - q_metric
+        .total_m3s()
+            - q_metric
     };
 
     let mut low = geom.z_down_m + 1e-4;
@@ -3120,7 +3327,7 @@ fn solve_high_flow_tailwater(
     for _ in 0..50 {
         let mid = 0.5 * (low + high);
         let e_up = upstream_energy_grade(hw_m, q_metric, geom, table_up, geom.z_up_m, true);
-        if weir_submergence_ratio(mid, e_up, geom.high_chord_m) >= geom.max_weir_submergence {
+        if weir_submergence_exceeds_cap(mid, e_up, geom) {
             return solve_high_flow_energy_fallback(q_metric, mid, geom, table_up, table_down);
         }
         let res = residual(mid);

@@ -130,7 +130,7 @@ Python users supply `cross_sections` arrays directly; there is no HEC-RAS import
 Automated checks ship with the repository:
 
 * `cargo test` — Rust unit and integration tests (geometry, culvert, bridge Yarnell/abutments, junction, steady/unsteady)
-* `tests/bridge_abutment_hecras_verification.rs` — per-side abutment hand-calc / WSPRO benchmarks (`python/verification/bridge_abutment_hecras.json`)
+* `tests/bridge_abutment_hecras_verification.rs` — per-side abutment hand-calc / WSPRO benchmarks (`verification/fixtures/bridge_abutment_hecras.json`)
 * `tests/wasm_json_contract.rs` — JSON schema contract (including API v21 abutment fields)
 * `python/test_stream1d.py`, `python/test_python_bindings.py` — Python binding and HEC-RAS ConSpan benchmark (run `maturin develop --features python` after engine changes)
 * [`python/stream1d_verification.ipynb`](python/stream1d_verification.ipynb) — interactive Binder notebook with HEC-RAS WSEL overlay

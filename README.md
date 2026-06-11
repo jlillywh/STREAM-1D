@@ -6,6 +6,8 @@ Primary interface: Python extension (`stream1d`). Also compiles to WebAssembly. 
 
 This repository is the solver only. It does not include a GUI, project database, or HEC-RAS file importer. [stream1d.com](https://stream1d.com) is a separate hosted application built on this engine (see [License](#license)).
 
+**Verification** — Golden benchmarks vs HEC-RAS exports and hand-calibrated references live in [`verification/`](verification/) ([README](verification/README.md), [`fixtures/`](verification/fixtures/)). Run: `bash verification/run.sh`.
+
 ## Capabilities
 
 | Analysis | Structures |
@@ -128,11 +130,11 @@ When upstream energy exceeds the **low chord** (`bridge_low_chords` or piecewise
 | Pressure only | Low chord &lt; EGL ≤ high chord | Main opening + optional deck vents |
 | Combined overtopping | EGL &gt; high chord | *Q* = *Q*<sub>opening</sub> + *Q*<sub>vents</sub> + *Q*<sub>weir</sub> |
 
-**Main opening** — Trapezoidal area under the deck low chord. If downstream tailwater is **below** the low chord, FHWA **sluice-gate** form applies (`bridge_pressure_flow_coeffs_inlet` optional). If tailwater is **at or above** the low chord, **submerged orifice**: *Q* = *C* *A*<sub>net</sub> √(2*g*(*E*<sub>up</sub> − TW)) with `bridge_orifice_coeffs` (typical 0.8).
+**Main opening** — Trapezoidal area under the deck low chord. If downstream tailwater is **below the maximum low chord** (deck soffit high point), FHWA **sluice-gate** form applies (`bridge_pressure_flow_coeffs_inlet` optional). If tailwater is **at or above** that elevation, **submerged orifice**: *Q* = *C* *A*<sub>net</sub> √(2*g*(*E*<sub>up</sub> − TW)) with `bridge_orifice_coeffs` (typical 0.8).
 
 **Deck vents** (optional) — Localized grate/slot segments **above** the main soffit but **below** the roadway crest. Per-segment invert, soffit, width, and discharge coefficient (`bridge_deck_vent_*`). Submerged vent area grows with WSEL up to each segment soffit; vent flow uses the same drive head as the main submerged orifice and is summed in parallel. Type `0` = orifice (default); type `1` = slotted weir until the slot is submerged, then full-slot orifice. HEC-RAS 1D has no separate vent fields — this is a STREAM-1D extension. Full API: [`docs/development/deck_vents_slotted_openings.md`](docs/development/deck_vents_slotted_openings.md).
 
-**Weir overtopping** — Bradley (1978) form on effective deck length when EGL clears the high chord, with submergence factor from downstream tailwater. If submergence exceeds `bridge_max_weir_submergence` (default 0.98), the solver falls back to the **energy** method through the opening instead of pressure/weir.
+**Weir overtopping** — Bradley (1978) form on each deck segment whose crest is cleared by upstream EGL, with segment submergence factor from downstream tailwater. If the maximum segment submergence exceeds `bridge_max_weir_submergence` (default 0.98), the solver falls back to the **energy** method through the opening (no explicit weir or deck vents on that branch).
 
 **Method selection** — `bridge_high_flow_methods` per bridge:
 
@@ -143,19 +145,24 @@ When upstream energy exceeds the **low chord** (`bridge_low_chords` or piecewise
 
 Piecewise deck profiles (`bridge_deck_stations`, `bridge_deck_low_elevations`, `bridge_deck_high_elevations`) set local low/high chords for opening area, weir length, and vent placement. Equations: [`docs/reference/equations.md`](docs/reference/equations.md) §E–§F.
 
+**HEC-RAS parity** — Phase 4.2 aligns iteration order, segment weir onset, and submergence caps. **Intentional remaining deltas** (deck vents, energy path without vents, opening-area approximation, explicit unsteady coupling): [`docs/development/pressure_weir_combined_flow_audit.md#intentional-remaining-deltas`](docs/development/pressure_weir_combined_flow_audit.md#intentional-remaining-deltas).
+
 ## Verification
+
+External-source regression suites: **[`verification/`](verification/)** (catalog, fixtures, `bash verification/run.sh`).
 
 | Case | Reference | Tolerance |
 |------|-----------|-----------|
-| ConSpan culvert 5/25/50 yr profiles | [`python/verification/hecras_conspan_profiles.json`](python/verification/hecras_conspan_profiles.json) | ±0.04 ft WSEL |
-| Bridge abutments (WSPRO) | [`python/verification/bridge_abutment_hecras.json`](python/verification/bridge_abutment_hecras.json) | ±2 mm HW |
-| Bridge BU/BD faces | [`python/verification/bridge_bu_bd_hecras.json`](python/verification/bridge_bu_bd_hecras.json) | ±2 mm HW |
+| ConSpan culvert 5/25/50 yr profiles | [`verification/fixtures/hecras_conspan_profiles.json`](verification/fixtures/hecras_conspan_profiles.json) | ±0.04 ft WSEL |
+| Bridge abutments (WSPRO) | [`verification/fixtures/bridge_abutment_hecras.json`](verification/fixtures/bridge_abutment_hecras.json) | ±2 mm HW |
+| Bridge BU/BD faces | [`verification/fixtures/bridge_bu_bd_hecras.json`](verification/fixtures/bridge_bu_bd_hecras.json) | ±2 mm HW |
+| Bridge high flow (pressure / weir / energy) | [`verification/fixtures/bridge_high_flow_hecras.json`](verification/fixtures/bridge_high_flow_hecras.json) | ±2 mm HW — 6 cases |
 | Bridge opening ↔ reach alignment (skew + offset origin) | [`tests/bridge_opening_alignment_verification.rs`](tests/bridge_opening_alignment_verification.rs) | preprocessor + validation |
-| Roadway embankment fill (unified API, no manual BU blocked polylines) | [`python/verification/bridge_roadway_embankment.json`](python/verification/bridge_roadway_embankment.json) | ±2 mm WSEL vs hand-authored equivalent |
+| Roadway embankment fill (unified API) | [`verification/fixtures/bridge_roadway_embankment.json`](verification/fixtures/bridge_roadway_embankment.json) | ±2 mm WSEL |
 
 ```bash
+bash verification/run.sh
 PYTHONPATH=python python python/test_hecras_culvert_verification.py
-cargo test --test bridge_bu_bd_hecras_verification
 ```
 
 Test commands: [`docs/development/testing.md`](docs/development/testing.md).
@@ -182,6 +189,8 @@ WASM API: [`docs/web/wasm_integration.md`](docs/web/wasm_integration.md).
 | [`docs/development/pier_footings_nosing.md`](docs/development/pier_footings_nosing.md) | Pier footings, nosing (API v28); plan polygons and wing walls (design) |
 | [`docs/development/deck_vents_slotted_openings.md`](docs/development/deck_vents_slotted_openings.md) | Deck vents & slotted openings (API design, v29) |
 | [`docs/development/extended_pier_shape_catalog.md`](docs/development/extended_pier_shape_catalog.md) | Extended pier shape catalog — `bridge_pier_shapes` 0–11 (API v29) |
+| [`verification/`](verification/) | Golden benchmarks vs HEC-RAS / hand references — [`README`](verification/README.md), [`fixtures/`](verification/fixtures/), `bash verification/run.sh` |
+| [`docs/development/pressure_weir_combined_flow_audit.md`](docs/development/pressure_weir_combined_flow_audit.md) | High-flow audit (Phase 4), intentional remaining deltas vs HEC-RAS |
 | [`docs/BRIDGE_INTERIOR_SECTIONS_API.md`](docs/BRIDGE_INTERIOR_SECTIONS_API.md) | Advanced: BU/BD, opening alignment, guide banks |
 | [`docs/web/wasm_integration.md`](docs/web/wasm_integration.md) | WASM build and JavaScript usage |
 | [`docs/development/testing.md`](docs/development/testing.md) | Test suites and CI |
@@ -192,7 +201,8 @@ WASM API: [`docs/web/wasm_integration.md`](docs/web/wasm_integration.md).
 
 ```
 src/solvers/     steady, unsteady, culvert, bridge, junction
-python/          stream1d bindings, verification data, notebook
+python/          stream1d bindings, notebook
+verification/    golden fixtures vs HEC-RAS / hand references (see README)
 docs/            reference manuals and WASM types
 tests/           Rust integration tests and JSON fixtures
 examples/wasm/   Node smoke tests and sample payloads

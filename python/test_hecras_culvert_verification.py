@@ -103,7 +103,9 @@ def main() -> None:
     print("STREAM-1D: HEC-RAS Culvert Verification")
     print("=" * 57)
 
-    verification_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "verification")
+    verification_dir = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", "verification", "fixtures"
+    )
     if not os.path.isdir(verification_dir):
         print(f"ERROR: verification dir not found: {verification_dir}")
         sys.exit(1)

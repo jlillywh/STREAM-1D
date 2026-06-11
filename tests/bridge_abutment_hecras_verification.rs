@@ -1,6 +1,6 @@
 //! HEC-RAS-style verification for per-side bridge abutment geometry.
 //!
-//! Benchmarks are documented in `python/verification/bridge_abutment_hecras.json`.
+//! Benchmarks: `verification/fixtures/bridge_abutment_hecras.json`.
 //! `expected_a_eff_tw_m2` values are hand-derived from rectangular channel geometry;
 //! `expected_wsel_up_m` values are reference solutions for WSPRO (low-flow method 4).
 
@@ -97,7 +97,7 @@ fn coupling_for_case(case: &BenchmarkCase) -> BridgeCouplingParams {
 #[test]
 fn bridge_abutment_hecras_benchmarks() {
     let file: BenchmarkFile =
-        serde_json::from_str(include_str!("../python/verification/bridge_abutment_hecras.json"))
+        serde_json::from_str(include_str!("../verification/fixtures/bridge_abutment_hecras.json"))
             .expect("bridge abutment benchmark JSON");
     let table = rectangular_table(10.0, 0.0, 50);
 

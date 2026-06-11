@@ -1,4 +1,4 @@
-﻿//! Unit tests for bridge hydraulics (see `bridge.rs`).
+//! Unit tests for bridge hydraulics (see `bridge.rs`).
 
 use super::*;
 use crate::geometry::{CrossSection, GuideBankToe, GuideBanks, IneffectiveFlowAreas, row_at_elevation};
@@ -3402,3 +3402,173 @@ fn test_combined_high_flow_weir_only_when_below_high_chord() {
         "below high chord weir term should be zero"
     );
 }
+
+#[test]
+fn test_segment_weir_before_min_high_wsel() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let deck = BridgeDeckProfile {
+        stations_m: vec![0.0, 5.0, 10.0],
+        low_elevations_m: vec![5.0, 5.0, 5.0],
+        high_elevations_m: vec![6.5, 6.5, 7.0],
+    };
+    let coupling = BridgeCouplingParams::default();
+    let geom = build_bridge_geometry(
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        UnitSystem::Metric,
+        &coupling,
+        50.0,
+        Some(&deck),
+        None,
+    );
+    let a_net = net_opening_area_at_low_chord(&geom, &table_up, &table_up);
+    let wsel = 6.3;
+    let tw = 5.4;
+    let q = 250.0;
+    let e_up = upstream_energy_grade(wsel, q, &geom, &table_up, geom.z_up_m, true);
+    assert!(
+        e_up > 6.5 + 1e-3 && wsel < geom.high_chord_m - 1e-3,
+        "EGL should overtop the 6.5 m segment before WSEL reaches min high chord 7.0"
+    );
+    let parts = combined_high_flow_discharge(wsel, tw, q, &geom, &table_up, a_net, Some(10.0));
+    assert!(
+        parts.q_weir_m3s > 0.05,
+        "segment-wise weir should flow when EGL clears local crest, got q_weir={}",
+        parts.q_weir_m3s
+    );
+}
+
+#[test]
+fn test_combined_regime_label_from_solver() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let table_down = rectangular_table(10.0, 0.0, 50);
+    let deck = BridgeDeckProfile {
+        stations_m: vec![0.0, 10.0],
+        low_elevations_m: vec![5.0, 5.0],
+        high_elevations_m: vec![7.0, 7.0],
+    };
+    let coupling = BridgeCouplingParams {
+        low_flow_method: 3,
+        high_flow_method: 0,
+        ..Default::default()
+    };
+    let result = solve_bridge_coupled(
+        300.0,
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        5.5,
+        UnitSystem::Metric,
+        &table_up,
+        &table_down,
+        &coupling,
+        50.0,
+        Some(&deck),
+        None,
+    );
+    assert_eq!(
+        result.flow_regime, "weir",
+        "combined overtopping solve should report weir regime, got {}",
+        result.flow_regime
+    );
+}
+
+#[test]
+fn test_weir_submergence_energy_fallback_at_cap() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let table_down = rectangular_table(10.0, 0.0, 50);
+    let coupling = BridgeCouplingParams {
+        low_flow_method: 3,
+        high_flow_method: 0,
+        max_weir_submergence: 0.98,
+        ..Default::default()
+    };
+    let result = solve_bridge_coupled(
+        15.0,
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        7.69,
+        UnitSystem::Metric,
+        &table_up,
+        &table_down,
+        &coupling,
+        50.0,
+        None,
+        None,
+    );
+    assert_eq!(
+        result.flow_regime, "energy",
+        "near-fully submerged weir should fall back to energy, got {}",
+        result.flow_regime
+    );
+}
+
+#[test]
+fn test_sluice_orifice_switch_uses_max_low_chord() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let deck = BridgeDeckProfile {
+        stations_m: vec![0.0, 10.0],
+        low_elevations_m: vec![5.0, 5.5],
+        high_elevations_m: vec![7.0, 7.0],
+    };
+    let coupling = BridgeCouplingParams::default();
+    let geom = build_bridge_geometry(
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        UnitSystem::Metric,
+        &coupling,
+        50.0,
+        Some(&deck),
+        None,
+    );
+    assert!((geom.low_chord_m - 5.0).abs() < 1e-6);
+    assert!((geom.low_chord_max_m - 5.5).abs() < 1e-6);
+    let a_net = net_opening_area_at_low_chord(&geom, &table_up, &table_up);
+    let wsel = 6.0;
+    let tw = 5.2;
+    assert!(tw >= geom.low_chord_m && tw < geom.low_chord_max_m);
+    let q = 100.0;
+    let q_sluice = main_pressure_flow_discharge(wsel, tw, q, &geom, &table_up, a_net);
+    let mut geom_orifice_early = geom.clone();
+    geom_orifice_early.low_chord_max_m = geom.low_chord_m;
+    let q_orifice = main_pressure_flow_discharge(
+        wsel,
+        tw,
+        q,
+        &geom_orifice_early,
+        &table_up,
+        a_net,
+    );
+    assert!(
+        (q_sluice - q_orifice).abs() > 0.5,
+        "TW between min and max low chord should remain sluice (max trigger), sluice={q_sluice}, orifice={q_orifice}"
+    );
+}
+
