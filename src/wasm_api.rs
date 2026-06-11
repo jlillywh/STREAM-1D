@@ -3,7 +3,7 @@
 use serde::Serialize;
 
 /// API contract version — increment when SteadyInputs / SteadyResult fields change.
-pub const API_VERSION: u32 = 31;
+pub const API_VERSION: u32 = 32;
 
 /// Engine package version (keep in sync with `Cargo.toml`).
 pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -237,6 +237,12 @@ pub fn build_api_metadata() -> WasmApiMetadata {
                 "bridge_friction_weighting".to_string(),
                 "bridge_approach_friction_lengths".to_string(),
                 "bridge_departure_friction_lengths".to_string(),
+                "bridge_opening_blockage_factors".to_string(),
+                "bridge_pier_debris_widths".to_string(),
+                "bridge_pier_debris_heights".to_string(),
+                "bridge_ice_thicknesses".to_string(),
+                "bridge_ice_modes".to_string(),
+                "bridge_deck_ice_thicknesses".to_string(),
                 "bridge_wspro_coeffs".to_string(),
                 "bridge_pressure_flow_coeffs_inlet".to_string(),
                 "bridge_max_weir_submergence".to_string(),
@@ -328,6 +334,12 @@ pub fn build_api_metadata() -> WasmApiMetadata {
                 "friction_weighting".to_string(),
                 "approach_friction_length".to_string(),
                 "departure_friction_length".to_string(),
+                "opening_blockage_factor".to_string(),
+                "pier_debris_widths".to_string(),
+                "pier_debris_heights".to_string(),
+                "ice_thickness".to_string(),
+                "ice_mode".to_string(),
+                "deck_ice_thickness".to_string(),
                 "wspro_coeff".to_string(),
                 "coeff_contraction".to_string(),
                 "coeff_expansion".to_string(),
@@ -399,7 +411,7 @@ mod tests {
     fn test_api_metadata_serializes() {
         let json = serde_json::to_string(&build_api_metadata()).unwrap();
         assert!(json.contains("culvert_inlet_types"));
-        assert!(json.contains("\"api_version\":31"));
+        assert!(json.contains("\"api_version\":32"));
         assert!(json.contains("structure_coupling_orders"));
     }
 

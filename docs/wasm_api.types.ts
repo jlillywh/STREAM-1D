@@ -189,6 +189,21 @@ export interface BridgeArrays {
    * `|station(BD) − station(departure)|`. Only used when `bridge_friction_weighting[b] === 1`.
    */
   bridge_departure_friction_lengths?: number[];
+  /**
+   * Net opening area / conveyance multiplier per bridge (0–1]. Omit or `1.0` = no extra blockage.
+   * See `bridge_ice_debris.md` §A.
+   */
+  bridge_opening_blockage_factors?: number[];
+  /** Floating pier debris total width per bridge `[bridge][pier]` (opening coordinates). */
+  bridge_pier_debris_widths?: number[][];
+  /** Floating pier debris height below WSEL per bridge `[bridge][pier]` (user units). */
+  bridge_pier_debris_heights?: number[][];
+  /** Constant ice thickness through opening per bridge (user units). Requires `bridge_ice_modes[b] === 1`. */
+  bridge_ice_thicknesses?: number[];
+  /** Ice mode per bridge: `0` = none, `1` = constant thickness, `2` = reserved. */
+  bridge_ice_modes?: number[];
+  /** Roadway ice lowering weir crest per bridge (user units). */
+  bridge_deck_ice_thicknesses?: number[];
   /** WSPRO contracted-opening discharge coefficient C per bridge (typical 0.7–0.9). */
   bridge_wspro_coeffs?: number[];
   /** Sluice-gate pressure coefficient when only upstream is submerged. 0 = auto (HEC-RAS Y3/Z). */
@@ -427,6 +442,8 @@ export interface CulvertRatingCurveResult {
  * Inputs for `computeBridgeRatingCurve` — `q` is ignored; fields mirror standalone bridge solve params.
  * **Reverse flow (v31):** negative `q_values` supported; `tw_wsel_reverse` for BU TW when `Q < 0`.
  * `Q = 0` samples are skipped. Direction is not inferred from stages. See `bridge_reverse_flow_rating.md`.
+ * **Ice / debris (v32):** `opening_blockage_factor`, `pier_debris_widths`, `pier_debris_heights`,
+ * `ice_thickness`, `ice_mode`, `deck_ice_thickness` — see `bridge_ice_debris.md`.
  */
 export interface BridgeRatingCurveInputs {
   q_values: number[];
@@ -470,6 +487,14 @@ export interface BridgeRatingCurveInputs {
   approach_friction_length?: number;
   /** Departure segment length override (user units). `0` = auto from BD/departure river stations. */
   departure_friction_length?: number;
+  /** Net opening area multiplier (0–1]. Omit or `1.0` = no extra blockage. */
+  opening_blockage_factor?: number;
+  pier_debris_widths?: number[];
+  pier_debris_heights?: number[];
+  ice_thickness?: number;
+  /** `0` = none, `1` = constant thickness, `2` = reserved. */
+  ice_mode?: number;
+  deck_ice_thickness?: number;
   wspro_coeff?: number;
   coeff_contraction?: number;
   coeff_expansion?: number;

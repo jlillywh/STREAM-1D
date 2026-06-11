@@ -232,6 +232,7 @@ When BU/BD are omitted, layout inserts interpolate geometry at the face stations
 | Culverts | No reverse-flow mirror (forward coupling only) |
 | Asymmetric BU/BD cuts | Mirror swap approximates true reverse hydraulics |
 | HEC-RAS reverse table import | Host sets `tw_wsel_reverse` manually |
+| Ice / floating debris | v32 optional fields — see [`development/bridge_ice_debris.md`](development/bridge_ice_debris.md) |
 
 Existing flattened keys already accept explicit face geometry:
 

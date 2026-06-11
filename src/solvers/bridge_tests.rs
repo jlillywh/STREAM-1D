@@ -4654,3 +4654,127 @@ fn test_solve_bridge_headwater_metric_low_vs_high_flow_path() {
     assert_eq!(high_tw.regime, BridgeFlowRegimeKind::Pressure);
 }
 
+#[test]
+fn test_opening_blockage_factor_raises_headwater() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let table_down = rectangular_table(10.0, 0.0, 50);
+    let base = BridgeCouplingParams {
+        low_flow_method: 3,
+        length: 50.0,
+        ..Default::default()
+    };
+    let mut blocked = base.clone();
+    blocked.ice_debris.opening_blockage_factor = 0.65;
+    let q = 25.0;
+    let tw = 2.5;
+    let hw_clear = solve_bridge_wsel(
+        q, 5.0, 7.0, 0.0, 0, 0, 1.44, 0.5, 0.0, 0.0, tw, UnitSystem::Metric, &table_up,
+        &table_down, &base, 50.0, None, None,
+    );
+    let hw_blocked = solve_bridge_wsel(
+        q, 5.0, 7.0, 0.0, 0, 0, 1.44, 0.5, 0.0, 0.0, tw, UnitSystem::Metric, &table_up,
+        &table_down, &blocked, 50.0, None, None,
+    );
+    assert!(
+        hw_blocked > hw_clear + 1e-4,
+        "blockage factor should raise HW: clear={hw_clear}, blocked={hw_blocked}"
+    );
+}
+
+#[test]
+fn test_pier_debris_raises_headwater() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let table_down = rectangular_table(10.0, 0.0, 50);
+    let base = BridgeCouplingParams {
+        low_flow_method: 3,
+        length: 50.0,
+        ..Default::default()
+    };
+    let mut debris = base.clone();
+    debris.ice_debris.pier_debris_widths = vec![4.0];
+    debris.ice_debris.pier_debris_heights = vec![2.0];
+    let sections = BridgeSectionContext {
+        pier_stations: Some(vec![5.0]),
+        ..Default::default()
+    };
+    let q = 20.0;
+    let tw = 2.5;
+    let hw_clear = solve_bridge_wsel(
+        q, 5.0, 7.0, 1.0, 1, 0, 1.44, 0.5, 0.0, 0.0, tw, UnitSystem::Metric, &table_up,
+        &table_down, &base, 50.0, None, Some(&sections),
+    );
+    let hw_debris = solve_bridge_wsel(
+        q, 5.0, 7.0, 1.0, 1, 0, 1.44, 0.5, 0.0, 0.0, tw, UnitSystem::Metric, &table_up,
+        &table_down, &debris, 50.0, None, Some(&sections),
+    );
+    assert!(
+        hw_debris > hw_clear + 1e-4,
+        "pier debris should raise HW: clear={hw_clear}, debris={hw_debris}"
+    );
+}
+
+#[test]
+fn test_ice_thickness_raises_headwater() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let table_down = rectangular_table(10.0, 0.0, 50);
+    let base = BridgeCouplingParams {
+        low_flow_method: 3,
+        length: 50.0,
+        ..Default::default()
+    };
+    let mut iced = base.clone();
+    iced.ice_debris.ice_mode = 1;
+    iced.ice_debris.ice_thickness = 0.75;
+    let q = 22.0;
+    let tw = 2.5;
+    let hw_clear = solve_bridge_wsel(
+        q, 5.0, 7.0, 0.0, 0, 0, 1.44, 0.5, 0.0, 0.0, tw, UnitSystem::Metric, &table_up,
+        &table_down, &base, 50.0, None, None,
+    );
+    let hw_iced = solve_bridge_wsel(
+        q, 5.0, 7.0, 0.0, 0, 0, 1.44, 0.5, 0.0, 0.0, tw, UnitSystem::Metric, &table_up,
+        &table_down, &iced, 50.0, None, None,
+    );
+    assert!(
+        hw_iced > hw_clear + 1e-4,
+        "ice thickness should raise HW: clear={hw_clear}, iced={hw_iced}"
+    );
+}
+
+#[test]
+fn test_deck_ice_lowers_weir_onset_energy() {
+    let deck = BridgeDeckProfile {
+        stations_m: vec![0.0, 10.0],
+        low_elevations_m: vec![5.0, 5.0],
+        high_elevations_m: vec![7.0, 7.0],
+    };
+    let base = BridgeCouplingParams {
+        low_flow_method: 3,
+        high_flow_method: 0,
+        ..Default::default()
+    };
+    let mut iced = base.clone();
+    iced.ice_debris.deck_ice_thickness = 0.5;
+    let geom_clear = build_bridge_geometry(
+        5.0, 7.0, 0.0, 0, 0, 1.44, 0.8, 0.0, 0.0, UnitSystem::Metric, &base, 50.0,
+        Some(&deck), None,
+    );
+    let geom_iced = build_bridge_geometry(
+        5.0, 7.0, 0.0, 0, 0, 1.44, 0.8, 0.0, 0.0, UnitSystem::Metric, &iced, 50.0,
+        Some(&deck), None,
+    );
+    // Deck ice lowers effective crest (7.0 -> 6.5 m), so weir overtopping engages below the nominal high chord.
+    let tw = 5.5;
+    let e_up = 6.75;
+    let q_weir_clear = segment_weir_discharge_m3s(tw, e_up, &geom_clear);
+    let q_weir_iced = segment_weir_discharge_m3s(tw, e_up, &geom_iced);
+    assert!(
+        q_weir_clear < 1e-6,
+        "without deck ice, energy below high chord should not weir, got {q_weir_clear}"
+    );
+    assert!(
+        q_weir_iced > 1e-3,
+        "deck ice should lower weir onset energy: iced={q_weir_iced}"
+    );
+}
+
