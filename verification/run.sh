@@ -11,6 +11,7 @@ cargo test --test culvert_hecras_verification
 cargo test --test bridge_abutment_hecras_verification
 cargo test --test bridge_bu_bd_hecras_verification
 cargo test --test bridge_high_flow_hecras_verification
+cargo test --test bridge_roadway_embankment_verification
 cargo test --test bridge_guide_bank_contraction_verification
 cargo test --test bridge_opening_alignment_verification
 

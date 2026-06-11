@@ -1857,14 +1857,16 @@ fn reconcile_low_flow_with_high_flow(
         };
     }
     let high = solve_high_flow(q_metric, geom, tw_m, table_up, table_down);
-    if high.wsel_m > wsel_low + 1e-6 {
-        high
+    let wsel = wsel_low.max(high.wsel_m);
+    let regime = if high.wsel_m > wsel_low + 1e-6 {
+        high.regime
+    } else if wsel + 1e-6 >= wsel_low {
+        // EGL exceeded the deck; high-flow path applies even when HW ties low-flow.
+        high.regime
     } else {
-        BridgeHeadwaterSolve {
-            wsel_m: wsel_low,
-            regime: low_class.flow_regime(),
-        }
-    }
+        low_class.flow_regime()
+    };
+    BridgeHeadwaterSolve { wsel_m: wsel, regime }
 }
 
 fn high_flow_energy_uses_wspro(geom: &BridgeGeometry) -> bool {
