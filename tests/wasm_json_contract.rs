@@ -100,6 +100,71 @@ fn wasm_bridge_rating_curve_contract() {
 }
 
 #[test]
+fn wasm_bridge_rating_curve_negative_q_contract() {
+    use stream1d::solvers::{
+        compute_bridge_rating_curve, BridgeRatingCurveInputs, BridgeSolveParams,
+    };
+    use stream1d::utils::UnitSystem;
+
+    let mut bridge = BridgeSolveParams::default();
+    bridge.low_chord = 5.0;
+    bridge.high_chord = 7.0;
+    bridge.z_down = 0.0;
+    bridge.z_up = 0.0;
+    bridge.tw_wsel = 2.5;
+    bridge.tw_wsel_reverse = Some(2.6);
+    bridge.units = UnitSystem::Metric;
+    bridge.low_flow_method = 3;
+    bridge.channel_width = 10.0;
+    bridge.manning_n = 0.03;
+    let curve = compute_bridge_rating_curve(&BridgeRatingCurveInputs {
+        q_values: vec![-20.0, 0.0, 20.0],
+        bridge,
+    });
+    assert_eq!(curve.q.len(), 2, "Q=0 samples are skipped");
+    assert!(curve.q.contains(&-20.0));
+    assert!(curve.q.contains(&20.0));
+    assert!(
+        curve.wsel[0] > curve.wsel_down[0],
+        "reverse hydraulic HW should exceed TW"
+    );
+    assert!(!curve.flow_regimes[0].is_empty());
+}
+
+#[test]
+fn wasm_bridge_rating_curve_bidirectional_qmax_fixture() {
+    use stream1d::solvers::{
+        compute_bridge_rating_curve, BridgeRatingCurveInputs, BridgeSolveParams,
+    };
+    use stream1d::utils::UnitSystem;
+
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/verification/fixtures/bridge_reverse_flow_rating.json"
+    );
+    let json: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(path).expect("read fixture")).expect("parse");
+    let case = &json["cases"][0];
+    let q_values: Vec<f64> = case["q_values_cms"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_f64().unwrap())
+        .collect();
+    let mut bridge = BridgeSolveParams::default();
+    bridge.low_chord = case["low_chord_m"].as_f64().unwrap();
+    bridge.high_chord = case["high_chord_m"].as_f64().unwrap();
+    bridge.tw_wsel = json["tw_wsel_m"].as_f64().unwrap();
+    bridge.units = UnitSystem::Metric;
+    bridge.low_flow_method = case["low_flow_method"].as_i64().unwrap() as i32;
+    bridge.channel_width = case["channel_width_m"].as_f64().unwrap();
+    bridge.manning_n = case["manning_n"].as_f64().unwrap();
+    let curve = compute_bridge_rating_curve(&BridgeRatingCurveInputs { q_values, bridge });
+    assert_eq!(curve.q.len(), 6);
+    assert!(curve.wsel.iter().zip(&curve.wsel_down).all(|(hw, tw)| hw > tw));
+}
+
+#[test]
 fn steady_validation_bridge_opening_width_warning() {
     use stream1d::solvers::{validate_steady_inputs, SteadyInputs};
     use stream1d::geometry::CrossSection;
@@ -169,7 +234,7 @@ fn steady_validation_guide_bank_polyline_warning() {
 fn wasm_api_metadata_version() {
     let meta = build_api_metadata();
     assert_eq!(meta.api_version, API_VERSION);
-    assert_eq!(API_VERSION, 30);
+    assert_eq!(API_VERSION, 31);
     assert!(meta.culvert_tier1_fields.inputs.contains(&"culvert_inlet_types".to_string()));
     assert_eq!(
         meta.bridge_fields.rating_curve_entry_point,
@@ -234,6 +299,10 @@ fn wasm_api_metadata_version() {
         "pier_footing_bottom_elevations",
         "pier_nosing_lengths",
         "pier_nosing_widths",
+        "friction_weighting",
+        "approach_friction_length",
+        "departure_friction_length",
+        "tw_wsel_reverse",
     ] {
         assert!(
             meta.bridge_fields

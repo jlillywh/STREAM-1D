@@ -81,6 +81,18 @@
       "quantity": "wsel"
     },
     {
+      "id": "bridge_reverse_flow_rating",
+      "title": "Bi-directional bridge rating curve Q ∈ [-Qmax, +Qmax] (API v31)",
+      "source_of_truth": "Symmetric channel energy low-flow; |Q|=20 head loss parity",
+      "fixture": "fixtures/bridge_reverse_flow_rating.json",
+      "tests": [
+        "tests/bridge_reverse_flow_rating_verification.rs",
+        "src/solvers/bridge_tests.rs"
+      ],
+      "tolerance": "±20 mm head loss; per-direction HW monotonicity",
+      "quantity": "head_loss"
+    },
+    {
       "id": "bridge_opening_alignment",
       "title": "Bridge opening reach alignment (skew, offset origin)",
       "source_of_truth": "Geometric invariants (preprocessor)",

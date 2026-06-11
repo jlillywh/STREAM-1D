@@ -24,6 +24,7 @@ This repository is the solver only. It does not include a GUI, project database,
 | Reach geometry | `blocked_obstructions`; `ineffective_flow_areas` on any cross section (steady and unsteady) |
 | Reach densification | `max_spacing` inserts interior nodes; set `densify_reach_modifier_policy: 1` when reach ineffective or blocked must apply between user sections (default `0` = table blend only) |
 | Bridge cuts | `guide_banks`, `bridge_ineffective_*`, approach/departure ineffective on explicit cuts; interpolated BU/BD inherit bridge ineffective, not reach modifiers |
+| Reverse flow (v31) | Bridge rating (`q_values` ±), steady `flow_rate < 0`, unsteady bridge coupling when `Q < 0`. **Not supported:** culvert reversal, network/junction reversal, inferring direction from stages alone. See [`bridge_reverse_flow_rating.md`](docs/development/bridge_reverse_flow_rating.md) |
 
 Modifier semantics: [`docs/reference/equations.md`](docs/reference/equations.md) §H0. **Densified-node inheritance:** §H1. Full HEC-RAS gap table: [`docs/reference/hecras_parity.md`](docs/reference/hecras_parity.md).
 

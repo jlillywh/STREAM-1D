@@ -221,6 +221,18 @@ When BU/BD are omitted, layout inserts interpolate geometry at the face stations
 
 ### Rating curve (`computeBridgeRatingCurve`)
 
+**Flow direction (API v31):** Negative `q_values` supported via mirror solve. `tw_wsel` = BD tailwater when $Q>0$; `tw_wsel_reverse` (optional) = BU tailwater when $Q<0$. Outputs `wsel` / `wsel_down` are **hydraulic** HW/TW (BU HW when $Q>0$, BD HW when $Q<0$). Steady `flow_rate < 0` uses reversed profile sweeps; unsteady post-step coupling is direction-aware. Full spec: [`development/bridge_reverse_flow_rating.md`](development/bridge_reverse_flow_rating.md).
+
+**Limitations (incomplete):**
+
+| Topic | Behavior |
+|-------|----------|
+| `Q = 0` in `q_values` | Sample skipped (no output row) |
+| Direction from stages only | Not supported — supply signed `q_values` or reach `Q` |
+| Culverts | No reverse-flow mirror (forward coupling only) |
+| Asymmetric BU/BD cuts | Mirror swap approximates true reverse hydraulics |
+| HEC-RAS reverse table import | Host sets `tw_wsel_reverse` manually |
+
 Existing flattened keys already accept explicit face geometry:
 
 | Key | Maps to |

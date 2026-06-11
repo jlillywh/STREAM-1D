@@ -467,7 +467,7 @@ pub fn solve_normal_depth_table(table: &GeometryTable, q: f64, slope: f64) -> f6
         return 0.0;
     }
     let slope_val = if slope <= 0.0 { 0.01 } else { slope };
-    let target_k = q / slope_val.sqrt();
+    let target_k = q.abs() / slope_val.sqrt();
 
     let y_min = table.rows[0].elevation;
     let y_max = table.rows[table.rows.len() - 1].elevation;
@@ -1099,6 +1099,8 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
     } else {
         inputs.flow_rate
     };
+    let flow_reverses = q < -1e-12;
+    let q_mag = q.abs();
 
     let num_slices = inputs.num_slices.unwrap_or(100);
     let c_contraction = inputs.coeff_contraction.unwrap_or(0.1);
@@ -1195,7 +1197,10 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
     let dm = densified_tables.len();
 
     // Calculate critical depths and elevations for the densified grid
-    let ycs: Vec<f64> = densified_tables.iter().map(|table| solve_critical_depth_table(table, q)).collect();
+    let ycs: Vec<f64> = densified_tables
+        .iter()
+        .map(|table| solve_critical_depth_table(table, q_mag))
+        .collect();
     let critical_wsels: Vec<f64> = densified_z_mins.iter().zip(&ycs).map(|(&z, &yc)| z + yc).collect();
 
     let regime = inputs.regime; // 0=Subcritical, 1=Supercritical, 2=Mixed
@@ -1318,9 +1323,10 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
         }
     }
 
-    // SWEEP 1: SUBCRITICAL (Downstream to Upstream)
+    // SWEEP 1: SUBCRITICAL (Downstream to Upstream for Q>0; Upstream to Downstream for Q<0)
     let mut sub_wsel = vec![0.0; dm];
     if regime == 0 || regime == 2 {
+        if !flow_reverses {
         sub_wsel[dm - 1] = ds_wsel_metric;
         if sub_wsel[dm - 1] < critical_wsels[dm - 1] {
             sub_wsel[dm - 1] = critical_wsels[dm - 1];
@@ -1377,7 +1383,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                     &densified_z_mins,
                     length,
                 );
-                let wsel_up_user = crate::solvers::bridge::solve_bridge_wsel(
+                let coupled = crate::solvers::bridge::solve_bridge_coupled(
                     inputs.flow_rate,
                     low_chord,
                     high_chord,
@@ -1399,9 +1405,9 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                 );
 
                 sub_wsel[i] = if raw_units == UnitSystem::USCustomary {
-                    wsel_up_user * FT_TO_M
+                    coupled.wsel_up * FT_TO_M
                 } else {
-                    wsel_up_user
+                    coupled.wsel_up
                 };
             } else if let Some(c_idx) = culvert_idx {
                 let shape_type = inputs.culvert_shape_types.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0);
@@ -1589,7 +1595,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                     structure_ineffective.get(&i),
                     densified_z_mins[i],
                     ycs[i],
-                    q,
+                    q_mag,
                     length,
                     c_contraction,
                     c_expansion,
@@ -1599,11 +1605,100 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                 ).unwrap_or(critical_wsels[i]);
             }
         }
+        }
+
+        if flow_reverses {
+            sub_wsel[0] = us_wsel_metric;
+            if sub_wsel[0] < critical_wsels[0] {
+                sub_wsel[0] = critical_wsels[0];
+            }
+
+            for i in 0..dm - 1 {
+                let length = densified_stations[i] - densified_stations[i + 1];
+                let bridge_idx = bridge_at_interval.get(&i).copied();
+
+                if let Some(b_idx) = bridge_idx {
+                    let low_chord = inputs.bridge_low_chords.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0.0);
+                    let high_chord = inputs.bridge_high_chords.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0.0);
+                    let pier_width = inputs.bridge_pier_widths.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0.0);
+                    let num_piers = inputs.bridge_num_piers.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0);
+                    let pier_shape = inputs.bridge_pier_shapes.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0);
+                    let weir_coeff = inputs.bridge_weir_coeffs.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(if raw_units == UnitSystem::USCustomary { 2.6 } else { 1.44 });
+                    let orifice_coeff = inputs.bridge_orifice_coeffs.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0.5);
+                    let coupling = bridge_coupling_for(inputs, b_idx);
+                    let deck = bridge_deck_profile_for(inputs, b_idx, raw_units);
+                    let deck_ref = deck.as_ref();
+                    let tw_wsel_user = if raw_units == UnitSystem::USCustomary {
+                        sub_wsel[i] / FT_TO_M
+                    } else {
+                        sub_wsel[i]
+                    };
+                    let face_geo = bridge_face_geometry_for(
+                        inputs,
+                        b_idx,
+                        i,
+                        raw_units,
+                        num_slices,
+                        &densified_stations,
+                        &densified_tables,
+                        &densified_xs,
+                        &densified_z_mins,
+                        length,
+                    );
+                    let coupled = crate::solvers::bridge::solve_bridge_coupled(
+                        inputs.flow_rate,
+                        low_chord,
+                        high_chord,
+                        pier_width,
+                        num_piers,
+                        pier_shape,
+                        weir_coeff,
+                        orifice_coeff,
+                        face_geo.z_down_user,
+                        face_geo.z_up_user,
+                        tw_wsel_user,
+                        raw_units,
+                        &face_geo.table_up,
+                        &face_geo.table_down,
+                        &coupling,
+                        length,
+                        deck_ref,
+                        Some(&face_geo.sections),
+                    );
+                    sub_wsel[i + 1] = if raw_units == UnitSystem::USCustomary {
+                        coupled.wsel_down * FT_TO_M
+                    } else {
+                        coupled.wsel_down
+                    };
+                } else {
+                    sub_wsel[i + 1] = solve_step(
+                        &densified_tables[i],
+                        densified_xs[i].as_ref(),
+                        structure_ineffective.get(&i),
+                        sub_wsel[i],
+                        &densified_tables[i + 1],
+                        densified_xs[i + 1].as_ref(),
+                        structure_ineffective.get(&(i + 1)),
+                        densified_z_mins[i + 1],
+                        ycs[i + 1],
+                        q_mag,
+                        length,
+                        c_contraction,
+                        c_expansion,
+                        true,
+                        structure_adjacent_indices.contains(&i),
+                        structure_adjacent_indices.contains(&(i + 1)),
+                    )
+                    .unwrap_or(critical_wsels[i + 1]);
+                }
+            }
+        }
     }
 
-    // SWEEP 2: SUPERCRITICAL (Upstream to Downstream)
+    // SWEEP 2: SUPERCRITICAL (Upstream to Downstream for Q>0; Downstream to Upstream for Q<0)
     let mut super_wsel = vec![0.0; dm];
     if regime == 1 || regime == 2 {
+        if !flow_reverses {
         super_wsel[0] = us_wsel_metric;
         if super_wsel[0] > critical_wsels[0] {
             super_wsel[0] = critical_wsels[0];
@@ -1827,7 +1922,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                     structure_ineffective.get(&(i + 1)),
                     densified_z_mins[i + 1],
                     ycs[i + 1],
-                    q,
+                    q_mag,
                     length,
                     c_contraction,
                     c_expansion,
@@ -1835,6 +1930,94 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                     structure_adjacent_indices.contains(&i),
                     structure_adjacent_indices.contains(&(i + 1)),
                 ).unwrap_or(critical_wsels[i + 1]);
+            }
+        }
+        }
+
+        if flow_reverses {
+            super_wsel[dm - 1] = ds_wsel_metric;
+            if super_wsel[dm - 1] > critical_wsels[dm - 1] {
+                super_wsel[dm - 1] = critical_wsels[dm - 1];
+            }
+
+            for i in (0..dm - 1).rev() {
+                let length = densified_stations[i] - densified_stations[i + 1];
+                let bridge_idx = bridge_at_interval.get(&i).copied();
+
+                if let Some(b_idx) = bridge_idx {
+                    let low_chord = inputs.bridge_low_chords.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0.0);
+                    let high_chord = inputs.bridge_high_chords.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0.0);
+                    let pier_width = inputs.bridge_pier_widths.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0.0);
+                    let num_piers = inputs.bridge_num_piers.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0);
+                    let pier_shape = inputs.bridge_pier_shapes.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0);
+                    let weir_coeff = inputs.bridge_weir_coeffs.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(if raw_units == UnitSystem::USCustomary { 2.6 } else { 1.44 });
+                    let orifice_coeff = inputs.bridge_orifice_coeffs.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0.5);
+                    let coupling = bridge_coupling_for(inputs, b_idx);
+                    let deck = bridge_deck_profile_for(inputs, b_idx, raw_units);
+                    let deck_ref = deck.as_ref();
+                    let hw_wsel_user = if raw_units == UnitSystem::USCustomary {
+                        super_wsel[i + 1] / FT_TO_M
+                    } else {
+                        super_wsel[i + 1]
+                    };
+                    let face_geo = bridge_face_geometry_for(
+                        inputs,
+                        b_idx,
+                        i,
+                        raw_units,
+                        num_slices,
+                        &densified_stations,
+                        &densified_tables,
+                        &densified_xs,
+                        &densified_z_mins,
+                        length,
+                    );
+                    let tw_wsel_user = crate::solvers::bridge::solve_bridge_tailwater(
+                        inputs.flow_rate,
+                        low_chord,
+                        high_chord,
+                        pier_width,
+                        num_piers,
+                        pier_shape,
+                        weir_coeff,
+                        orifice_coeff,
+                        face_geo.z_down_user,
+                        face_geo.z_up_user,
+                        hw_wsel_user,
+                        raw_units,
+                        &face_geo.table_up,
+                        &face_geo.table_down,
+                        &coupling,
+                        length,
+                        deck_ref,
+                        Some(&face_geo.sections),
+                    );
+                    super_wsel[i] = if raw_units == UnitSystem::USCustomary {
+                        tw_wsel_user * FT_TO_M
+                    } else {
+                        tw_wsel_user
+                    };
+                } else {
+                    super_wsel[i] = solve_step(
+                        &densified_tables[i + 1],
+                        densified_xs[i + 1].as_ref(),
+                        structure_ineffective.get(&(i + 1)),
+                        super_wsel[i + 1],
+                        &densified_tables[i],
+                        densified_xs[i].as_ref(),
+                        structure_ineffective.get(&i),
+                        densified_z_mins[i],
+                        ycs[i],
+                        q_mag,
+                        length,
+                        c_contraction,
+                        c_expansion,
+                        false,
+                        structure_adjacent_indices.contains(&(i + 1)),
+                        structure_adjacent_indices.contains(&i),
+                    )
+                    .unwrap_or(critical_wsels[i]);
+                }
             }
         }
     }
@@ -1852,7 +2035,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                 &densified_tables[i],
                 densified_xs[i].as_ref(),
                 sub_wsel[i],
-                q,
+                q_mag,
                 structure_ineffective.get(&i),
                 None,
             );
@@ -1860,7 +2043,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                 &densified_tables[i],
                 densified_xs[i].as_ref(),
                 super_wsel[i],
-                q,
+                q_mag,
                 structure_ineffective.get(&i),
                 None,
             );
@@ -2998,6 +3181,97 @@ mod tests {
             (result.wsel[1] - 3.00247).abs() < 0.001,
             "Bridge upstream WSEL should match HEC-RAS Yarnell, got {}",
             result.wsel[1]
+        );
+    }
+
+    #[test]
+    fn test_steady_negative_flow_bridge_subcritical() {
+        let channel = |station: f64, bed: f64| CrossSection {
+            station,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![bed + 10.0, bed, bed, bed + 10.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.03],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let forward = solve_steady(&SteadyInputs {
+            cross_sections: vec![channel(200.0, 0.2), channel(100.0, 0.1), channel(0.0, 0.0)],
+            flow_rate: 20.0,
+            num_slices: Some(50),
+            regime: 0,
+            downstream_wsel: Some(2.5),
+            bridge_stations: Some(vec![50.0]),
+            bridge_low_chords: Some(vec![5.0]),
+            bridge_high_chords: Some(vec![7.0]),
+            bridge_low_flow_methods: Some(vec![3]),
+            ..Default::default()
+        });
+        let reverse = solve_steady(&SteadyInputs {
+            cross_sections: vec![channel(200.0, 0.2), channel(100.0, 0.1), channel(0.0, 0.0)],
+            flow_rate: -20.0,
+            num_slices: Some(50),
+            regime: 0,
+            upstream_wsel: Some(2.5),
+            bridge_stations: Some(vec![50.0]),
+            bridge_low_chords: Some(vec![5.0]),
+            bridge_high_chords: Some(vec![7.0]),
+            bridge_low_flow_methods: Some(vec![3]),
+            ..Default::default()
+        });
+        assert!(
+            forward.wsel[0] > forward.wsel[2],
+            "forward profile should back up upstream of downstream TW"
+        );
+        assert!(
+            reverse.wsel[2] > reverse.wsel[0],
+            "reverse profile should back up downstream of upstream TW"
+        );
+        assert!(
+            (forward.wsel[0] - reverse.wsel[2]).abs() < 0.02,
+            "symmetric |Q| should yield similar peak WSEL at opposing ends"
+        );
+    }
+
+    #[test]
+    fn test_steady_negative_flow_mixed_regime() {
+        use crate::geometry::IneffectiveFlowAreas;
+
+        let xs_ds = metric_rect_channel(0.0, 0.0);
+        let mut xs_us = metric_rect_channel(100.0, 0.05);
+        xs_us.ineffective_flow_areas = Some(
+            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[9.0], &[2.5]).unwrap(),
+        );
+        let forward = solve_steady(&SteadyInputs {
+            cross_sections: vec![xs_us.clone(), xs_ds.clone()],
+            flow_rate: 20.0,
+            num_slices: Some(50),
+            regime: 2,
+            downstream_bc_type: Some(0),
+            downstream_wsel: Some(1.6),
+            ..Default::default()
+        });
+        let reverse = solve_steady(&SteadyInputs {
+            cross_sections: vec![xs_us, xs_ds],
+            flow_rate: -20.0,
+            num_slices: Some(50),
+            regime: 2,
+            upstream_bc_type: Some(0),
+            upstream_wsel: Some(1.6),
+            ..Default::default()
+        });
+        assert_eq!(forward.wsel.len(), 2);
+        assert_eq!(reverse.wsel.len(), 2);
+        assert!(forward.wsel.iter().all(|w| w.is_finite() && *w > 0.0));
+        assert!(reverse.wsel.iter().all(|w| w.is_finite() && *w > 0.0));
+        assert!(
+            (forward.wsel[0] - reverse.wsel[1]).abs() < 0.05,
+            "mixed regime |Q|=20: reach-US WSEL should match reverse reach-DS, got {} vs {}",
+            forward.wsel[0],
+            reverse.wsel[1]
         );
     }
 
