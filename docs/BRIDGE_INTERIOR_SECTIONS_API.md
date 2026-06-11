@@ -347,11 +347,11 @@ Three separate knobs — not interchangeable:
 
 Pick energy or WSPRO for the loss formula; add guide banks only when the RAS model has them. Without banks, $A_1$ is BU obstructed area (legacy). With banks, $A_1$ is guided approach active area — $K_c$ and $C$ are unchanged. Tune losses with $K_c$ / $C$, not fake toe stations. Banks belong on approach/departure cuts, not BU/BD. Yarnell ignores guide banks.
 
-Example fixture: [`bridge_guide_bank_contraction.json`](../python/verification/bridge_guide_bank_contraction.json). Formulas: [`equations.md`](reference/equations.md) §6C.
+Example fixture: [`bridge_guide_bank_contraction.json`](../verification/fixtures/bridge_guide_bank_contraction.json). Formulas: [`equations.md`](reference/equations.md) §6C.
 
 ## Tests
 
-BU/BD, opening alignment, and guide-bank cases: `tests/bridge_*_verification.rs` and `python/verification/bridge_*.json`. See [`development/testing.md`](development/testing.md).
+BU/BD, opening alignment, and guide-bank cases: `tests/bridge_*_verification.rs` and `verification/fixtures/bridge_*.json`. See [`development/testing.md`](development/testing.md).
 
 ## Example (steady JSON excerpt)
 

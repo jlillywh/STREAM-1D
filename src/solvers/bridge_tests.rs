@@ -3402,3 +3402,679 @@ fn test_combined_high_flow_weir_only_when_below_high_chord() {
         "below high chord weir term should be zero"
     );
 }
+
+#[test]
+fn test_segment_weir_before_min_high_wsel() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let deck = BridgeDeckProfile {
+        stations_m: vec![0.0, 5.0, 10.0],
+        low_elevations_m: vec![5.0, 5.0, 5.0],
+        high_elevations_m: vec![6.5, 6.5, 7.0],
+    };
+    let coupling = BridgeCouplingParams::default();
+    let geom = build_bridge_geometry(
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        UnitSystem::Metric,
+        &coupling,
+        50.0,
+        Some(&deck),
+        None,
+    );
+    let a_net = net_opening_area_at_low_chord(&geom, &table_up, &table_up);
+    let wsel = 6.3;
+    let tw = 5.4;
+    let q = 250.0;
+    let e_up = upstream_energy_grade(wsel, q, &geom, &table_up, geom.z_up_m, true);
+    assert!(
+        e_up > 6.5 + 1e-3 && wsel < geom.high_chord_m - 1e-3,
+        "EGL should overtop the 6.5 m segment before WSEL reaches min high chord 7.0"
+    );
+    let parts = combined_high_flow_discharge(wsel, tw, q, &geom, &table_up, a_net, Some(10.0));
+    assert!(
+        parts.q_weir_m3s > 0.05,
+        "segment-wise weir should flow when EGL clears local crest, got q_weir={}",
+        parts.q_weir_m3s
+    );
+}
+
+#[test]
+fn test_combined_regime_label_from_solver() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let table_down = rectangular_table(10.0, 0.0, 50);
+    let deck = BridgeDeckProfile {
+        stations_m: vec![0.0, 10.0],
+        low_elevations_m: vec![5.0, 5.0],
+        high_elevations_m: vec![7.0, 7.0],
+    };
+    let coupling = BridgeCouplingParams {
+        low_flow_method: 3,
+        high_flow_method: 0,
+        ..Default::default()
+    };
+    let result = solve_bridge_coupled(
+        300.0,
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        5.5,
+        UnitSystem::Metric,
+        &table_up,
+        &table_down,
+        &coupling,
+        50.0,
+        Some(&deck),
+        None,
+    );
+    assert_eq!(
+        result.flow_regime, "weir",
+        "combined overtopping solve should report weir regime, got {}",
+        result.flow_regime
+    );
+}
+
+#[test]
+fn test_weir_submergence_energy_fallback_at_cap() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let table_down = rectangular_table(10.0, 0.0, 50);
+    let coupling = BridgeCouplingParams {
+        low_flow_method: 3,
+        high_flow_method: 0,
+        max_weir_submergence: 0.98,
+        ..Default::default()
+    };
+    let result = solve_bridge_coupled(
+        15.0,
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        7.69,
+        UnitSystem::Metric,
+        &table_up,
+        &table_down,
+        &coupling,
+        50.0,
+        None,
+        None,
+    );
+    assert_eq!(
+        result.flow_regime, "energy",
+        "near-fully submerged weir should fall back to energy, got {}",
+        result.flow_regime
+    );
+}
+
+#[test]
+fn test_sluice_orifice_switch_uses_max_low_chord() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let deck = BridgeDeckProfile {
+        stations_m: vec![0.0, 10.0],
+        low_elevations_m: vec![5.0, 5.5],
+        high_elevations_m: vec![7.0, 7.0],
+    };
+    let coupling = BridgeCouplingParams::default();
+    let geom = build_bridge_geometry(
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        UnitSystem::Metric,
+        &coupling,
+        50.0,
+        Some(&deck),
+        None,
+    );
+    assert!((geom.low_chord_m - 5.0).abs() < 1e-6);
+    assert!((geom.low_chord_max_m - 5.5).abs() < 1e-6);
+    let a_net = net_opening_area_at_low_chord(&geom, &table_up, &table_up);
+    let wsel = 6.0;
+    let tw = 5.2;
+    assert!(tw >= geom.low_chord_m && tw < geom.low_chord_max_m);
+    let q = 100.0;
+    let q_sluice = main_pressure_flow_discharge(wsel, tw, q, &geom, &table_up, a_net);
+    let mut geom_orifice_early = geom.clone();
+    geom_orifice_early.low_chord_max_m = geom.low_chord_m;
+    let q_orifice = main_pressure_flow_discharge(
+        wsel,
+        tw,
+        q,
+        &geom_orifice_early,
+        &table_up,
+        a_net,
+    );
+    assert!(
+        (q_sluice - q_orifice).abs() > 0.5,
+        "TW between min and max low chord should remain sluice (max trigger), sluice={q_sluice}, orifice={q_orifice}"
+    );
+}
+
+#[test]
+fn test_scalar_weir_discharge_without_deck_profile() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let coupling = BridgeCouplingParams::default();
+    let geom = build_bridge_geometry(
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        UnitSystem::Metric,
+        &coupling,
+        50.0,
+        None,
+        None,
+    );
+    let wsel = 7.8;
+    let tw = 7.35;
+    let q = 80.0;
+    let q_weir = weir_flow_discharge(wsel, tw, q, &geom, &table_up, 10.0);
+    assert!(
+        q_weir > 0.05,
+        "scalar crest weir should discharge when EGL clears high chord, got {q_weir}"
+    );
+    let e_up = upstream_energy_grade(wsel, q, &geom, &table_up, geom.z_up_m, true);
+    assert!(e_up > geom.high_chord_m + 1e-3);
+    let ratio = max_active_weir_submergence_ratio(tw, e_up, &geom);
+    assert!(
+        ratio > 0.05 && ratio < 0.98,
+        "partially submerged scalar weir should have Bradley ratio in (0, cap), got {ratio}"
+    );
+    assert!(!weir_submergence_exceeds_cap(tw, e_up, &geom));
+}
+
+#[test]
+fn test_segment_weir_returns_zero_without_deck() {
+    let coupling = BridgeCouplingParams::default();
+    let geom = build_bridge_geometry(
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        UnitSystem::Metric,
+        &coupling,
+        50.0,
+        None,
+        None,
+    );
+    assert_eq!(segment_weir_discharge_m3s(5.0, 8.0, &geom), 0.0);
+}
+
+#[test]
+fn test_reconcile_reports_pressure_when_egl_exceeds_deck_at_hw_tie() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let table_down = rectangular_table(10.0, 0.0, 50);
+    let coupling = BridgeCouplingParams {
+        low_flow_method: 3,
+        high_flow_method: 0,
+        ..Default::default()
+    };
+    let geom = build_bridge_geometry(
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        UnitSystem::Metric,
+        &coupling,
+        50.0,
+        None,
+        None,
+    );
+    let solved = solve_bridge_headwater_metric(200.0, 2.5, &geom, &table_up, &table_down);
+    assert!(
+        (solved.wsel_m - geom.low_chord_m).abs() < 0.01,
+        "sluice reconcile should pin HW at low chord, got {}",
+        solved.wsel_m
+    );
+    assert_eq!(solved.regime, BridgeFlowRegimeKind::Pressure);
+}
+
+#[test]
+fn test_reconcile_preserves_low_flow_regime_when_egl_below_deck() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let table_down = rectangular_table(10.0, 0.0, 50);
+    let coupling = BridgeCouplingParams {
+        low_flow_method: 3,
+        ..Default::default()
+    };
+    let geom = build_bridge_geometry(
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        UnitSystem::Metric,
+        &coupling,
+        50.0,
+        None,
+        None,
+    );
+    let solved = solve_bridge_headwater_metric(12.0, 2.5, &geom, &table_up, &table_down);
+    assert!(solved.wsel_m < geom.low_chord_m);
+    assert!(
+        matches!(
+            solved.regime,
+            BridgeFlowRegimeKind::LowA | BridgeFlowRegimeKind::LowB | BridgeFlowRegimeKind::LowC
+        ),
+        "expected low-flow regime, got {:?}",
+        solved.regime
+    );
+}
+
+#[test]
+fn test_combined_weir_solve_beats_pressure_only_capacity() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let table_down = rectangular_table(10.0, 0.0, 50);
+    let deck = BridgeDeckProfile {
+        stations_m: vec![0.0, 5.0, 10.0],
+        low_elevations_m: vec![5.0, 5.0, 5.0],
+        high_elevations_m: vec![6.5, 6.5, 7.0],
+    };
+    let coupling = BridgeCouplingParams {
+        low_flow_method: 3,
+        high_flow_method: 0,
+        ..Default::default()
+    };
+    let geom = build_bridge_geometry(
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        UnitSystem::Metric,
+        &coupling,
+        50.0,
+        Some(&deck),
+        None,
+    );
+    let q = 220.0;
+    let tw = 5.4;
+    let pressure_only_hw =
+        solve_pressure_headwater(q, tw, &geom, &table_up, &table_down);
+    let solved = solve_bridge_headwater_metric(q, tw, &geom, &table_up, &table_down);
+    assert!(
+        solved.wsel_m <= pressure_only_hw + 0.02,
+        "segment weir should not require more HW than pressure-only, got {} vs {}",
+        solved.wsel_m,
+        pressure_only_hw
+    );
+    assert_eq!(solved.regime, BridgeFlowRegimeKind::Weir);
+    let a_net = net_opening_area_at_low_chord(&geom, &table_up, &table_down);
+    let e_up = upstream_energy_grade(solved.wsel_m, q, &geom, &table_up, geom.z_up_m, true);
+    let l_weir = effective_weir_length_m(&geom, e_up, 10.0);
+    let parts = combined_high_flow_discharge(
+        solved.wsel_m,
+        tw,
+        q,
+        &geom,
+        &table_up,
+        a_net,
+        Some(l_weir),
+    );
+    assert!((parts.total_m3s() - q).abs() < 0.05);
+    assert!(parts.q_weir_m3s > 0.01);
+}
+
+#[test]
+fn test_high_flow_expands_upper_bound_for_large_discharge() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let table_down = rectangular_table(10.0, 0.0, 50);
+    let deck = BridgeDeckProfile {
+        stations_m: vec![0.0, 10.0],
+        low_elevations_m: vec![5.0, 5.0],
+        high_elevations_m: vec![7.0, 7.0],
+    };
+    let coupling = BridgeCouplingParams {
+        low_flow_method: 3,
+        high_flow_method: 0,
+        ..Default::default()
+    };
+    let geom = build_bridge_geometry(
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        UnitSystem::Metric,
+        &coupling,
+        50.0,
+        Some(&deck),
+        None,
+    );
+    let solved = solve_bridge_headwater_metric(450.0, 5.5, &geom, &table_up, &table_down);
+    assert!(
+        solved.wsel_m > geom.high_chord_m + 0.5,
+        "large Q should require expanded upper bound, got hw={}",
+        solved.wsel_m
+    );
+    assert_eq!(solved.regime, BridgeFlowRegimeKind::Weir);
+}
+
+#[test]
+fn test_pressure_only_high_flow_regime_without_weir() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let table_down = rectangular_table(10.0, 0.0, 50);
+    let coupling = BridgeCouplingParams {
+        low_flow_method: 3,
+        high_flow_method: 0,
+        ..Default::default()
+    };
+    let geom = build_bridge_geometry(
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        UnitSystem::Metric,
+        &coupling,
+        50.0,
+        None,
+        None,
+    );
+    let solved = solve_bridge_headwater_metric(100.0, 5.4, &geom, &table_up, &table_down);
+    assert_eq!(solved.regime, BridgeFlowRegimeKind::Pressure);
+    let a_net = net_opening_area_at_low_chord(&geom, &table_up, &table_down);
+    let parts = combined_high_flow_discharge(
+        solved.wsel_m,
+        5.4,
+        100.0,
+        &geom,
+        &table_up,
+        a_net,
+        Some(10.0),
+    );
+    assert!(parts.q_weir_m3s.abs() < 1e-6);
+    assert!((parts.total_m3s() - 100.0).abs() < 0.05);
+}
+
+#[test]
+fn test_weir_head_active_partial_deck_segments() {
+    let deck = BridgeDeckProfile {
+        stations_m: vec![0.0, 5.0, 10.0],
+        low_elevations_m: vec![5.0, 5.0, 5.0],
+        high_elevations_m: vec![6.5, 6.5, 7.0],
+    };
+    let coupling = BridgeCouplingParams::default();
+    let geom = build_bridge_geometry(
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        UnitSystem::Metric,
+        &coupling,
+        50.0,
+        Some(&deck),
+        None,
+    );
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let wsel = 6.4;
+    let q = 150.0;
+    let e_up = upstream_energy_grade(wsel, q, &geom, &table_up, geom.z_up_m, true);
+    assert!(
+        weir_head_active_at_energy(e_up, &geom),
+        "EGL {:.4} should clear the 6.5 m center crest before global high chord",
+        e_up
+    );
+    let e_below = 6.2;
+    assert!(
+        !weir_head_active_at_energy(e_below, &geom),
+        "EGL below all crests should not activate weir head"
+    );
+}
+
+#[test]
+fn test_high_flow_tailwater_pressure_only_roundtrip() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let table_down = rectangular_table(10.0, 0.0, 50);
+    let coupling = BridgeCouplingParams {
+        low_flow_method: 3,
+        high_flow_method: 0,
+        ..Default::default()
+    };
+    let q = 100.0;
+    let tw_target = 5.4;
+    let hw = solve_bridge_wsel(
+        q,
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        tw_target,
+        UnitSystem::Metric,
+        &table_up,
+        &table_down,
+        &coupling,
+        50.0,
+        None,
+        None,
+    );
+    let tw_back = solve_bridge_tailwater(
+        q,
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        hw,
+        UnitSystem::Metric,
+        &table_up,
+        &table_down,
+        &coupling,
+        50.0,
+        None,
+        None,
+    );
+    assert!(
+        (tw_back - tw_target).abs() < 0.02,
+        "pressure-only tailwater roundtrip: tw={tw_back}, expected={tw_target}, hw={hw}"
+    );
+}
+
+#[test]
+fn test_high_flow_tailwater_combined_weir_roundtrip() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let table_down = rectangular_table(10.0, 0.0, 50);
+    let deck = BridgeDeckProfile {
+        stations_m: vec![0.0, 10.0],
+        low_elevations_m: vec![5.0, 5.0],
+        high_elevations_m: vec![7.0, 7.0],
+    };
+    let coupling = BridgeCouplingParams {
+        low_flow_method: 3,
+        high_flow_method: 0,
+        ..Default::default()
+    };
+    let q = 280.0;
+    let tw_target = 5.5;
+    let hw = solve_bridge_wsel(
+        q,
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        tw_target,
+        UnitSystem::Metric,
+        &table_up,
+        &table_down,
+        &coupling,
+        50.0,
+        Some(&deck),
+        None,
+    );
+    let tw_back = solve_bridge_tailwater(
+        q,
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        hw,
+        UnitSystem::Metric,
+        &table_up,
+        &table_down,
+        &coupling,
+        50.0,
+        Some(&deck),
+        None,
+    );
+    assert!(
+        (tw_back - tw_target).abs() < 0.05,
+        "combined weir tailwater roundtrip: tw={tw_back}, expected={tw_target}, hw={hw}"
+    );
+}
+
+#[test]
+fn test_high_flow_tailwater_submergence_energy_fallback() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let table_down = rectangular_table(10.0, 0.0, 50);
+    let deck = BridgeDeckProfile {
+        stations_m: vec![0.0, 10.0],
+        low_elevations_m: vec![5.0, 5.0],
+        high_elevations_m: vec![7.0, 7.0],
+    };
+    let coupling = BridgeCouplingParams {
+        low_flow_method: 3,
+        high_flow_method: 0,
+        max_weir_submergence: 0.98,
+        ..Default::default()
+    };
+    let geom = build_bridge_geometry(
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        UnitSystem::Metric,
+        &coupling,
+        50.0,
+        Some(&deck),
+        None,
+    );
+    let q = 280.0;
+    let hw = solve_bridge_headwater_metric(q, 5.5, &geom, &table_up, &table_down).wsel_m;
+    let tw_metric = solve_high_flow_tailwater(q, &geom, hw, &table_up, &table_down);
+    assert!(
+        tw_metric > geom.z_down_m && tw_metric <= hw + 1e-3,
+        "tailwater under weir head should be physical, got tw={tw_metric}, hw={hw}"
+    );
+    // Deep tailwater drives Bradley submergence past cap → energy fallback branch.
+    let tw_energy_path = solve_high_flow_tailwater(15.0, &geom, 7.5, &table_up, &table_down);
+    assert!(
+        tw_energy_path > geom.z_down_m && tw_energy_path.is_finite(),
+        "near-cap submergence should still return finite tailwater, got {tw_energy_path}"
+    );
+}
+
+#[test]
+fn test_solve_bridge_headwater_metric_low_vs_high_flow_path() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let table_down = rectangular_table(10.0, 0.0, 50);
+    let coupling = BridgeCouplingParams {
+        low_flow_method: 3,
+        high_flow_method: 0,
+        ..Default::default()
+    };
+    let geom = build_bridge_geometry(
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        UnitSystem::Metric,
+        &coupling,
+        50.0,
+        None,
+        None,
+    );
+    let low_tw = solve_bridge_headwater_metric(30.0, 2.5, &geom, &table_up, &table_down);
+    let high_tw = solve_bridge_headwater_metric(100.0, 5.4, &geom, &table_up, &table_down);
+    assert!(low_tw.wsel_m < geom.low_chord_m);
+    assert!(high_tw.wsel_m >= geom.low_chord_m - 1e-6);
+    assert_ne!(low_tw.regime, BridgeFlowRegimeKind::Pressure);
+    assert_eq!(high_tw.regime, BridgeFlowRegimeKind::Pressure);
+}
+

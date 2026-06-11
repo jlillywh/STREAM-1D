@@ -1,0 +1,21 @@
+{
+  "tolerance_m": 0.005,
+  "cases": [
+    {
+      "name": "energy_approach_narrowing_vs_reach_only",
+      "notes": "20 m approach with guide banks 8–12 m (4 m guided) vs 10 m BU opening; energy method uses coeff_contraction on guided approach area when banks configured.",
+      "flow_rate_cms": 20.0,
+      "downstream_wsel_m": 2.5,
+      "bridge_center_station_m": 50.0,
+      "bu_station_m": 52.0,
+      "bd_station_m": 48.0,
+      "channel_width_m": 10.0,
+      "approach_width_m": 20.0,
+      "guide_left_toe_m": 8.0,
+      "guide_right_toe_m": 12.0,
+      "coeff_contraction": 0.3,
+      "expected_hw_reach_only_m": 2.545140228,
+      "expected_hw_guided_m": 2.597408604
+    }
+  ]
+}

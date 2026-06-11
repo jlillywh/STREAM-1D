@@ -90,6 +90,26 @@ HEC-RAS 1D has **no** separate deck-vent or slotted-drain fields — pressure fl
 
 **Parity:** omit vent fields for pure RAS imports; supply when as-built grate/slot data should not distort the main deck profile.
 
+### High-flow transition edge cases (Phase 4.1–4.2)
+
+Partial deck submergence, sluice/orifice switching, combined $Q = Q_{opening} + Q_{vents} + Q_{weir}$, weir submergence fallback, and regime selection — audit and Phase 4.2 fixes in [`pressure_weir_combined_flow_audit.md`](../development/pressure_weir_combined_flow_audit.md).
+
+### Bridge high-flow — intentional remaining deltas
+
+Canonical list: [`pressure_weir_combined_flow_audit.md` § Intentional remaining deltas](../development/pressure_weir_combined_flow_audit.md#intentional-remaining-deltas). Summary:
+
+| Category | Item | vs HEC-RAS | Intent |
+|----------|------|------------|--------|
+| **Extension** | Deck vents / slotted openings (`bridge_deck_vent_*`) | Not in RAS 1D | Optional extra pressure paths; omit for pure imports |
+| **Extension** | Combined $Q = Q_{opening} + Q_{vents} + Q_{weir}$ | RAS: opening + weir only | By design when vents supplied |
+| **Limitation** | `profile_opening_area_factor` | WSEL-dependent opening tables | Scalar approximation under haunched soffit |
+| **Limitation** | Global sluice/orifice switch at max low chord | May use local segment logic | Uniform-deck aligned; haunched deck simplified |
+| **Limitation** | Energy fallback / `high_flow_methods = 1` | Energy through opening | **No deck vents, no explicit weir** on this branch |
+| **Limitation** | Unsteady bridge coupling | Implicit network solve | Explicit post-step (≤5 iterations) |
+| **Out of scope** | Standalone weirs, multi-reach unsteady bridges | Full RAS | Product scope |
+
+**Phase 4.2 closed:** segment-wise weir onset, low/high-flow reconcile, segment submergence cap, solver-derived `flow_regime`.
+
 ### Practical guidance
 
 * Supply reach geometry as `cross_sections` arrays (Python or JSON). No built-in HEC-RAS `.g01` importer in this repository.

@@ -178,7 +178,11 @@ When the upstream energy grade exceeds the low chord, pressure flow is evaluated
 When upstream energy exceeds the high chord, flow is split between pressure flow under the deck and weir overtopping:
 $$Q_{total} = Q_{pressure} + Q_{weir}$$
 $$Q_{weir} = C_w f_s L_{road} (E_{up} - H_{road})^{1.5}$$
-where $f_s$ is the Bradley (1978) submergence factor from downstream tailwater. If submergence exceeds `bridge_max_weir_submergence` (default 0.98), the solver switches to the energy method through the opening instead of pressure/weir equations.
+where $f_s$ is the Bradley (1978) submergence factor from downstream tailwater, evaluated **per deck segment** when a piecewise profile is present; the maximum segment submergence ratio is compared to `bridge_max_weir_submergence` (default 0.98). If submergence exceeds the cap, the solver switches to the energy method through the opening instead of pressure/weir equations.
+
+**Solver order (HEC-RAS):** low-flow Class A/B/C → reconcile with high flow when `EGL > max(low chord)` → pressure-only (opening + vents) → combined balance when segment weir flow is active → energy fallback on submergence cap. Reported `flow_regime` matches the branch taken.
+
+**Known deltas vs HEC-RAS** — audit, Phase 4.2 fixes, and **intentional remaining deltas**: [`pressure_weir_combined_flow_audit.md`](../development/pressure_weir_combined_flow_audit.md#intentional-remaining-deltas). Parity summary: [`hecras_parity.md`](hecras_parity.md#bridge-high-flow-intentional-remaining-deltas).
 
 #### F2. High-Flow Method Selection
 Set `bridge_high_flow_methods` per bridge when downstream tailwater is at or above the low chord:
@@ -193,7 +197,7 @@ Optional piecewise-linear deck/roadway profiles per bridge (HEC-RAS deck editor 
 * `bridge_deck_low_elevations` — low chord (soffit) at each station
 * `bridge_deck_high_elevations` — high chord (roadway crest) at each station
 
-When provided (≥ 2 points each), the solver uses profile extrema: **minimum** low chord for free-flow limits, **maximum** low chord for pressure-flow EGL trigger, **minimum** high chord for weir onset, and segment-wise **effective weir length** and **trapezoidal opening area** for pressure flow. Scalar `bridge_low_chords` / `bridge_high_chords` remain required fallbacks when profiles are omitted.
+When provided (≥ 2 points each), the solver uses profile extrema: **minimum** low chord for free-flow limits, **maximum** low chord for the sluice/orifice switch and EGL pressure trigger, **segment-wise** crest elevations for weir overtopping and submergence, and a **trapezoidal opening area factor** for pressure flow (see [intentional deltas](../development/pressure_weir_combined_flow_audit.md#intentional-remaining-deltas) for WSEL-dependent opening). Scalar `bridge_low_chords` / `bridge_high_chords` remain required fallbacks when profiles are omitted.
 
 #### G2. Unified roadway embankment (API v26)
 

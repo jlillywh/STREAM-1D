@@ -49,7 +49,7 @@ struct PointBenchmarkCase {
 }
 
 fn load_conspan_project() -> SteadyInputs {
-    let project_json = include_str!("../python/verification/conspan_project_12.json");
+    let project_json = include_str!("../verification/fixtures/conspan_project_12.json");
     let v: serde_json::Value = serde_json::from_str(project_json).unwrap();
     build_conspan_inputs_from_json(&v)
 }
@@ -160,7 +160,7 @@ fn build_conspan_inputs_from_json(v: &serde_json::Value) -> SteadyInputs {
 
 #[test]
 fn test_hecras_conspan_profiles() {
-    let profiles_json = include_str!("../python/verification/hecras_conspan_profiles.json");
+    let profiles_json = include_str!("../verification/fixtures/hecras_conspan_profiles.json");
     let profiles_file: ConspanProfilesFile = serde_json::from_str(profiles_json).unwrap();
     let mut base = load_conspan_project();
     let station_list: Vec<f64> = base.cross_sections.iter().map(|xs| xs.station).collect();

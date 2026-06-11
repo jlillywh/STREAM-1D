@@ -1,6 +1,6 @@
 //! Steady-profile verification: approach guide-bank narrowing vs reach-only `coeff_contraction`.
 //!
-//! Benchmark: `python/verification/bridge_guide_bank_contraction.json`
+//! Benchmark: `verification/fixtures/bridge_guide_bank_contraction.json`
 
 use stream1d::geometry::{CrossSection, GuideBankToe, GuideBanks};
 use stream1d::solvers::{solve_steady, SteadyInputs};
@@ -97,10 +97,10 @@ fn upstream_approach_wsel(result: &stream1d::solvers::steady::SteadyResult) -> f
 }
 
 #[test]
-#[ignore = "run manually to refresh python/verification/bridge_guide_bank_contraction.json"]
+#[ignore = "run manually to refresh verification/fixtures/bridge_guide_bank_contraction.json"]
 fn capture_guide_bank_contraction_golden() {
     let file: BenchmarkFile = serde_json::from_str(include_str!(
-        "../python/verification/bridge_guide_bank_contraction.json"
+        "../verification/fixtures/bridge_guide_bank_contraction.json"
     ))
     .unwrap();
     for case in &file.cases {
@@ -119,7 +119,7 @@ fn capture_guide_bank_contraction_golden() {
 #[test]
 fn bridge_guide_bank_contraction_benchmarks() {
     let file: BenchmarkFile = serde_json::from_str(include_str!(
-        "../python/verification/bridge_guide_bank_contraction.json"
+        "../verification/fixtures/bridge_guide_bank_contraction.json"
     ))
     .expect("guide-bank contraction benchmark JSON");
 

@@ -1,6 +1,6 @@
 //! Roadway embankment fill via `bridge_roadway_embankments` — no manual `blocked_obstructions` on BU/BD.
 //!
-//! Benchmark: `python/verification/bridge_roadway_embankment.json`
+//! Benchmark: `verification/fixtures/bridge_roadway_embankment.json`
 
 use stream1d::geometry::CrossSection;
 use stream1d::solvers::bridge_roadway_compose::{
@@ -271,7 +271,7 @@ fn interpolated_bu_gets_embankment_fill_without_manual_polylines() {
 #[test]
 fn benchmark_json_typical_roadway_fill() {
     let file: BenchmarkFile =
-        serde_json::from_str(include_str!("../python/verification/bridge_roadway_embankment.json"))
+        serde_json::from_str(include_str!("../verification/fixtures/bridge_roadway_embankment.json"))
             .expect("benchmark JSON");
     let case = file
         .cases
