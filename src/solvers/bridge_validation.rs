@@ -18,8 +18,9 @@ pub struct SteadyValidationResult {
 
 /// Semantic validation of steady inputs (non-fatal warnings).
 pub fn validate_steady_inputs(inputs: &SteadyInputs) -> SteadyValidationResult {
-    let mut warnings = validate_bridge_opening_lateral_extent(inputs);
-    warnings.extend(validate_bridge_guide_banks(inputs));
+    let inputs = crate::solvers::bridge_roadway_compose::composed_steady_inputs(inputs);
+    let mut warnings = validate_bridge_opening_lateral_extent(&inputs);
+    warnings.extend(validate_bridge_guide_banks(&inputs));
     SteadyValidationResult { warnings }
 }
 

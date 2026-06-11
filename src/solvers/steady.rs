@@ -211,6 +211,21 @@ pub struct SteadyInputs {
     /// Pier centerline stations across opening per bridge `[bridge][pier]` (deck station frame).
     #[serde(default)]
     pub bridge_pier_stations: Option<Vec<Vec<f64>>>,
+    /// Pier top width (perpendicular to flow) per bridge `[bridge][pier]` — linear taper with `bridge_pier_bottom_widths`.
+    #[serde(default)]
+    pub bridge_pier_top_widths: Option<Vec<Vec<f64>>>,
+    #[serde(default)]
+    pub bridge_pier_bottom_widths: Option<Vec<Vec<f64>>>,
+    /// Piecewise pier width profile elevations per bridge `[bridge][pier][point]` (absolute elevation, strictly increasing).
+    #[serde(default)]
+    pub bridge_pier_width_elevations: Option<Vec<Vec<Vec<f64>>>>,
+    #[serde(default)]
+    pub bridge_pier_width_values: Option<Vec<Vec<Vec<f64>>>>,
+    /// Optional cap/base elevations for top/bottom pair (omit when using width profile).
+    #[serde(default)]
+    pub bridge_pier_top_elevations: Option<Vec<Vec<f64>>>,
+    #[serde(default)]
+    pub bridge_pier_base_elevations: Option<Vec<Vec<f64>>>,
     /// HEC-RAS BU (bridge upstream face) cross section per bridge. Overrides reach US geometry.
     #[serde(default)]
     pub bridge_upstream_cross_sections: Option<Vec<CrossSection>>,
@@ -247,6 +262,16 @@ pub struct SteadyInputs {
     /// Guide banks on departure cut (reach lateral `x`).
     #[serde(default)]
     pub bridge_departure_guide_banks: Option<Vec<crate::geometry::GuideBanks>>,
+    /// Unified roadway embankment per bridge (API v26). Composes deck, abutment, ineffective, blocked.
+    #[serde(default)]
+    pub bridge_roadway_embankments: Option<
+        Vec<Option<crate::solvers::bridge_roadway_compose::BridgeRoadwayEmbankment>>,
+    >,
+    /// Opening-frame embankment blocked tops composed from `bridge_roadway_embankments` (runtime).
+    #[serde(default, skip_serializing)]
+    pub(crate) bridge_composed_embankment_blocked: Option<
+        Vec<Option<crate::solvers::bridge_roadway_compose::ComposedEmbankmentBlocked>>,
+    >,
 
     /// Downstream boundary condition type (0 = Known WSEL, 1 = Critical Depth, 2 = Normal Depth, 3 = Rating Curve)
     #[serde(default)]
@@ -761,7 +786,7 @@ fn bridge_face_blocks(
     (stations, elevations)
 }
 
-pub(crate) fn bridge_ineffective_upstream_for(
+pub fn bridge_ineffective_upstream_for(
     inputs: &SteadyInputs,
     b_idx: usize,
 ) -> Option<IneffectiveFlowAreas> {
@@ -782,7 +807,7 @@ pub(crate) fn bridge_ineffective_upstream_for(
     IneffectiveFlowAreas::from_block_pairs(&left_s, &left_e, &right_s, &right_e)
 }
 
-pub(crate) fn bridge_ineffective_downstream_for(
+pub fn bridge_ineffective_downstream_for(
     inputs: &SteadyInputs,
     b_idx: usize,
 ) -> Option<IneffectiveFlowAreas> {
@@ -879,6 +904,19 @@ fn bridge_face_geometry_for(
         departure_xs,
         guide_banks_approach,
         guide_banks_departure,
+        crate::solvers::pier_geometry::pier_width_user_for_bridge_index(
+            &inputs.bridge_pier_top_widths,
+            &inputs.bridge_pier_bottom_widths,
+            &inputs.bridge_pier_width_elevations,
+            &inputs.bridge_pier_width_values,
+            &inputs.bridge_pier_top_elevations,
+            &inputs.bridge_pier_base_elevations,
+            b_idx,
+        ),
+        crate::solvers::bridge_roadway_compose::composed_embankment_blocked_for(
+            &inputs.bridge_composed_embankment_blocked,
+            b_idx,
+        ),
     )
 }
 
@@ -947,10 +985,11 @@ fn bridge_coupling_for(inputs: &SteadyInputs, b_idx: usize) -> crate::solvers::b
 
 /// Runs the steady-state water surface profile solver.
 pub fn solve_steady(inputs: &SteadyInputs) -> SteadyResult {
-    if crate::solvers::junction::has_tributary_junction(inputs) {
-        return crate::solvers::junction::solve_steady_junction(inputs);
+    let inputs = crate::solvers::bridge_roadway_compose::composed_steady_inputs(inputs);
+    if crate::solvers::junction::has_tributary_junction(&inputs) {
+        return crate::solvers::junction::solve_steady_junction(&inputs);
     }
-    solve_steady_single_reach(inputs)
+    solve_steady_single_reach(&inputs)
 }
 
 /// Single-reach steady solver (no tributary junction).

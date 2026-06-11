@@ -5,6 +5,9 @@ use crate::geometry::{
 use crate::solvers::bridge_abutment::{
     resolve_abutments, BridgeAbutmentUserInput, BridgeAbutments,
 };
+use crate::solvers::pier_geometry::{
+    evenly_spaced_pier_stations, resolve_pier_width_specs, PierWidthUserInput, ResolvedPier,
+};
 use crate::solvers::culvert::apply_barrel_skew;
 use crate::utils::{UnitSystem, FT_TO_M, CFS_TO_CMS, G_METRIC};
 
@@ -37,6 +40,8 @@ pub struct BridgeSectionContext {
     pub guide_banks_approach: Option<GuideBanks>,
     /// Guide banks on the departure cut for bridge expansion area.
     pub guide_banks_departure: Option<GuideBanks>,
+    /// Optional per-pier tapered width overrides (user units; converted in `build_bridge_geometry`).
+    pub pier_widths: Option<PierWidthUserInput>,
 }
 
 /// HEC-RAS-style bridge skew: projected opening width × cos(θ), friction length ÷ cos(θ).
@@ -251,6 +256,19 @@ pub struct BridgeSolveParams {
     pub skew_deg: f64,
     #[serde(default)]
     pub pier_stations: Option<Vec<f64>>,
+    /// Tapered pier top width per pier (perpendicular to flow). With `pier_bottom_widths`, linear taper.
+    #[serde(default)]
+    pub pier_top_widths: Option<Vec<f64>>,
+    #[serde(default)]
+    pub pier_bottom_widths: Option<Vec<f64>>,
+    #[serde(default)]
+    pub pier_width_elevations: Option<Vec<Vec<f64>>>,
+    #[serde(default)]
+    pub pier_width_values: Option<Vec<Vec<f64>>>,
+    #[serde(default)]
+    pub pier_top_elevations: Option<Vec<f64>>,
+    #[serde(default)]
+    pub pier_base_elevations: Option<Vec<f64>>,
     #[serde(default)]
     pub deck_stations: Option<Vec<f64>>,
     #[serde(default)]
@@ -324,6 +342,12 @@ pub struct BridgeSolveParams {
     /// Optional interior bridge cuts (US → DS). Stored; hydraulics use BU/BD only today.
     #[serde(default)]
     pub xs_internal: Option<Vec<CrossSection>>,
+    /// Unified roadway embankment (API v26). Composes flat deck/abutment/ineffective/blocked fields.
+    #[serde(default)]
+    pub roadway_embankment: Option<crate::solvers::bridge_roadway_compose::BridgeRoadwayEmbankment>,
+    #[serde(default, skip_serializing)]
+    pub(crate) composed_embankment_blocked:
+        Option<crate::solvers::bridge_roadway_compose::ComposedEmbankmentBlocked>,
 }
 
 fn default_wspro_coeff() -> f64 {
@@ -386,6 +410,12 @@ impl Default for BridgeSolveParams {
             max_weir_submergence: default_max_weir_submergence(),
             skew_deg: 0.0,
             pier_stations: None,
+            pier_top_widths: None,
+            pier_bottom_widths: None,
+            pier_width_elevations: None,
+            pier_width_values: None,
+            pier_top_elevations: None,
+            pier_base_elevations: None,
             deck_stations: None,
             deck_low_elevations: None,
             deck_high_elevations: None,
@@ -420,6 +450,8 @@ impl Default for BridgeSolveParams {
             xs_down: None,
             opening_reach_station_origin: None,
             xs_internal: None,
+            roadway_embankment: None,
+            composed_embankment_blocked: None,
         }
     }
 }
@@ -642,6 +674,8 @@ pub struct BridgeGeometry {
     pub num_piers: i32,
     /// Explicit pier centerline stations (metric); empty → evenly spaced across opening.
     pub pier_stations_m: Vec<f64>,
+    /// Resolved per-pier width specs (metric). Empty → synthesize legacy constant prisms at solve time.
+    pub pier_specs: Vec<ResolvedPier>,
     pub skew_deg: f64,
     pub skew_cos: f64,
     pub pier_shape: PierShape,
@@ -823,47 +857,73 @@ fn gross_projected_opening_width_m(geom: &BridgeGeometry) -> f64 {
     (s1 - s0).max(0.0) * geom.skew_cos
 }
 
-fn effective_pier_width_m(geom: &BridgeGeometry) -> f64 {
-    geom.pier_width_m / geom.skew_cos
+fn legacy_resolved_piers(geom: &BridgeGeometry) -> Vec<ResolvedPier> {
+    let (s_min, s_max) = opening_station_bounds_m(geom);
+    let inset = geom.pier_width_m.max(0.0) * 0.5;
+    let stations = if !geom.pier_stations_m.is_empty() {
+        geom.pier_stations_m.clone()
+    } else {
+        evenly_spaced_pier_stations(geom.num_piers, s_min, s_max, inset)
+    };
+    let z_bed = geom.z_up_m.min(geom.z_down_m);
+    let z_tops: Vec<f64> = stations
+        .iter()
+        .map(|&s| {
+            geom.deck
+                .as_ref()
+                .map(|d| interpolate_profile(&d.stations_m, &d.low_elevations_m, s))
+                .unwrap_or(geom.low_chord_m)
+        })
+        .collect();
+    resolve_pier_width_specs(
+        geom.pier_width_m,
+        &stations,
+        z_bed,
+        &z_tops,
+        None,
+    )
 }
 
-fn resolved_pier_stations_m(geom: &BridgeGeometry) -> Vec<f64> {
-    if !geom.pier_stations_m.is_empty() {
-        return geom.pier_stations_m.clone();
-    }
-    let n = geom.num_piers.max(0);
-    if n == 0 {
-        return vec![];
-    }
-    let (s_min, s_max) = opening_station_bounds_m(geom);
-    let span = (s_max - s_min).max(1e-3);
-    let w = effective_pier_width_m(geom);
-    let inset = w * 0.5;
-    let usable = (span - 2.0 * inset).max(w);
-    (0..n)
-        .map(|i| s_min + inset + usable * (i as f64 + 1.0) / (n as f64 + 1.0))
+fn active_resolved_piers(geom: &BridgeGeometry) -> Vec<ResolvedPier> {
+    let piers = if geom.pier_specs.is_empty() {
+        legacy_resolved_piers(geom)
+    } else {
+        geom.pier_specs.clone()
+    };
+    piers
+        .into_iter()
+        .filter(|p| pier_in_opening_span(geom, p))
         .collect()
 }
 
-fn pier_in_opening_span(geom: &BridgeGeometry, station: f64) -> bool {
+fn pier_half_width_opening_m(geom: &BridgeGeometry, pier: &ResolvedPier) -> f64 {
+    pier.spec.width_perp_at(geom.low_chord_m).max(0.0) / geom.skew_cos * 0.5
+}
+
+fn pier_in_opening_span(geom: &BridgeGeometry, pier: &ResolvedPier) -> bool {
     let (s_min, s_max) = opening_station_bounds_m(geom);
-    let half = effective_pier_width_m(geom) * 0.5;
-    station + half > s_min && station - half < s_max
+    let half = pier_half_width_opening_m(geom, pier);
+    pier.station_m + half > s_min && pier.station_m - half < s_max
 }
 
-fn active_pier_count_in_opening(geom: &BridgeGeometry) -> usize {
-    resolved_pier_stations_m(geom)
-        .iter()
-        .filter(|&&s| pier_in_opening_span(geom, s))
-        .count()
+fn total_pier_flow_width_at_wsel_m(geom: &BridgeGeometry, wsel: f64, z_bed: f64) -> f64 {
+    let piers = active_resolved_piers(geom);
+    crate::solvers::pier_geometry::total_pier_flow_width_at_wsel_m(
+        &piers,
+        wsel,
+        z_bed,
+        geom.skew_cos,
+    )
 }
 
-fn total_pier_flow_width_m(geom: &BridgeGeometry) -> f64 {
-    active_pier_count_in_opening(geom) as f64 * effective_pier_width_m(geom)
-}
-
-fn pier_submerged_area_geom(geom: &BridgeGeometry, depth: f64) -> f64 {
-    total_pier_flow_width_m(geom) * depth.max(0.0)
+fn pier_submerged_area_at_wsel(geom: &BridgeGeometry, wsel: f64, z_bed: f64) -> f64 {
+    let piers = active_resolved_piers(geom);
+    crate::solvers::pier_geometry::total_submerged_pier_area_m2(
+        &piers,
+        wsel,
+        z_bed,
+        geom.skew_cos,
+    )
 }
 
 /// Downstream flow area for Yarnell: base area minus per-side abutments, before pier blockage.
@@ -873,9 +933,8 @@ fn yarnell_downstream_flow_area_m2(
     z_bed: f64,
     geom: &BridgeGeometry,
 ) -> f64 {
-    let depth = (wsel - z_bed).max(0.0);
     let props = obstructed_hydraulics(table, wsel, z_bed, geom, false);
-    (props.a_eff + pier_submerged_area_geom(geom, depth)).max(1e-5)
+    (props.a_eff + pier_submerged_area_at_wsel(geom, wsel, z_bed)).max(1e-5)
 }
 
 /// HEC-RAS weighting: use the more constricted of BU and BD at a common water-surface elevation.
@@ -918,7 +977,7 @@ fn obstructed_hydraulics(
     );
     let a_base = base_flow_area(&row, ineffective, None);
     let depth = (wsel - z_bed).max(0.0);
-    let a_piers = pier_submerged_area_geom(geom, depth);
+    let a_piers = pier_submerged_area_at_wsel(geom, wsel, z_bed);
     let a_abut = geom.abutments.submerged_area_m2(wsel, z_bed);
     let a_eff = (a_base - a_piers - a_abut).max(1e-5);
 
@@ -935,7 +994,10 @@ fn obstructed_hydraulics(
         row.top_width
     };
     let abut_width_at_wsel = geom.abutments.submerged_width_at_wsel_m(wsel, z_bed);
-    let top_width = (t_base - total_pier_flow_width_m(geom) - abut_width_at_wsel).max(1e-3);
+    let top_width = (t_base
+        - total_pier_flow_width_at_wsel_m(geom, wsel, z_bed)
+        - abut_width_at_wsel)
+        .max(1e-3);
 
     ObstructedHydraulics {
         a_eff,
@@ -1129,7 +1191,7 @@ fn pier_drag_momentum_with_table(
     is_upstream: bool,
 ) -> f64 {
     let depth = (wsel - z_bed).max(0.0);
-    let a_pier = pier_submerged_area_geom(geom, depth);
+    let a_pier = pier_submerged_area_at_wsel(geom, wsel, z_bed);
     if a_pier <= 1e-6 {
         return 0.0;
     }
@@ -1259,6 +1321,50 @@ pub fn yarnell_pier_head_loss(
     }
 
     let a_piers = (num_piers as f64) * pier_width_m * depth_down;
+    yarnell_pier_head_loss_from_area(
+        q_metric,
+        wsel_down_metric,
+        z_bed_down_metric,
+        a_piers,
+        flow_area_m2,
+        pier_shape,
+    )
+}
+
+fn yarnell_pier_head_loss_integrated(
+    q_metric: f64,
+    wsel_down_metric: f64,
+    z_bed_down_metric: f64,
+    geom: &BridgeGeometry,
+    flow_area_m2: f64,
+) -> f64 {
+    if q_metric <= 1e-5 || flow_area_m2 <= 1e-5 {
+        return 0.0;
+    }
+    let a_piers = pier_submerged_area_at_wsel(geom, wsel_down_metric, z_bed_down_metric);
+    yarnell_pier_head_loss_from_area(
+        q_metric,
+        wsel_down_metric,
+        z_bed_down_metric,
+        a_piers,
+        flow_area_m2,
+        geom.pier_shape,
+    )
+}
+
+fn yarnell_pier_head_loss_from_area(
+    q_metric: f64,
+    wsel_down_metric: f64,
+    z_bed_down_metric: f64,
+    a_piers: f64,
+    flow_area_m2: f64,
+    pier_shape: PierShape,
+) -> f64 {
+    let depth_down = (wsel_down_metric - z_bed_down_metric).max(0.0);
+    if depth_down <= 1e-5 || a_piers <= 1e-6 {
+        return 0.0;
+    }
+
     let a_unobstructed = (flow_area_m2 - a_piers).max(1e-5);
     let a_piers_clamped = a_piers.min(a_unobstructed * 0.9);
     let alpha = a_piers_clamped / a_unobstructed;
@@ -1293,7 +1399,7 @@ fn gross_opening_area_at_low_chord(
         );
         base_flow_area(&row, ineffective, None)
     };
-    let a_piers = pier_submerged_area_geom(geom, height_under_deck);
+    let a_piers = pier_submerged_area_at_wsel(geom, wsel, z_bed);
     let a_abut = geom.abutments.submerged_area_m2(wsel, z_bed);
     (a_gross - a_piers - a_abut).max(1e-4)
 }
@@ -1513,19 +1619,18 @@ fn solve_low_flow_class_a(
         LowFlowMethod::Yarnell | LowFlowMethod::Auto => {}
     }
 
-    let use_yarnell = matches!(method, LowFlowMethod::Yarnell) && geom.num_piers > 0;
+    let use_yarnell =
+        matches!(method, LowFlowMethod::Yarnell) && !active_resolved_piers(geom).is_empty();
 
     if use_yarnell {
         let flow_area_net = yarnell_downstream_flow_area_m2(table_down, tw_m, geom.z_down_m, geom);
 
         if flow_area_net > 1e-5 && q_metric > 1e-5 {
-            let hl = yarnell_pier_head_loss(
+            let hl = yarnell_pier_head_loss_integrated(
                 q_metric,
                 tw_m,
                 geom.z_down_m,
-                geom.pier_width_m,
-                geom.num_piers,
-                geom.pier_shape,
+                geom,
                 flow_area_net,
             );
             return tw_m + hl;
@@ -2121,8 +2226,39 @@ fn geometry_tables_from_params(
 
 /// Solves upstream headwater from fixed tailwater using [`BridgeSolveParams`].
 pub fn solve_bridge_from_params(params: &BridgeSolveParams) -> BridgeSolveResult {
-    let (table_up, table_down, xs_up, xs_down) = geometry_tables_from_params(params);
-    let coupling = coupling_from_params(params);
+    let mut params = params.clone();
+    crate::solvers::bridge_roadway_compose::apply_roadway_embankment_compose_params(&mut params);
+    let (_table_up, _table_down, mut xs_up, mut xs_down) = geometry_tables_from_params(&params);
+    let opening_origin = params
+        .opening_reach_station_origin
+        .or_else(|| {
+            Some(crate::solvers::bridge_interior::infer_opening_reach_station_origin(
+                &xs_up,
+            ))
+        });
+    if let Some(blocked) = params.composed_embankment_blocked.as_ref() {
+        crate::solvers::bridge_roadway_compose::merge_embankment_blocked_into_section(
+            &mut xs_up,
+            blocked.left.as_ref(),
+            blocked.right.as_ref(),
+            opening_origin,
+        );
+        crate::solvers::bridge_roadway_compose::merge_embankment_blocked_into_section(
+            &mut xs_down,
+            blocked.left.as_ref(),
+            blocked.right.as_ref(),
+            opening_origin,
+        );
+    }
+    let (table_up, table_down) = {
+        let up_metric = xs_up.to_metric();
+        let down_metric = xs_down.to_metric();
+        (
+            up_metric.generate_lookup_table(params.num_slices),
+            down_metric.generate_lookup_table(params.num_slices),
+        )
+    };
+    let coupling = coupling_from_params(&params);
     let deck = build_bridge_deck_profile(
         params.low_chord,
         params.high_chord,
@@ -2131,9 +2267,6 @@ pub fn solve_bridge_from_params(params: &BridgeSolveParams) -> BridgeSolveResult
         params.deck_high_elevations.as_deref(),
         params.units,
     );
-    let opening_origin = params
-        .opening_reach_station_origin
-        .or_else(|| params.xs_up.as_ref().map(crate::solvers::bridge_interior::infer_opening_reach_station_origin));
     let interior = crate::solvers::bridge_interior::BridgeInteriorInput {
         bu: Some(xs_up.clone()),
         bd: Some(xs_down.clone()),
@@ -2148,14 +2281,22 @@ pub fn solve_bridge_from_params(params: &BridgeSolveParams) -> BridgeSolveResult
         params.units,
     );
     let sections = BridgeSectionContext {
-        ineffective_up: ineffective_upstream_from_params(params),
-        ineffective_down: ineffective_downstream_from_params(params),
+        ineffective_up: ineffective_upstream_from_params(&params),
+        ineffective_down: ineffective_downstream_from_params(&params),
         xs_up: Some(xs_up),
         xs_down: Some(xs_down),
         internal_xs: interior.internal,
         opening_reach_station_origin: opening_origin,
         skew_deg: params.skew_deg,
         pier_stations: params.pier_stations.clone(),
+        pier_widths: crate::solvers::pier_geometry::pier_width_user_from_rating_params(
+            &params.pier_top_widths,
+            &params.pier_bottom_widths,
+            &params.pier_width_elevations,
+            &params.pier_width_values,
+            &params.pier_top_elevations,
+            &params.pier_base_elevations,
+        ),
         friction_length_m,
         xs_approach: None,
         xs_departure: None,
@@ -2189,7 +2330,7 @@ pub fn solve_bridge_from_params(params: &BridgeSolveParams) -> BridgeSolveResult
         &table_up,
         &table_down,
         &coupling,
-        interval_length_metric(params),
+        interval_length_metric(&params),
         deck.as_ref(),
         Some(&sections),
     )
@@ -2348,6 +2489,32 @@ pub fn solve_bridge_tailwater(
     }
 }
 
+fn pier_width_user_to_metric(user: &PierWidthUserInput, units: UnitSystem) -> PierWidthUserInput {
+    let to_m = |v: f64| {
+        if units == UnitSystem::USCustomary {
+            v * FT_TO_M
+        } else {
+            v
+        }
+    };
+    let to_m_vec = |v: &Option<Vec<f64>>| v.as_ref().map(|xs| xs.iter().map(|x| to_m(*x)).collect());
+    let to_m_mat = |v: &Option<Vec<Vec<f64>>>| {
+        v.as_ref().map(|rows| {
+            rows.iter()
+                .map(|row| row.iter().map(|x| to_m(*x)).collect())
+                .collect()
+        })
+    };
+    PierWidthUserInput {
+        top_widths: to_m_vec(&user.top_widths),
+        bottom_widths: to_m_vec(&user.bottom_widths),
+        width_elevations: to_m_mat(&user.width_elevations),
+        width_values: to_m_mat(&user.width_values),
+        top_elevations: to_m_vec(&user.top_elevations),
+        base_elevations: to_m_vec(&user.base_elevations),
+    }
+}
+
 fn build_bridge_geometry(
     low_chord: f64,
     high_chord: f64,
@@ -2493,23 +2660,66 @@ fn build_bridge_geometry(
     let (opening_s_min, opening_s_max) = opening_station_bounds_from_deck(deck_owned.as_ref());
     let abutments = resolve_abutments(&abutment_input, opening_s_min, opening_s_max, skew_cos, units);
 
+    let pier_width_perp_m = if units == UnitSystem::USCustomary {
+        pier_width * FT_TO_M
+    } else {
+        pier_width
+    };
+    let z_up_m = if units == UnitSystem::USCustomary {
+        z_up * FT_TO_M
+    } else {
+        z_up
+    };
+    let z_down_m = if units == UnitSystem::USCustomary {
+        z_down * FT_TO_M
+    } else {
+        z_down
+    };
+    let pier_width_user = sections
+        .and_then(|s| s.pier_widths.as_ref())
+        .map(|u| pier_width_user_to_metric(u, units));
+    let inset = pier_width_perp_m.max(0.0) * 0.5;
+    let pier_station_list = if !pier_stations_m.is_empty() {
+        pier_stations_m.clone()
+    } else {
+        evenly_spaced_pier_stations(num_piers, opening_s_min, opening_s_max, inset)
+    };
+    let z_bed_m = z_up_m.min(z_down_m);
+    let z_top_defaults: Vec<f64> = pier_station_list
+        .iter()
+        .map(|&s| {
+            deck_owned
+                .as_ref()
+                .map(|d| interpolate_profile(&d.stations_m, &d.low_elevations_m, s))
+                .unwrap_or(low_min)
+        })
+        .collect();
+    let pier_specs = resolve_pier_width_specs(
+        pier_width_perp_m,
+        &pier_station_list,
+        z_bed_m,
+        &z_top_defaults,
+        pier_width_user.as_ref(),
+    );
+
     if units == UnitSystem::USCustomary {
         BridgeGeometry {
             low_chord_m: low_min,
             low_chord_max_m: low_max,
             high_chord_m: high_min,
             high_chord_max_m: high_max,
-            pier_width_m: pier_width * FT_TO_M,
+            pier_width_m: pier_width_perp_m,
             num_piers,
             pier_stations_m: pier_stations_m.clone(),
+            pier_specs: pier_specs.clone(),
             skew_deg,
             skew_cos,
             pier_shape: PierShape::from_i32(pier_shape_type),
             abutments: abutments.clone(),
             weir_coeff_m: weir_coeff / 1.8113,
             orifice_coeff: submerged_c,
-            z_up_m: z_up * FT_TO_M,
-            z_down_m: z_down * FT_TO_M,
+            z_up_m,
+            z_down_m,
             low_flow_method: LowFlowMethod::from_i32(coupling.low_flow_method),
             high_flow_method: HighFlowMethod::from_i32(coupling.high_flow_method),
             length_m,
@@ -2519,7 +2729,7 @@ fn build_bridge_geometry(
             pressure_coeff_inlet: coupling.pressure_coeff_inlet,
             pressure_coeff_submerged: submerged_c,
             max_weir_submergence: coupling.max_weir_submergence,
-            deck: deck_owned,
+            deck: deck_owned.clone(),
             ineffective_up: ineffective_up.clone(),
             ineffective_down: ineffective_down.clone(),
             xs_up: xs_up.clone(),
@@ -2537,17 +2747,18 @@ fn build_bridge_geometry(
             low_chord_max_m: low_max,
             high_chord_m: high_min,
             high_chord_max_m: high_max,
-            pier_width_m: pier_width,
+            pier_width_m: pier_width_perp_m,
             num_piers,
             pier_stations_m,
+            pier_specs,
             skew_deg,
             skew_cos,
             pier_shape: PierShape::from_i32(pier_shape_type),
             abutments,
             weir_coeff_m: weir_coeff,
             orifice_coeff: submerged_c,
-            z_up_m: z_up,
-            z_down_m: z_down,
+            z_up_m,
+            z_down_m,
             low_flow_method: LowFlowMethod::from_i32(coupling.low_flow_method),
             high_flow_method: HighFlowMethod::from_i32(coupling.high_flow_method),
             length_m,

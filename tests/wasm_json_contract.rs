@@ -78,20 +78,19 @@ fn wasm_bridge_rating_curve_contract() {
     };
     use stream1d::utils::UnitSystem;
 
+    let mut bridge = BridgeSolveParams::default();
+    bridge.low_chord = 5.0;
+    bridge.high_chord = 7.0;
+    bridge.z_down = 0.0;
+    bridge.z_up = 0.0;
+    bridge.tw_wsel = 2.5;
+    bridge.units = UnitSystem::Metric;
+    bridge.low_flow_method = 3;
+    bridge.channel_width = 10.0;
+    bridge.manning_n = 0.03;
     let inputs = BridgeRatingCurveInputs {
         q_values: vec![10.0, 20.0],
-        bridge: BridgeSolveParams {
-            low_chord: 5.0,
-            high_chord: 7.0,
-            z_down: 0.0,
-            z_up: 0.0,
-            tw_wsel: 2.5,
-            units: UnitSystem::Metric,
-            low_flow_method: 3,
-            channel_width: 10.0,
-            manning_n: 0.03,
-            ..Default::default()
-        },
+        bridge,
     };
     let curve = compute_bridge_rating_curve(&inputs);
     assert_eq!(curve.q.len(), 2);
@@ -116,35 +115,33 @@ fn steady_validation_bridge_opening_width_warning() {
         is_overbank: None,
         blocked_obstructions: None,
         ineffective_flow_areas: None,
-    guide_banks: None,
+        guide_banks: None,
     };
-    let inputs = SteadyInputs {
-        cross_sections: vec![
-            parent.clone(),
-            CrossSection {
-                station: 0.0,
-                x: vec![0.0, 0.0, 200.0, 200.0],
-                y: vec![10.0, 0.0, 0.0, 10.0],
-                n_stations: vec![0.0],
-                n_values: vec![0.03],
-                unit_system: UnitSystem::Metric,
-                is_overbank: None,
-                blocked_obstructions: None,
-                ineffective_flow_areas: None,
+    let mut inputs = SteadyInputs::default();
+    inputs.cross_sections = vec![
+        parent.clone(),
+        CrossSection {
+            station: 0.0,
+            x: vec![0.0, 0.0, 200.0, 200.0],
+            y: vec![10.0, 0.0, 0.0, 10.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.03],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
             guide_banks: None,
-            },
-        ],
-        flow_rate: 10.0,
-        bridge_stations: Some(vec![50.0]),
-        bridge_low_chords: Some(vec![5.0]),
-        bridge_high_chords: Some(vec![7.0]),
-        bridge_deck_stations: Some(vec![vec![0.0, 35.0]]),
-        bridge_deck_low_elevations: Some(vec![vec![5.0, 5.0]]),
-        bridge_deck_high_elevations: Some(vec![vec![7.0, 7.0]]),
-        bridge_opening_reach_station_origins: Some(vec![100.0]),
-        bridge_upstream_cross_sections: Some(vec![parent]),
-        ..Default::default()
-    };
+        },
+    ];
+    inputs.flow_rate = 10.0;
+    inputs.bridge_stations = Some(vec![50.0]);
+    inputs.bridge_low_chords = Some(vec![5.0]);
+    inputs.bridge_high_chords = Some(vec![7.0]);
+    inputs.bridge_deck_stations = Some(vec![vec![0.0, 35.0]]);
+    inputs.bridge_deck_low_elevations = Some(vec![vec![5.0, 5.0]]);
+    inputs.bridge_deck_high_elevations = Some(vec![vec![7.0, 7.0]]);
+    inputs.bridge_opening_reach_station_origins = Some(vec![100.0]);
+    inputs.bridge_upstream_cross_sections = Some(vec![parent]);
     let result = validate_steady_inputs(&inputs);
     assert_eq!(result.warnings.len(), 1);
     assert!(result.warnings[0].contains("exceeds parent"));
@@ -154,17 +151,15 @@ fn steady_validation_bridge_opening_width_warning() {
 fn steady_validation_guide_bank_polyline_warning() {
     use stream1d::geometry::{GuideBankPolyline, GuideBanks};
     use stream1d::solvers::{validate_steady_inputs, SteadyInputs};
-    let inputs = SteadyInputs {
-        bridge_stations: Some(vec![50.0]),
-        bridge_departure_guide_banks: Some(vec![GuideBanks {
-            right_polylines: vec![GuideBankPolyline {
-                stations: vec![1.0, 1.0],
-                elevations: vec![2.0, 3.0],
-            }],
-            ..Default::default()
-        }]),
+    let mut inputs = SteadyInputs::default();
+    inputs.bridge_stations = Some(vec![50.0]);
+    inputs.bridge_departure_guide_banks = Some(vec![GuideBanks {
+        right_polylines: vec![GuideBankPolyline {
+            stations: vec![1.0, 1.0],
+            elevations: vec![2.0, 3.0],
+        }],
         ..Default::default()
-    };
+    }]);
     let result = validate_steady_inputs(&inputs);
     assert_eq!(result.warnings.len(), 1);
     assert!(result.warnings[0].contains("departure"));
@@ -174,7 +169,7 @@ fn steady_validation_guide_bank_polyline_warning() {
 fn wasm_api_metadata_version() {
     let meta = build_api_metadata();
     assert_eq!(meta.api_version, API_VERSION);
-    assert_eq!(API_VERSION, 25);
+    assert_eq!(API_VERSION, 27);
     assert!(meta.culvert_tier1_fields.inputs.contains(&"culvert_inlet_types".to_string()));
     assert_eq!(
         meta.bridge_fields.rating_curve_entry_point,
@@ -197,6 +192,13 @@ fn wasm_api_metadata_version() {
         "bridge_abutment_left_top_profile_elevations",
         "bridge_abutment_right_top_profile_stations",
         "bridge_abutment_right_top_profile_elevations",
+        "bridge_roadway_embankments",
+        "bridge_pier_top_widths",
+        "bridge_pier_bottom_widths",
+        "bridge_pier_width_elevations",
+        "bridge_pier_width_values",
+        "bridge_pier_top_elevations",
+        "bridge_pier_base_elevations",
     ] {
         assert!(
             meta.bridge_fields.inputs.contains(&key.to_string()),
@@ -212,6 +214,13 @@ fn wasm_api_metadata_version() {
         "abutment_right_top_elevation",
         "abutment_left_top_profile_stations",
         "abutment_right_top_profile_elevations",
+        "roadway_embankment",
+        "pier_top_widths",
+        "pier_bottom_widths",
+        "pier_width_elevations",
+        "pier_width_values",
+        "pier_top_elevations",
+        "pier_base_elevations",
     ] {
         assert!(
             meta.bridge_fields
@@ -220,6 +229,153 @@ fn wasm_api_metadata_version() {
             "missing rating curve field {key}"
         );
     }
+}
+
+#[test]
+fn wasm_bridge_roadway_embankment_deserializes_and_composes() {
+    use stream1d::solvers::bridge_roadway_compose::{
+        apply_roadway_embankment_compose_steady, steady_composed_embankment_blocked,
+    };
+
+    let json = r#"{
+        "cross_sections": [
+            {"station": 1000, "x": [0, 10], "y": [0, 0], "n_stations": [0], "n_values": [0.03], "unit_system": "Metric"},
+            {"station": 0, "x": [0, 10], "y": [0, 0], "n_stations": [0], "n_values": [0.03], "unit_system": "Metric"}
+        ],
+        "flow_rate": 10,
+        "regime": 0,
+        "bridge_stations": [500],
+        "bridge_roadway_embankments": [{
+            "deck": {
+                "stations": [0, 10],
+                "low_elevations": [5, 5],
+                "high_elevations": [7, 7]
+            },
+            "left": {
+                "embankment_profile": {
+                    "stations": [-3, 0],
+                    "elevations": [6.5, 7]
+                },
+                "abutment": { "width": 1.0, "top_elevation": 0 }
+            }
+        }]
+    }"#;
+    let mut inputs: SteadyInputs = serde_json::from_str(json).expect("deserialize");
+    apply_roadway_embankment_compose_steady(&mut inputs);
+    assert_eq!(
+        inputs.bridge_deck_stations.as_ref().unwrap()[0],
+        vec![0.0, 10.0]
+    );
+    assert!((inputs.bridge_abutment_left_widths.as_ref().unwrap()[0] - 1.0).abs() < 1e-9);
+    let us_left = inputs
+        .bridge_ineffective_left_stations_upstream
+        .as_ref()
+        .unwrap()[0]
+        .clone();
+    assert_eq!(us_left, vec![-3.0, 0.0]);
+    assert!(steady_composed_embankment_blocked(&inputs, 0).is_some());
+}
+
+#[test]
+fn wasm_unsteady_roadway_embankment_deserializes_and_composes() {
+    use stream1d::solvers::bridge_roadway_compose::{
+        apply_roadway_embankment_compose_unsteady, unsteady_composed_embankment_blocked,
+    };
+    use stream1d::solvers::UnsteadyInputs;
+
+    let json = r#"{
+        "cross_sections": [
+            {"station": 100, "x": [0, 30], "y": [0, 0], "n_stations": [0], "n_values": [0.03], "unit_system": "Metric"},
+            {"station": 0, "x": [0, 30], "y": [0, 0], "n_stations": [0], "n_values": [0.03], "unit_system": "Metric"}
+        ],
+        "initial_wsel": [2.5, 2.5],
+        "initial_q": [15, 15],
+        "dt": 60,
+        "num_steps": 1,
+        "upstream_q_hydrograph": [15],
+        "downstream_wsel_hydrograph": [2.5],
+        "bridge_stations": [50],
+        "bridge_roadway_embankments": [{
+            "deck": {
+                "stations": [0, 10],
+                "low_elevations": [5, 5],
+                "high_elevations": [6.5, 6.5]
+            },
+            "left": {
+                "embankment_profile": {
+                    "stations": [-6, 0],
+                    "elevations": [1.5, 6.5]
+                }
+            }
+        }]
+    }"#;
+    let mut inputs: UnsteadyInputs = serde_json::from_str(json).expect("unsteady roadway JSON");
+    apply_roadway_embankment_compose_unsteady(&mut inputs.bridge);
+    assert_eq!(
+        inputs.bridge.bridge_deck_stations.as_ref().unwrap()[0],
+        vec![0.0, 10.0]
+    );
+    assert_eq!(
+        inputs
+            .bridge
+            .bridge_ineffective_left_stations_upstream
+            .as_ref()
+            .unwrap()[0],
+        vec![-6.0, 0.0]
+    );
+    assert!(unsteady_composed_embankment_blocked(&inputs.bridge, 0).is_some());
+}
+
+#[test]
+fn wasm_rating_curve_roadway_embankment_deserializes_and_composes() {
+    use stream1d::solvers::bridge_roadway_compose::{
+        apply_roadway_embankment_compose_params, rating_composed_embankment_blocked,
+    };
+    use stream1d::solvers::{compute_bridge_rating_curve, BridgeRatingCurveInputs};
+
+    let json = r#"{
+        "q_values": [15.0],
+        "low_chord": 5.0,
+        "high_chord": 6.5,
+        "z_down": 0.0,
+        "z_up": 0.0,
+        "tw_wsel": 2.5,
+        "units": "Metric",
+        "low_flow_method": 3,
+        "channel_width": 30.0,
+        "manning_n": 0.03,
+        "opening_reach_station_origin": 10.0,
+        "roadway_embankment": {
+            "deck": {
+                "stations": [0, 10],
+                "low_elevations": [5, 5],
+                "high_elevations": [6.5, 6.5]
+            },
+            "left": {
+                "embankment_profile": {
+                    "stations": [-6, 0],
+                    "elevations": [1.5, 6.5]
+                }
+            },
+            "right": {
+                "embankment_profile": {
+                    "stations": [10, 16],
+                    "elevations": [6.5, 1.5]
+                }
+            }
+        }
+    }"#;
+    let mut inputs: BridgeRatingCurveInputs = serde_json::from_str(json).expect("rating JSON");
+    apply_roadway_embankment_compose_params(&mut inputs.bridge);
+    assert_eq!(
+        inputs.bridge.deck_stations.as_deref(),
+        Some(&[0.0, 10.0][..])
+    );
+    assert!(rating_composed_embankment_blocked(&inputs.bridge).is_some());
+
+    let curve = compute_bridge_rating_curve(&inputs);
+    assert_eq!(curve.wsel.len(), 1);
+    assert!(curve.wsel[0].is_finite());
 }
 
 #[test]
@@ -251,21 +407,20 @@ fn wasm_bridge_rating_curve_per_side_abutments() {
     assert_eq!(inputs.bridge.abutment_right_top_elevation, Some(2.5));
 
     let asymmetric = compute_bridge_rating_curve(&inputs);
+    let mut symmetric_bridge = BridgeSolveParams::default();
+    symmetric_bridge.low_chord = 5.0;
+    symmetric_bridge.high_chord = 7.0;
+    symmetric_bridge.z_down = 0.0;
+    symmetric_bridge.z_up = 0.0;
+    symmetric_bridge.tw_wsel = 2.5;
+    symmetric_bridge.units = UnitSystem::Metric;
+    symmetric_bridge.low_flow_method = 4;
+    symmetric_bridge.abutment_block_width = 5.0;
+    symmetric_bridge.channel_width = 10.0;
+    symmetric_bridge.manning_n = 0.03;
     let symmetric = compute_bridge_rating_curve(&BridgeRatingCurveInputs {
         q_values: vec![15.0, 20.0],
-        bridge: BridgeSolveParams {
-            low_chord: 5.0,
-            high_chord: 7.0,
-            z_down: 0.0,
-            z_up: 0.0,
-            tw_wsel: 2.5,
-            units: UnitSystem::Metric,
-            low_flow_method: 4,
-            abutment_block_width: 5.0,
-            channel_width: 10.0,
-            manning_n: 0.03,
-            ..Default::default()
-        },
+        bridge: symmetric_bridge,
     });
     assert_eq!(asymmetric.wsel.len(), 2);
     assert!(
@@ -626,5 +781,222 @@ fn bridge_ineffective_nested_arrays_roundtrip() {
     assert_eq!(
         again.bridge_ineffective_left_stations,
         inputs.bridge_ineffective_left_stations
+    );
+}
+
+#[test]
+fn wasm_tapered_pier_fields_deserialize_and_solve() {
+    use stream1d::solvers::bridge::{compute_bridge_rating_curve, BridgeRatingCurveInputs, BridgeSolveParams};
+
+    let steady_json = r#"{
+        "cross_sections": [
+            {"station": 100, "x": [0, 10], "y": [0, 0], "n_stations": [0], "n_values": [0.03], "unit_system": "Metric"},
+            {"station": 0, "x": [0, 10], "y": [0, 0], "n_stations": [0], "n_values": [0.03], "unit_system": "Metric"}
+        ],
+        "flow_rate": 15,
+        "regime": 0,
+        "downstream_wsel": 2.5,
+        "bridge_stations": [50],
+        "bridge_low_chords": [4],
+        "bridge_high_chords": [6],
+        "bridge_pier_widths": [1.5],
+        "bridge_num_piers": [1],
+        "bridge_pier_shapes": [0],
+        "bridge_low_flow_methods": [1],
+        "bridge_pier_stations": [[5.0]],
+        "bridge_pier_top_widths": [[1.0]],
+        "bridge_pier_bottom_widths": [[2.0]],
+        "bridge_deck_stations": [[0, 10]],
+        "bridge_deck_low_elevations": [[4, 4]],
+        "bridge_deck_high_elevations": [[6, 6]]
+    }"#;
+    let inputs: SteadyInputs = serde_json::from_str(steady_json).expect("tapered pier steady JSON");
+    assert_eq!(
+        inputs.bridge_pier_top_widths.as_ref().unwrap()[0],
+        vec![1.0]
+    );
+    let result = solve_steady(&inputs);
+    assert_eq!(result.wsel.len(), 2);
+    assert!(result.wsel[0] > 2.5);
+
+    let mut rating_params = BridgeSolveParams::default();
+    rating_params.low_chord = 4.0;
+    rating_params.high_chord = 6.0;
+    rating_params.tw_wsel = 2.5;
+    rating_params.pier_width = 1.5;
+    rating_params.num_piers = 1;
+    rating_params.low_flow_method = 1;
+    rating_params.pier_stations = Some(vec![5.0]);
+    rating_params.pier_top_widths = Some(vec![1.0]);
+    rating_params.pier_bottom_widths = Some(vec![2.0]);
+    rating_params.deck_stations = Some(vec![0.0, 10.0]);
+    rating_params.deck_low_elevations = Some(vec![4.0, 4.0]);
+    rating_params.deck_high_elevations = Some(vec![6.0, 6.0]);
+    let curve = compute_bridge_rating_curve(&BridgeRatingCurveInputs {
+        q_values: vec![15.0],
+        bridge: rating_params,
+    });
+    assert_eq!(curve.wsel.len(), 1);
+    assert!(curve.wsel[0] > 2.5);
+}
+
+#[test]
+fn wasm_pier_width_profile_deserializes_and_solves() {
+    use stream1d::solvers::bridge::{compute_bridge_rating_curve, BridgeRatingCurveInputs, BridgeSolveParams};
+
+    let steady_json = r#"{
+        "cross_sections": [
+            {"station": 100, "x": [0, 10], "y": [0, 0], "n_stations": [0], "n_values": [0.03], "unit_system": "Metric"},
+            {"station": 0, "x": [0, 10], "y": [0, 0], "n_stations": [0], "n_values": [0.03], "unit_system": "Metric"}
+        ],
+        "flow_rate": 15,
+        "regime": 0,
+        "downstream_wsel": 2.5,
+        "bridge_stations": [50],
+        "bridge_low_chords": [4],
+        "bridge_high_chords": [6],
+        "bridge_pier_widths": [1.0],
+        "bridge_num_piers": [1],
+        "bridge_pier_shapes": [0],
+        "bridge_low_flow_methods": [1],
+        "bridge_pier_stations": [[5.0]],
+        "bridge_pier_width_elevations": [[[0.0, 4.0]]],
+        "bridge_pier_width_values": [[[2.0, 1.0]]],
+        "bridge_deck_stations": [[0, 10]],
+        "bridge_deck_low_elevations": [[4, 4]],
+        "bridge_deck_high_elevations": [[6, 6]]
+    }"#;
+    let inputs: SteadyInputs = serde_json::from_str(steady_json).expect("profile pier steady JSON");
+    assert_eq!(
+        inputs.bridge_pier_width_elevations.as_ref().unwrap()[0][0],
+        vec![0.0, 4.0]
+    );
+    let result = solve_steady(&inputs);
+    assert_eq!(result.wsel.len(), 2);
+    assert!(result.wsel[0] > 2.5);
+
+    let mut rating_params = BridgeSolveParams::default();
+    rating_params.low_chord = 4.0;
+    rating_params.high_chord = 6.0;
+    rating_params.tw_wsel = 2.5;
+    rating_params.pier_width = 1.0;
+    rating_params.num_piers = 1;
+    rating_params.low_flow_method = 1;
+    rating_params.pier_stations = Some(vec![5.0]);
+    rating_params.pier_width_elevations = Some(vec![vec![0.0, 4.0]]);
+    rating_params.pier_width_values = Some(vec![vec![2.0, 1.0]]);
+    rating_params.deck_stations = Some(vec![0.0, 10.0]);
+    rating_params.deck_low_elevations = Some(vec![4.0, 4.0]);
+    rating_params.deck_high_elevations = Some(vec![6.0, 6.0]);
+    let curve = compute_bridge_rating_curve(&BridgeRatingCurveInputs {
+        q_values: vec![15.0],
+        bridge: rating_params,
+    });
+    assert_eq!(curve.wsel.len(), 1);
+    assert!(curve.wsel[0] > 2.5);
+}
+
+#[test]
+fn wasm_tapered_pier_unsteady_deserializes_and_solves() {
+    use stream1d::solvers::{solve_unsteady, UnsteadyInputs};
+
+    let json = r#"{
+        "cross_sections": [{
+            "station": 100.0,
+            "x": [0.0, 0.0, 10.0, 10.0],
+            "y": [5.0, 0.0, 0.0, 5.0],
+            "n_stations": [0.0],
+            "n_values": [0.03],
+            "unit_system": "Metric"
+        }, {
+            "station": 0.0,
+            "x": [0.0, 0.0, 10.0, 10.0],
+            "y": [5.0, 0.0, 0.0, 5.0],
+            "n_stations": [0.0],
+            "n_values": [0.03],
+            "unit_system": "Metric"
+        }],
+        "initial_wsel": [2.5, 2.5],
+        "initial_q": [15.0, 15.0],
+        "dt": 60.0,
+        "num_steps": 2,
+        "upstream_q_hydrograph": [15.0, 15.0],
+        "downstream_wsel_hydrograph": [2.5, 2.5],
+        "bridge_stations": [50.0],
+        "bridge_low_chords": [4.0],
+        "bridge_high_chords": [6.0],
+        "bridge_pier_widths": [1.5],
+        "bridge_num_piers": [1],
+        "bridge_pier_shapes": [0],
+        "bridge_low_flow_methods": [1],
+        "bridge_pier_stations": [[5.0]],
+        "bridge_pier_top_widths": [[1.0]],
+        "bridge_pier_bottom_widths": [[2.0]],
+        "bridge_deck_stations": [[0.0, 10.0]],
+        "bridge_deck_low_elevations": [[4.0, 4.0]],
+        "bridge_deck_high_elevations": [[6.0, 6.0]]
+    }"#;
+    let inputs: UnsteadyInputs = serde_json::from_str(json).expect("unsteady tapered pier JSON");
+    assert_eq!(
+        inputs.bridge.bridge_pier_top_widths.as_ref().unwrap()[0],
+        vec![1.0]
+    );
+    let result = solve_unsteady(&inputs);
+    assert_eq!(result.wsel.len(), 2);
+    assert_eq!(result.wsel[0].len(), 2);
+    assert!(result.wsel[0][0] > 2.5);
+}
+
+#[test]
+fn wasm_tapered_pier_steady_exceeds_legacy_constant_headwater() {
+    let legacy_json = r#"{
+        "cross_sections": [
+            {"station": 100, "x": [0, 10], "y": [0, 0], "n_stations": [0], "n_values": [0.03], "unit_system": "Metric"},
+            {"station": 0, "x": [0, 10], "y": [0, 0], "n_stations": [0], "n_values": [0.03], "unit_system": "Metric"}
+        ],
+        "flow_rate": 15,
+        "regime": 0,
+        "downstream_wsel": 2.5,
+        "bridge_stations": [50],
+        "bridge_low_chords": [4],
+        "bridge_high_chords": [6],
+        "bridge_pier_widths": [1.5],
+        "bridge_num_piers": [1],
+        "bridge_pier_shapes": [0],
+        "bridge_low_flow_methods": [1],
+        "bridge_pier_stations": [[5.0]],
+        "bridge_deck_stations": [[0, 10]],
+        "bridge_deck_low_elevations": [[4, 4]],
+        "bridge_deck_high_elevations": [[6, 6]]
+    }"#;
+    let tapered_json = r#"{
+        "cross_sections": [
+            {"station": 100, "x": [0, 10], "y": [0, 0], "n_stations": [0], "n_values": [0.03], "unit_system": "Metric"},
+            {"station": 0, "x": [0, 10], "y": [0, 0], "n_stations": [0], "n_values": [0.03], "unit_system": "Metric"}
+        ],
+        "flow_rate": 15,
+        "regime": 0,
+        "downstream_wsel": 2.5,
+        "bridge_stations": [50],
+        "bridge_low_chords": [4],
+        "bridge_high_chords": [6],
+        "bridge_pier_widths": [1.5],
+        "bridge_num_piers": [1],
+        "bridge_pier_shapes": [0],
+        "bridge_low_flow_methods": [1],
+        "bridge_pier_stations": [[5.0]],
+        "bridge_pier_top_widths": [[1.0]],
+        "bridge_pier_bottom_widths": [[2.0]],
+        "bridge_deck_stations": [[0, 10]],
+        "bridge_deck_low_elevations": [[4, 4]],
+        "bridge_deck_high_elevations": [[6, 6]]
+    }"#;
+    let legacy: SteadyInputs = serde_json::from_str(legacy_json).unwrap();
+    let tapered: SteadyInputs = serde_json::from_str(tapered_json).unwrap();
+    let hw_legacy = solve_steady(&legacy).wsel[0];
+    let hw_tapered = solve_steady(&tapered).wsel[0];
+    assert!(
+        hw_tapered > hw_legacy + 1e-4,
+        "tapered HW {hw_tapered} vs legacy HW {hw_legacy}"
     );
 }

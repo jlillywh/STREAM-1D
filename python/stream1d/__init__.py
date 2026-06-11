@@ -140,6 +140,12 @@ class SteadyInputs:
         bridge_ineffective_right_elevations_downstream: Optional[BridgeIneffectiveBlocks] = None,
         bridge_skew_angles: Optional[List[float]] = None,
         bridge_pier_stations: Optional[List[List[float]]] = None,
+        bridge_pier_top_widths: Optional[List[List[float]]] = None,
+        bridge_pier_bottom_widths: Optional[List[List[float]]] = None,
+        bridge_pier_width_elevations: Optional[List[List[List[float]]]] = None,
+        bridge_pier_width_values: Optional[List[List[List[float]]]] = None,
+        bridge_pier_top_elevations: Optional[List[List[float]]] = None,
+        bridge_pier_base_elevations: Optional[List[List[float]]] = None,
         bridge_upstream_cross_sections: Optional[List[CrossSection]] = None,
         bridge_downstream_cross_sections: Optional[List[CrossSection]] = None,
         bridge_internal_cross_sections: Optional[List[List[CrossSection]]] = None,
@@ -233,6 +239,12 @@ class SteadyInputs:
         self.bridge_ineffective_right_elevations_downstream = bridge_ineffective_right_elevations_downstream or []
         self.bridge_skew_angles = bridge_skew_angles or []
         self.bridge_pier_stations = bridge_pier_stations or []
+        self.bridge_pier_top_widths = bridge_pier_top_widths or []
+        self.bridge_pier_bottom_widths = bridge_pier_bottom_widths or []
+        self.bridge_pier_width_elevations = bridge_pier_width_elevations or []
+        self.bridge_pier_width_values = bridge_pier_width_values or []
+        self.bridge_pier_top_elevations = bridge_pier_top_elevations or []
+        self.bridge_pier_base_elevations = bridge_pier_base_elevations or []
         self.bridge_upstream_cross_sections = bridge_upstream_cross_sections or []
         self.bridge_downstream_cross_sections = bridge_downstream_cross_sections or []
         self.bridge_internal_cross_sections = bridge_internal_cross_sections or []
@@ -326,6 +338,12 @@ class SteadyInputs:
             'bridge_ineffective_right_elevations_downstream': self.bridge_ineffective_right_elevations_downstream,
             'bridge_skew_angles': self.bridge_skew_angles,
             'bridge_pier_stations': self.bridge_pier_stations,
+            'bridge_pier_top_widths': self.bridge_pier_top_widths,
+            'bridge_pier_bottom_widths': self.bridge_pier_bottom_widths,
+            'bridge_pier_width_elevations': self.bridge_pier_width_elevations,
+            'bridge_pier_width_values': self.bridge_pier_width_values,
+            'bridge_pier_top_elevations': self.bridge_pier_top_elevations,
+            'bridge_pier_base_elevations': self.bridge_pier_base_elevations,
             'bridge_upstream_cross_sections': self.bridge_upstream_cross_sections,
             'bridge_downstream_cross_sections': self.bridge_downstream_cross_sections,
             'bridge_internal_cross_sections': self.bridge_internal_cross_sections,
@@ -436,6 +454,12 @@ class UnsteadyInputs:
         bridge_ineffective_right_elevations_downstream: Optional[BridgeIneffectiveBlocks] = None,
         bridge_skew_angles: Optional[List[float]] = None,
         bridge_pier_stations: Optional[List[List[float]]] = None,
+        bridge_pier_top_widths: Optional[List[List[float]]] = None,
+        bridge_pier_bottom_widths: Optional[List[List[float]]] = None,
+        bridge_pier_width_elevations: Optional[List[List[List[float]]]] = None,
+        bridge_pier_width_values: Optional[List[List[List[float]]]] = None,
+        bridge_pier_top_elevations: Optional[List[List[float]]] = None,
+        bridge_pier_base_elevations: Optional[List[List[float]]] = None,
         bridge_upstream_cross_sections: Optional[List[CrossSection]] = None,
         bridge_downstream_cross_sections: Optional[List[CrossSection]] = None,
         bridge_internal_cross_sections: Optional[List[List[CrossSection]]] = None,
@@ -520,6 +544,12 @@ class UnsteadyInputs:
         self.bridge_ineffective_right_elevations_downstream = bridge_ineffective_right_elevations_downstream or []
         self.bridge_skew_angles = bridge_skew_angles or []
         self.bridge_pier_stations = bridge_pier_stations or []
+        self.bridge_pier_top_widths = bridge_pier_top_widths or []
+        self.bridge_pier_bottom_widths = bridge_pier_bottom_widths or []
+        self.bridge_pier_width_elevations = bridge_pier_width_elevations or []
+        self.bridge_pier_width_values = bridge_pier_width_values or []
+        self.bridge_pier_top_elevations = bridge_pier_top_elevations or []
+        self.bridge_pier_base_elevations = bridge_pier_base_elevations or []
         self.bridge_upstream_cross_sections = bridge_upstream_cross_sections or []
         self.bridge_downstream_cross_sections = bridge_downstream_cross_sections or []
         self.bridge_internal_cross_sections = bridge_internal_cross_sections or []
@@ -606,6 +636,12 @@ class UnsteadyInputs:
             'bridge_ineffective_right_elevations_downstream': self.bridge_ineffective_right_elevations_downstream,
             'bridge_skew_angles': self.bridge_skew_angles,
             'bridge_pier_stations': self.bridge_pier_stations,
+            'bridge_pier_top_widths': self.bridge_pier_top_widths,
+            'bridge_pier_bottom_widths': self.bridge_pier_bottom_widths,
+            'bridge_pier_width_elevations': self.bridge_pier_width_elevations,
+            'bridge_pier_width_values': self.bridge_pier_width_values,
+            'bridge_pier_top_elevations': self.bridge_pier_top_elevations,
+            'bridge_pier_base_elevations': self.bridge_pier_base_elevations,
             'bridge_upstream_cross_sections': self.bridge_upstream_cross_sections,
             'bridge_downstream_cross_sections': self.bridge_downstream_cross_sections,
             'bridge_internal_cross_sections': self.bridge_internal_cross_sections,

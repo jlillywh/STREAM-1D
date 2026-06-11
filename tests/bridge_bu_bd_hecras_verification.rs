@@ -191,8 +191,9 @@ fn three_section_bridge_reach_matches_two_face_baseline() {
         0.0,
     );
 
-    let cuts_two = layout_cuts_for_bridge(&interior_two, faces, UnitSystem::Metric, None, None);
-    let cuts_three = layout_cuts_for_bridge(&interior_three, faces, UnitSystem::Metric, None, None);
+    let cuts_two = layout_cuts_for_bridge(&interior_two, faces, UnitSystem::Metric, None, None, None);
+    let cuts_three =
+        layout_cuts_for_bridge(&interior_three, faces, UnitSystem::Metric, None, None, None);
     assert_eq!(cuts_two.len(), 2, "2-face layout: BU + BD only");
     assert_eq!(cuts_three.len(), 3, "3-section layout: BU + internal + BD");
 
@@ -228,6 +229,8 @@ fn three_section_bridge_reach_matches_two_face_baseline() {
         None,
         None,
         None,
+        None,
+        None,
     );
     let geo_three = resolve_bridge_face_solve_geometry(
         &interior_three,
@@ -246,6 +249,8 @@ fn three_section_bridge_reach_matches_two_face_baseline() {
         None,
         4.0,
         0.0,
+        None,
+        None,
         None,
         None,
         None,

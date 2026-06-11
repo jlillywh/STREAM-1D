@@ -141,6 +141,18 @@ pub struct UnsteadyBridgeInputs {
     #[serde(default)]
     pub bridge_pier_stations: Option<Vec<Vec<f64>>>,
     #[serde(default)]
+    pub bridge_pier_top_widths: Option<Vec<Vec<f64>>>,
+    #[serde(default)]
+    pub bridge_pier_bottom_widths: Option<Vec<Vec<f64>>>,
+    #[serde(default)]
+    pub bridge_pier_width_elevations: Option<Vec<Vec<Vec<f64>>>>,
+    #[serde(default)]
+    pub bridge_pier_width_values: Option<Vec<Vec<Vec<f64>>>>,
+    #[serde(default)]
+    pub bridge_pier_top_elevations: Option<Vec<Vec<f64>>>,
+    #[serde(default)]
+    pub bridge_pier_base_elevations: Option<Vec<Vec<f64>>>,
+    #[serde(default)]
     pub bridge_upstream_cross_sections: Option<Vec<CrossSection>>,
     #[serde(default)]
     pub bridge_downstream_cross_sections: Option<Vec<CrossSection>>,
@@ -164,6 +176,14 @@ pub struct UnsteadyBridgeInputs {
     pub bridge_approach_guide_banks: Option<Vec<crate::geometry::GuideBanks>>,
     #[serde(default)]
     pub bridge_departure_guide_banks: Option<Vec<crate::geometry::GuideBanks>>,
+    #[serde(default)]
+    pub bridge_roadway_embankments: Option<
+        Vec<Option<crate::solvers::bridge_roadway_compose::BridgeRoadwayEmbankment>>,
+    >,
+    #[serde(default, skip_serializing)]
+    pub(crate) bridge_composed_embankment_blocked: Option<
+        Vec<Option<crate::solvers::bridge_roadway_compose::ComposedEmbankmentBlocked>>,
+    >,
 }
 
 fn bridge_face_blocks(
@@ -308,6 +328,19 @@ fn bridge_face_geometry_for(
         departure_xs,
         guide_banks_approach,
         guide_banks_departure,
+        crate::solvers::pier_geometry::pier_width_user_for_bridge_index(
+            &b.bridge_pier_top_widths,
+            &b.bridge_pier_bottom_widths,
+            &b.bridge_pier_width_elevations,
+            &b.bridge_pier_width_values,
+            &b.bridge_pier_top_elevations,
+            &b.bridge_pier_base_elevations,
+            b_idx,
+        ),
+        crate::solvers::bridge_roadway_compose::composed_embankment_blocked_for(
+            &b.bridge_composed_embankment_blocked,
+            b_idx,
+        ),
     )
 }
 
@@ -1280,6 +1313,7 @@ pub fn solve_unsteady_step(
 
 /// Solves unsteady-state Saint-Venant flow routing.
 pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
+    let inputs = crate::solvers::bridge_roadway_compose::composed_unsteady_inputs(inputs);
     let raw_units = inputs.cross_sections.first().map(|xs| xs.unit_system).unwrap_or(UnitSystem::Metric);
     let dt = inputs.dt;
     let num_slices = inputs.num_slices.unwrap_or(100);
@@ -1442,6 +1476,10 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
                 .bridge
                 .bridge_opening_anchor_reach_stations
                 .clone(),
+            bridge_composed_embankment_blocked: inputs
+                .bridge
+                .bridge_composed_embankment_blocked
+                .clone(),
             ..Default::default()
         };
         let steady_res = crate::solvers::steady::solve_steady(&steady_inputs);
@@ -1534,7 +1572,7 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
         }
 
     let bridge_face_intervals = crate::solvers::bridge_interior::apply_bridge_reach_layout_unsteady(
-        inputs,
+        &inputs,
         raw_units,
         num_slices,
         &mut densified_stations,
@@ -1563,7 +1601,7 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
 
     if has_structures {
         apply_structure_internal_boundaries(
-            inputs,
+            &inputs,
             raw_units,
             &densified_tables,
             &densified_xs,
@@ -1727,7 +1765,7 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
             densified_q_current = q_next;
 
              let structure_step_results = apply_structure_internal_boundaries(
-                inputs,
+                &inputs,
                 raw_units,
                 &densified_tables,
                 &densified_xs,

@@ -394,15 +394,43 @@ pub fn resolve_bridge_face_solve_geometry(
     departure_xs: Option<CrossSection>,
     guide_banks_approach: Option<GuideBanks>,
     guide_banks_departure: Option<GuideBanks>,
+    pier_widths: Option<crate::solvers::pier_geometry::PierWidthUserInput>,
+    embankment_blocked: Option<&crate::solvers::bridge_roadway_compose::ComposedEmbankmentBlocked>,
 ) -> BridgeFaceSolveGeometry {
-    let xs_up = interior
+    let mut xs_up = interior
         .bu
         .clone()
         .or_else(|| reach_xs_up.cloned());
-    let xs_down = interior
+    let mut xs_down = interior
         .bd
         .clone()
         .or_else(|| reach_xs_down.cloned());
+
+    let opening_origin = resolve_opening_reach_station_origin(
+        interior.opening_reach_station_origin,
+        interior.opening_anchor_mode,
+        xs_up.as_ref(),
+        anchor_reach_xs,
+        reach_xs_up,
+    );
+    if let Some(blocked) = embankment_blocked {
+        if let Some(ref mut xs) = xs_up {
+            crate::solvers::bridge_roadway_compose::merge_embankment_blocked_into_section(
+                xs,
+                blocked.left.as_ref(),
+                blocked.right.as_ref(),
+                opening_origin,
+            );
+        }
+        if let Some(ref mut xs) = xs_down {
+            crate::solvers::bridge_roadway_compose::merge_embankment_blocked_into_section(
+                xs,
+                blocked.left.as_ref(),
+                blocked.right.as_ref(),
+                opening_origin,
+            );
+        }
+    }
 
     let table_up = xs_up
         .as_ref()
@@ -422,14 +450,6 @@ pub fn resolve_bridge_face_solve_geometry(
         .as_ref()
         .map(|xs| bed_user_from_xs(xs, raw_units))
         .unwrap_or(reach_z_down_user);
-
-    let opening_origin = resolve_opening_reach_station_origin(
-        interior.opening_reach_station_origin,
-        interior.opening_anchor_mode,
-        xs_up.as_ref(),
-        anchor_reach_xs,
-        reach_xs_up,
-    );
 
     let ineffective_up = resolve_face_ineffective(
         xs_up.as_ref(),
@@ -466,6 +486,7 @@ pub fn resolve_bridge_face_solve_geometry(
         opening_reach_station_origin: opening_origin,
         skew_deg,
         pier_stations,
+        pier_widths,
         friction_length_m,
         xs_approach: approach_xs,
         xs_departure: departure_xs,
@@ -571,6 +592,7 @@ pub enum BridgeLayoutCutKind {
 #[derive(Debug, Clone)]
 pub struct BridgeFaceInsertMeta {
     pub ineffective_opening: Option<IneffectiveFlowAreas>,
+    pub embankment_blocked: Option<crate::solvers::bridge_roadway_compose::ComposedEmbankmentBlocked>,
     pub interior: BridgeInteriorInput,
 }
 
@@ -644,6 +666,7 @@ pub fn layout_cuts_for_bridge(
     raw_units: UnitSystem,
     ineffective_up: Option<IneffectiveFlowAreas>,
     ineffective_down: Option<IneffectiveFlowAreas>,
+    embankment_blocked: Option<&crate::solvers::bridge_roadway_compose::ComposedEmbankmentBlocked>,
 ) -> Vec<BridgeLayoutCut> {
     let has_explicit = interior.bu.is_some()
         || interior.bd.is_some()
@@ -662,6 +685,7 @@ pub fn layout_cuts_for_bridge(
         face_meta: if interior.bu.is_none() {
             Some(BridgeFaceInsertMeta {
                 ineffective_opening: ineffective_up,
+                embankment_blocked: embankment_blocked.cloned(),
                 interior: interior.clone(),
             })
         } else {
@@ -683,6 +707,7 @@ pub fn layout_cuts_for_bridge(
         face_meta: if interior.bd.is_none() {
             Some(BridgeFaceInsertMeta {
                 ineffective_opening: ineffective_down,
+                embankment_blocked: embankment_blocked.cloned(),
                 interior: interior.clone(),
             })
         } else {
@@ -733,6 +758,37 @@ fn apply_bridge_face_ineffective_to_section(
     }
 }
 
+fn apply_bridge_face_blocked_to_section(
+    section: &mut CrossSection,
+    cut: &BridgeLayoutCut,
+    reach_xs_upstream: Option<&CrossSection>,
+) {
+    if cut.xs.is_some() {
+        return;
+    }
+    let meta = match cut.face_meta.as_ref() {
+        Some(m) => m,
+        None => return,
+    };
+    let blocked = match meta.embankment_blocked.as_ref() {
+        Some(b) => b,
+        None => return,
+    };
+    let origin = resolve_opening_reach_station_origin(
+        meta.interior.opening_reach_station_origin,
+        meta.interior.opening_anchor_mode,
+        meta.interior.bu.as_ref(),
+        None,
+        reach_xs_upstream,
+    );
+    crate::solvers::bridge_roadway_compose::merge_embankment_blocked_into_section(
+        section,
+        blocked.left.as_ref(),
+        blocked.right.as_ref(),
+        origin,
+    );
+}
+
 fn build_interpolated_layout_node(
     cut: &BridgeLayoutCut,
     i: usize,
@@ -760,6 +816,7 @@ fn build_interpolated_layout_node(
                     up_ref,
                     raw_units,
                 );
+                apply_bridge_face_blocked_to_section(&mut synthetic, cut, up_ref);
             }
             BridgeLayoutCutKind::Internal => {
                 apply_reach_modifier_policy(&mut synthetic, &up_m, &down_m, t, densify_policy);
@@ -792,10 +849,15 @@ fn build_interpolated_layout_node(
         ) {
             section.ineffective_flow_areas = None;
             apply_bridge_face_ineffective_to_section(section, cut, up_ref, raw_units);
+            apply_bridge_face_blocked_to_section(section, cut, up_ref);
             if section
                 .ineffective_flow_areas
                 .as_ref()
                 .is_some_and(|i| i.is_configured())
+                || section
+                    .blocked_obstructions
+                    .as_ref()
+                    .is_some_and(|b| !b.is_empty())
             {
                 let metric = section.to_metric();
                 let z = cross_section_min_bed(&metric);
@@ -982,6 +1044,10 @@ pub fn apply_bridge_reach_layout_steady(
             raw_units,
             crate::solvers::steady::bridge_ineffective_upstream_for(inputs, b_idx),
             crate::solvers::steady::bridge_ineffective_downstream_for(inputs, b_idx),
+            crate::solvers::bridge_roadway_compose::composed_embankment_blocked_for(
+                &inputs.bridge_composed_embankment_blocked,
+                b_idx,
+            ),
         ));
     }
 
@@ -1039,6 +1105,10 @@ pub fn apply_bridge_reach_layout_unsteady(
             raw_units,
             crate::solvers::unsteady::bridge_ineffective_upstream_for(inputs, b_idx),
             crate::solvers::unsteady::bridge_ineffective_downstream_for(inputs, b_idx),
+            crate::solvers::bridge_roadway_compose::composed_embankment_blocked_for(
+                &b.bridge_composed_embankment_blocked,
+                b_idx,
+            ),
         ));
     }
 
@@ -1222,6 +1292,8 @@ mod tests {
             None,
             None,
             None,
+            None,
+            None,
         );
         assert!((geo.z_up_user - 2.0).abs() < 1e-9);
         assert_eq!(geo.sections.opening_reach_station_origin, Some(50.0));
@@ -1321,6 +1393,7 @@ mod tests {
             UnitSystem::Metric,
             None,
             None,
+            None,
         );
         insert_reach_layout_cuts(
             &mut stations,
@@ -1369,6 +1442,8 @@ mod tests {
             None,
             None,
             None,
+            None,
+            None,
         );
         assert_eq!(geo.sections.opening_reach_station_origin, Some(42.5));
     }
@@ -1413,6 +1488,8 @@ mod tests {
             None,
             0.0,
             0.0,
+            None,
+            None,
             None,
             None,
             None,
@@ -1466,6 +1543,7 @@ mod tests {
             UnitSystem::Metric,
             Some(bridge_opening),
             None,
+            None,
         );
         insert_reach_layout_cuts(
             &mut stations,
@@ -1517,6 +1595,8 @@ mod tests {
             None,
             None,
             None,
+            None,
+            None,
         );
         let up = geo.sections.ineffective_up.expect("BU bridge ineffective");
         assert!((up.left_blocks[0].station - 5.0).abs() < 1e-9);
@@ -1546,6 +1626,8 @@ mod tests {
             None,
             0.0,
             0.0,
+            None,
+            None,
             None,
             None,
             None,
@@ -1581,6 +1663,8 @@ mod tests {
             None,
             0.0,
             0.0,
+            None,
+            None,
             None,
             None,
             None,
@@ -1658,6 +1742,8 @@ mod tests {
             None,
             None,
             None,
+            None,
+            None,
         );
         assert!((geo.sections.friction_length_m - 6.0).abs() < 1e-9);
     }
@@ -1691,6 +1777,8 @@ mod tests {
             None,
             0.0,
             0.0,
+            None,
+            None,
             None,
             None,
             None,
@@ -1800,6 +1888,8 @@ mod tests {
             Some(vec![5.0, 20.0]),
             0.0,
             0.0,
+            None,
+            None,
             None,
             None,
             None,
@@ -1975,6 +2065,7 @@ mod tests {
             UnitSystem::Metric,
             Some(ineffective.clone()),
             Some(ineffective),
+            None,
         );
         assert_eq!(cuts.len(), 2);
         assert_eq!(cuts[0].kind, BridgeLayoutCutKind::Bu);
@@ -1993,6 +2084,7 @@ mod tests {
             &BridgeInteriorInput::default(),
             faces,
             UnitSystem::Metric,
+            None,
             None,
             None,
         );
@@ -2032,6 +2124,7 @@ mod tests {
             UnitSystem::Metric,
             None,
             Some(bridge_opening),
+            None,
         );
         insert_reach_layout_cuts(
             &mut stations,
@@ -2081,6 +2174,7 @@ mod tests {
             },
             faces,
             UnitSystem::Metric,
+            None,
             None,
             None,
         );
@@ -2142,6 +2236,7 @@ mod tests {
             faces,
             UnitSystem::Metric,
             Some(bridge_opening),
+            None,
             None,
         );
         insert_reach_layout_cuts(
@@ -2294,6 +2389,7 @@ mod tests {
             },
             faces,
             UnitSystem::Metric,
+            None,
             None,
             None,
         );

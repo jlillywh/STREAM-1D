@@ -199,6 +199,15 @@ export interface BridgeArrays {
   bridge_skew_angles?: number[];
   /** Pier centerline stations across opening per bridge `[bridge][pier]`. */
   bridge_pier_stations?: number[][];
+  /** Pier top width (perpendicular to flow) per bridge `[bridge][pier]` — linear taper with `bridge_pier_bottom_widths`. */
+  bridge_pier_top_widths?: number[][];
+  bridge_pier_bottom_widths?: number[][];
+  /** Piecewise pier width profile per bridge `[bridge][pier][point]` (absolute elevation + width). */
+  bridge_pier_width_elevations?: number[][][];
+  bridge_pier_width_values?: number[][][];
+  /** Optional cap/base elevations for top/bottom pair (omit when using width profile). */
+  bridge_pier_top_elevations?: number[][];
+  bridge_pier_base_elevations?: number[][];
   /** HEC-RAS BU (bridge upstream face) cross section per bridge. */
   bridge_upstream_cross_sections?: CrossSection[];
   /** HEC-RAS BD (bridge downstream face) cross section per bridge. */
@@ -226,6 +235,60 @@ export interface BridgeArrays {
   bridge_approach_guide_banks?: GuideBanks[];
   /** Guide banks on departure cut when not on `CrossSection.guide_banks`. */
   bridge_departure_guide_banks?: GuideBanks[];
+  /**
+   * Unified roadway embankment per bridge (API v26). Composes deck, abutment, ineffective,
+   * and embankment blocked tops from grade profiles. See `equations.md` §G2.
+   */
+  bridge_roadway_embankments?: (BridgeRoadwayEmbankment | null)[];
+}
+
+/** Opening frame: s=0 at left deck edge. */
+export interface EmbankmentPolyline {
+  stations: number[];
+  elevations: number[];
+}
+
+export interface BridgeDeckInput {
+  stations: number[];
+  low_elevations: number[];
+  high_elevations: number[];
+}
+
+export interface IneffectiveBlockPoint {
+  station: number;
+  elevation: number;
+}
+
+export interface RoadwayAbutmentInput {
+  outer_station?: number;
+  width: number;
+  top_elevation?: number;
+  top_profile?: EmbankmentPolyline;
+}
+
+export interface RoadwayEmbankmentSide {
+  /** Grade line drives ineffective activation and blocked top when derived (default). */
+  embankment_profile?: EmbankmentPolyline;
+  ineffective_blocks?: IneffectiveBlockPoint[];
+  abutment?: RoadwayAbutmentInput;
+  derive_ineffective?: boolean;
+  derive_blocked?: boolean;
+}
+
+export interface BridgeIneffectiveFaceOverride {
+  left_blocks?: IneffectiveBlockPoint[];
+  right_blocks?: IneffectiveBlockPoint[];
+}
+
+export interface BridgeRoadwayEmbankment {
+  deck: BridgeDeckInput;
+  left?: RoadwayEmbankmentSide;
+  right?: RoadwayEmbankmentSide;
+  ineffective_faces?: {
+    upstream?: BridgeIneffectiveFaceOverride;
+    downstream?: BridgeIneffectiveFaceOverride;
+  };
+  derive_ineffective?: boolean;
 }
 
 export interface SteadyInputs extends CulvertArrays, BridgeArrays {
@@ -366,6 +429,13 @@ export interface BridgeRatingCurveInputs {
   max_weir_submergence?: number;
   skew_deg?: number;
   pier_stations?: number[];
+  /** Tapered pier widths per pier (rating curve / standalone solve; no `bridge_` prefix). */
+  pier_top_widths?: number[];
+  pier_bottom_widths?: number[];
+  pier_width_elevations?: number[][];
+  pier_width_values?: number[][];
+  pier_top_elevations?: number[];
+  pier_base_elevations?: number[];
   deck_stations?: number[];
   deck_low_elevations?: number[];
   deck_high_elevations?: number[];
@@ -403,6 +473,8 @@ export interface BridgeRatingCurveInputs {
   opening_reach_station_origin?: number;
   /** Optional interior bridge cuts (US → DS); stored for future multi-segment hydraulics. */
   xs_internal?: CrossSection[];
+  /** Unified roadway embankment (API v26). See `equations.md` §G2. */
+  roadway_embankment?: BridgeRoadwayEmbankment;
 }
 
 export interface BridgeRatingCurveResult {

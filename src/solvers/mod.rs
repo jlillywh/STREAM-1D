@@ -5,6 +5,8 @@ pub mod bridge;
 pub mod bridge_abutment;
 pub mod bridge_interior;
 pub mod bridge_validation;
+pub mod bridge_roadway_compose;
+pub mod pier_geometry;
 pub mod junction;
 
 pub use bridge::{
