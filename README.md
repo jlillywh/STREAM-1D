@@ -111,7 +111,7 @@ Culvert, bridge, junction, and rating-curve examples: [`docs/python/getting_star
 
 **Cross sections** — river station; (*x*, *y*) polyline; Manning *n* zones; optional `is_overbank`, `blocked_obstructions`, `ineffective_flow_areas`, `guide_banks`. Modifier semantics: [`docs/reference/equations.md`](docs/reference/equations.md) §H0.
 
-**Steady** — `flow_rate`, `regime` (0 subcritical, 1 supercritical, 2 mixed), downstream boundary (`downstream_wsel`, normal depth, rating curve, etc.), optional `max_spacing` and `densify_reach_modifier_policy` (0 none, 1 upstream, 2 downstream, 3 nearest). Structure fields: `culvert_*`, `bridge_*`. Tapered piers: legacy `bridge_pier_widths`, or `bridge_pier_top_widths` / `bridge_pier_bottom_widths` per pier, or piecewise `bridge_pier_width_elevations` / `bridge_pier_width_values` — see [`docs/development/pier_tapered_width.md`](docs/development/pier_tapered_width.md).
+**Steady** — `flow_rate`, `regime` (0 subcritical, 1 supercritical, 2 mixed), downstream boundary (`downstream_wsel`, normal depth, rating curve, etc.), optional `max_spacing` and `densify_reach_modifier_policy` (0 none, 1 upstream, 2 downstream, 3 nearest). Structure fields: `culvert_*`, `bridge_*`. Tapered piers: legacy `bridge_pier_widths`, or `bridge_pier_top_widths` / `bridge_pier_bottom_widths` per pier, or piecewise `bridge_pier_width_elevations` / `bridge_pier_width_values` — see [`docs/development/pier_tapered_width.md`](docs/development/pier_tapered_width.md). Pier footings and nosing (API v28): `bridge_pier_footing_*`, `bridge_pier_nosing_*` — see [`docs/development/pier_footings_nosing.md`](docs/development/pier_footings_nosing.md).
 
 **Unsteady** — `initial_wsel`, `initial_q`, `dt`, `num_steps`, `upstream_q_hydrograph`, `downstream_wsel_hydrograph`, same `max_spacing` / `densify_reach_modifier_policy` as steady. Same structure fields as steady.
 
@@ -152,9 +152,10 @@ WASM API: [`docs/web/wasm_integration.md`](docs/web/wasm_integration.md).
 | [`docs/README.md`](docs/README.md) | Index — canonical source per topic |
 | [`docs/python/getting_started.md`](docs/python/getting_started.md) | Culvert, bridge, unsteady Python examples |
 | [`docs/reference/equations.md`](docs/reference/equations.md) | GVF, Saint-Venant, culvert and bridge theory |
-| [`docs/reference/hecras_parity.md`](docs/reference/hecras_parity.md) | Scope vs HEC-RAS |
+| [`docs/reference/hecras_parity.md`](docs/reference/hecras_parity.md) | Scope vs HEC-RAS (bridge pier editor field map) |
 | [`docs/reference/api_changelog.md`](docs/reference/api_changelog.md) | Input schema versions |
 | [`docs/development/pier_tapered_width.md`](docs/development/pier_tapered_width.md) | Tapered pier width API (v27) |
+| [`docs/development/pier_footings_nosing.md`](docs/development/pier_footings_nosing.md) | Pier footings, nosing (API v28); plan polygons and wing walls (design) |
 | [`docs/BRIDGE_INTERIOR_SECTIONS_API.md`](docs/BRIDGE_INTERIOR_SECTIONS_API.md) | Advanced: BU/BD, opening alignment, guide banks |
 | [`docs/web/wasm_integration.md`](docs/web/wasm_integration.md) | WASM build and JavaScript usage |
 | [`docs/development/testing.md`](docs/development/testing.md) | Test suites and CI |

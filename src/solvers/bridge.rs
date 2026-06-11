@@ -6,7 +6,8 @@ use crate::solvers::bridge_abutment::{
     resolve_abutments, BridgeAbutmentUserInput, BridgeAbutments,
 };
 use crate::solvers::pier_geometry::{
-    evenly_spaced_pier_stations, resolve_pier_width_specs, PierWidthUserInput, ResolvedPier,
+    evenly_spaced_pier_stations, resolve_pier_width_specs, PierAttachmentsUserInput,
+    PierWidthUserInput, ResolvedPier,
 };
 use crate::solvers::culvert::apply_barrel_skew;
 use crate::utils::{UnitSystem, FT_TO_M, CFS_TO_CMS, G_METRIC};
@@ -42,6 +43,8 @@ pub struct BridgeSectionContext {
     pub guide_banks_departure: Option<GuideBanks>,
     /// Optional per-pier tapered width overrides (user units; converted in `build_bridge_geometry`).
     pub pier_widths: Option<PierWidthUserInput>,
+    /// Optional per-pier footing and nosing (user units; converted in `build_bridge_geometry`).
+    pub pier_attachments: Option<PierAttachmentsUserInput>,
 }
 
 /// HEC-RAS-style bridge skew: projected opening width × cos(θ), friction length ÷ cos(θ).
@@ -270,6 +273,16 @@ pub struct BridgeSolveParams {
     #[serde(default)]
     pub pier_base_elevations: Option<Vec<f64>>,
     #[serde(default)]
+    pub pier_footing_top_elevations: Option<Vec<f64>>,
+    #[serde(default)]
+    pub pier_footing_widths: Option<Vec<f64>>,
+    #[serde(default)]
+    pub pier_footing_bottom_elevations: Option<Vec<f64>>,
+    #[serde(default)]
+    pub pier_nosing_lengths: Option<Vec<f64>>,
+    #[serde(default)]
+    pub pier_nosing_widths: Option<Vec<f64>>,
+    #[serde(default)]
     pub deck_stations: Option<Vec<f64>>,
     #[serde(default)]
     pub deck_low_elevations: Option<Vec<f64>>,
@@ -416,6 +429,11 @@ impl Default for BridgeSolveParams {
             pier_width_values: None,
             pier_top_elevations: None,
             pier_base_elevations: None,
+            pier_footing_top_elevations: None,
+            pier_footing_widths: None,
+            pier_footing_bottom_elevations: None,
+            pier_nosing_lengths: None,
+            pier_nosing_widths: None,
             deck_stations: None,
             deck_low_elevations: None,
             deck_high_elevations: None,
@@ -880,6 +898,7 @@ fn legacy_resolved_piers(geom: &BridgeGeometry) -> Vec<ResolvedPier> {
         &stations,
         z_bed,
         &z_tops,
+        None,
         None,
     )
 }
@@ -2297,6 +2316,13 @@ pub fn solve_bridge_from_params(params: &BridgeSolveParams) -> BridgeSolveResult
             &params.pier_top_elevations,
             &params.pier_base_elevations,
         ),
+        pier_attachments: crate::solvers::pier_geometry::pier_attachments_from_rating_params(
+            &params.pier_footing_top_elevations,
+            &params.pier_footing_widths,
+            &params.pier_footing_bottom_elevations,
+            &params.pier_nosing_lengths,
+            &params.pier_nosing_widths,
+        ),
         friction_length_m,
         xs_approach: None,
         xs_departure: None,
@@ -2515,6 +2541,27 @@ fn pier_width_user_to_metric(user: &PierWidthUserInput, units: UnitSystem) -> Pi
     }
 }
 
+fn pier_attachments_user_to_metric(
+    user: &PierAttachmentsUserInput,
+    units: UnitSystem,
+) -> PierAttachmentsUserInput {
+    let to_m = |v: f64| {
+        if units == UnitSystem::USCustomary {
+            v * FT_TO_M
+        } else {
+            v
+        }
+    };
+    let to_m_vec = |v: &Option<Vec<f64>>| v.as_ref().map(|xs| xs.iter().map(|x| to_m(*x)).collect());
+    PierAttachmentsUserInput {
+        footing_top_elevations: to_m_vec(&user.footing_top_elevations),
+        footing_widths: to_m_vec(&user.footing_widths),
+        footing_bottom_elevations: to_m_vec(&user.footing_bottom_elevations),
+        nosing_lengths: to_m_vec(&user.nosing_lengths),
+        nosing_widths: to_m_vec(&user.nosing_widths),
+    }
+}
+
 fn build_bridge_geometry(
     low_chord: f64,
     high_chord: f64,
@@ -2678,6 +2725,9 @@ fn build_bridge_geometry(
     let pier_width_user = sections
         .and_then(|s| s.pier_widths.as_ref())
         .map(|u| pier_width_user_to_metric(u, units));
+    let pier_attachments_user = sections
+        .and_then(|s| s.pier_attachments.as_ref())
+        .map(|u| pier_attachments_user_to_metric(u, units));
     let inset = pier_width_perp_m.max(0.0) * 0.5;
     let pier_station_list = if !pier_stations_m.is_empty() {
         pier_stations_m.clone()
@@ -2700,6 +2750,7 @@ fn build_bridge_geometry(
         z_bed_m,
         &z_top_defaults,
         pier_width_user.as_ref(),
+        pier_attachments_user.as_ref(),
     );
 
     if units == UnitSystem::USCustomary {

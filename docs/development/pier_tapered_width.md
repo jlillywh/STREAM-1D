@@ -18,6 +18,8 @@ Elevation-varying pier width for bridge openings (HEC-RAS tapered-pier analogue)
 | Width at deck soffit (low chord) | same as bottom | `bridge_pier_top_widths` |
 | Multi-point width curve | — | optional width profile |
 
+Full HEC-RAS pier editor mapping (v27–v28): [`hecras_parity.md`](../reference/hecras_parity.md) § Bridge pier editor.
+
 ---
 
 ## Proposed fields (steady / unsteady)
@@ -162,4 +164,6 @@ Pier shape (`PierShape`) still selects Yarnell $K$ and drag $C_D$; taper affects
 - [x] **Hydraulics** — integrated submerged area, top width, Yarnell α (`pier_submerged_area_at_wsel`, `yarnell_pier_head_loss_integrated`)
 - [x] **Solver** — Yarnell / momentum / pressure net area use tapered obstruction (`obstructed_hydraulics`, `net_opening_area_at_low_chord`, `pier_drag_momentum_with_table`, `BridgeSectionContext.pier_widths`)
 - [x] **Tests** — trapezoid area unit tests; tapered vs rectangular WSEL; tapered vs mean constant width; profile precedence/resolve; skew; steady/unsteady/rating WASM contract; tapered HW > legacy constant
-- [x] **Docs** — `api_changelog` v27, README; `equations.md` §I2 and `hecras_parity.md` pending
+- [x] **Docs** — `api_changelog` v27, README, `equations.md` §J2; pier editor scope in [`hecras_parity.md`](../reference/hecras_parity.md) § Bridge pier editor
+
+**Next:** pier footings, nosing, plan polygons — [`pier_footings_nosing.md`](pier_footings_nosing.md) (3.2).

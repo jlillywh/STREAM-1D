@@ -230,6 +230,7 @@ fn three_section_bridge_reach_matches_two_face_baseline() {
         None,
         None,
         None,
+        None,
     );
     let geo_three = resolve_bridge_face_solve_geometry(
         &interior_three,
@@ -248,6 +249,7 @@ fn three_section_bridge_reach_matches_two_face_baseline() {
         None,
         4.0,
         0.0,
+        None,
         None,
         None,
         None,

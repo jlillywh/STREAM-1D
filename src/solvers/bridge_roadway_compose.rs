@@ -1231,6 +1231,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             Some(blocked),
         );
 

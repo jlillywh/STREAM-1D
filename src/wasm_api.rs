@@ -3,7 +3,7 @@
 use serde::Serialize;
 
 /// API contract version — increment when SteadyInputs / SteadyResult fields change.
-pub const API_VERSION: u32 = 27;
+pub const API_VERSION: u32 = 28;
 
 /// Engine package version (keep in sync with `Cargo.toml`).
 pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -260,6 +260,11 @@ pub fn build_api_metadata() -> WasmApiMetadata {
                 "bridge_pier_width_values".to_string(),
                 "bridge_pier_top_elevations".to_string(),
                 "bridge_pier_base_elevations".to_string(),
+                "bridge_pier_footing_top_elevations".to_string(),
+                "bridge_pier_footing_widths".to_string(),
+                "bridge_pier_footing_bottom_elevations".to_string(),
+                "bridge_pier_nosing_lengths".to_string(),
+                "bridge_pier_nosing_widths".to_string(),
                 "bridge_upstream_cross_sections".to_string(),
                 "bridge_downstream_cross_sections".to_string(),
                 "bridge_internal_cross_sections".to_string(),
@@ -329,6 +334,11 @@ pub fn build_api_metadata() -> WasmApiMetadata {
                 "pier_width_values".to_string(),
                 "pier_top_elevations".to_string(),
                 "pier_base_elevations".to_string(),
+                "pier_footing_top_elevations".to_string(),
+                "pier_footing_widths".to_string(),
+                "pier_footing_bottom_elevations".to_string(),
+                "pier_nosing_lengths".to_string(),
+                "pier_nosing_widths".to_string(),
                 "deck_stations".to_string(),
                 "deck_low_elevations".to_string(),
                 "deck_high_elevations".to_string(),
@@ -382,7 +392,7 @@ mod tests {
     fn test_api_metadata_serializes() {
         let json = serde_json::to_string(&build_api_metadata()).unwrap();
         assert!(json.contains("culvert_inlet_types"));
-        assert!(json.contains("\"api_version\":27"));
+        assert!(json.contains("\"api_version\":28"));
         assert!(json.contains("structure_coupling_orders"));
     }
 
