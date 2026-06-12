@@ -3,6 +3,7 @@ mod geometry;
 mod headwater;
 mod high_flow;
 mod ice_debris;
+pub(crate) mod implicit;
 mod low_flow;
 mod opening;
 mod rating;
@@ -12,6 +13,8 @@ mod types;
 pub(crate) mod unsteady_coupling;
 
 pub use ice_debris::{ice_debris_params_for_bridge, BridgeIceDebrisParams};
+pub(crate) use geometry::build_bridge_geometry;
+pub(crate) use section::bridge_q_to_metric_magnitude;
 pub use section::{
     apply_bridge_skew, mirror_bridge_section_context, BridgeFlowDirection, BridgeFrictionLengths,
     BridgeFrictionWeighting, BridgeSectionContext,
