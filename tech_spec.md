@@ -67,7 +67,7 @@ See the full **[Limitations (read before comparing to HEC-RAS)](README.md#limita
 | Feature | Steady | Unsteady |
 |---------|--------|----------|
 | Single reach | Yes | Yes |
-| Culverts / bridges on main stem | Yes | **Yes** — inline culverts and bridges via explicit post-step coupling (not implicit in Preissmann Jacobian) |
+| Culverts / bridges on main stem | Yes | **Yes** — inline culverts and bridges via explicit post-step coupling (not implicit in Preissmann Jacobian). Stronger coupling planned: [`docs/development/unsteady_implicit_bridge_coupling.md`](docs/development/unsteady_implicit_bridge_coupling.md) |
 | One tributary junction | Yes (subcritical) | **No** |
 | Multiple tributaries / networks | **No** | **No** |
 | 2D floodplain, sediment, water quality | **No** | **No** |

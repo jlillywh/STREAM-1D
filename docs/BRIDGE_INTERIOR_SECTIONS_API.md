@@ -168,7 +168,7 @@ Parallel per-bridge arrays on **`SteadyInputs`**, nested under **`UnsteadyInputs
 |-------|-------|-------------|
 | `bridge_upstream_cross_sections` | `[bridge]` → `CrossSection` | **BU** cut. Overrides reach US interval geometry for bridge hydraulics when present. |
 | `bridge_downstream_cross_sections` | `[bridge]` → `CrossSection` | **BD** cut. Overrides reach DS interval geometry. |
-| `bridge_internal_cross_sections` | `[bridge][section]` → `CrossSection` | Optional interior cuts, ordered **US → DS**. Stored for metadata and future multi-segment hydraulics; **not yet used in the solver Jacobian** (phase 1.3+). |
+| `bridge_internal_cross_sections` | `[bridge][section]` → `CrossSection` | Optional interior cuts, ordered **US → DS**. Stored for metadata and future multi-segment hydraulics; **not yet used in the unsteady Preissmann Jacobian** — see [`development/unsteady_implicit_bridge_coupling.md`](development/unsteady_implicit_bridge_coupling.md) (Phase 5). |
 | `bridge_opening_reach_station_origins` | `[bridge]` | Reach `x` at opening station 0 (explicit anchor). Overrides mode when set. |
 | `bridge_opening_anchor_modes` | `[bridge]` | `0` = BU left, `1` = reach river station, `2` = explicit lateral `x` (requires origins). |
 | `bridge_opening_anchor_reach_stations` | `[bridge]` | Longitudinal reach river station for mode `1` (user units, must exist on densified grid). |
