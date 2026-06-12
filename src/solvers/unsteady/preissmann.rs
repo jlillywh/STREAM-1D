@@ -7,15 +7,22 @@ use super::culvert_implicit::{ImplicitMomentumRow, try_culvert_implicit_momentum
 use super::structure_coupling;
 use super::UnsteadyInputs;
 
-/// How inline structures participate in the Preissmann step (API v33).
+/// How inline structures participate in the Preissmann step (API v33+).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnsteadyStructureCouplingMode {
     /// One reach solve per step; structures corrected in post-step passes (default).
     PostStepOnly = 0,
-    /// Reserved: reach–structure–reach outer iteration (Phase 5 optional).
+    /// Reserved: reach–structure–reach outer iteration (not implemented; defer).
     ReachStructureReach = 1,
-    /// Structure residual rows in the Preissmann Jacobian (opt-in; Phase 3+ physics).
+    /// Hybrid coupling: implicit Jacobian rows where eligible, explicit post-step fallback elsewhere.
     Implicit = 2,
+}
+
+/// Per-step Preissmann diagnostics when structures are present.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PreissmannStepStats {
+    /// Structure intervals that replaced the reach momentum row with an implicit residual.
+    pub implicit_interval_count: u32,
 }
 
 impl UnsteadyStructureCouplingMode {
@@ -116,12 +123,15 @@ fn try_implicit_structure_momentum_row(
 }
 
 /// Solves a single Preissmann time step.
-pub fn solve_preissmann_step(params: &PreissmannStepParams<'_>) -> Option<(Vec<f64>, Vec<f64>)> {
+pub fn solve_preissmann_step(
+    params: &PreissmannStepParams<'_>,
+) -> Option<(Vec<f64>, Vec<f64>, PreissmannStepStats)> {
     let n = params.y_current.len();
     if n < 2 {
         return None;
     }
 
+    let mut stats = PreissmannStepStats::default();
     let mut a = vec![Mat2::zero(); n];
     let mut b = vec![Mat2::zero(); n];
     let mut c = vec![Mat2::zero(); n];
@@ -303,6 +313,7 @@ pub fn solve_preissmann_step(params: &PreissmannStepParams<'_>) -> Option<(Vec<f
         }
 
         if let Some(im) = implicit_row {
+            stats.implicit_interval_count += 1;
             a[i + 1] = Mat2 {
                 m11: im.m1,
                 m12: im.m2,
@@ -346,7 +357,7 @@ pub fn solve_preissmann_step(params: &PreissmannStepParams<'_>) -> Option<(Vec<f
     q_next[0] = params.q_up_next;
     y_next[n - 1] = params.y_down_next;
 
-    Some((y_next, q_next))
+    Some((y_next, q_next, stats))
 }
 
 #[cfg(test)]
@@ -410,7 +421,8 @@ mod tests {
             raw_units: UnitSystem::Metric,
             implicit_hook_probe: probe,
         };
-        solve_preissmann_step(&params).expect("two-node step")
+        let (y, q, _) = solve_preissmann_step(&params).expect("two-node step");
+        (y, q)
     }
 
     #[test]

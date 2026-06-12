@@ -12,6 +12,7 @@ One canonical source per topic — link instead of copying tables elsewhere.
 | HEC-RAS scope (incl. bridge pier editor) | [`reference/hecras_parity.md`](reference/hecras_parity.md) § Bridge pier editor |
 | Python examples | [`python/getting_started.md`](python/getting_started.md) |
 | WASM build & JS usage | [`web/wasm_integration.md`](web/wasm_integration.md) |
+| Host-app architecture (Workers, GIS, data transfer) | [`development/tech_spec.md`](development/tech_spec.md) |
 | Tests & external verification | [`development/testing.md`](development/testing.md), [`../verification/`](../verification/) |
 | Densified reach modifier inheritance (design) | [`development/densify_modifier_inheritance.md`](development/densify_modifier_inheritance.md) |
 | Unified roadway embankment — deck + abutment + ineffective (design) | [`development/roadway_embankment_unified.md`](development/roadway_embankment_unified.md) |
@@ -23,4 +24,4 @@ One canonical source per topic — link instead of copying tables elsewhere.
 | High-flow pressure / weir / audit + intentional deltas (Phase 4) | [`development/pressure_weir_combined_flow_audit.md`](development/pressure_weir_combined_flow_audit.md) |
 | Unsteady implicit bridge coupling + `bridge/` module refactor (Phase 5.1 design) | [`development/unsteady_implicit_bridge_coupling.md`](development/unsteady_implicit_bridge_coupling.md) |
 
-**When changing behavior:** update the canonical doc above, bump `api_changelog.md` if `API_VERSION` changes, extend `tests/wasm_json_contract.rs` / geometry tests — do not restate the same tables in README or `tech_spec.md`.
+**When changing behavior:** update the canonical doc above, bump `api_changelog.md` if `API_VERSION` changes, extend `tests/wasm_json_contract.rs` / geometry tests — do not restate the same tables in README or [`development/tech_spec.md`](development/tech_spec.md).

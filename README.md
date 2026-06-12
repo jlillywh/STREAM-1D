@@ -21,6 +21,7 @@ This repository is the solver only. It does not include a GUI, project database,
 |-------|----------------|
 | Topology | Single reach; one tributary junction (steady, subcritical) |
 | Unsteady | One reach; upstream *Q*(*t*) and downstream WSEL(*t*); no multi-reach networks |
+| Unsteady structures | Default (`unsteady_structure_coupling_mode: 0`): explicit post-step only. Mode `2`: hybrid implicit culvert inlet + subcritical low-flow bridge in Preissmann Jacobian; high-flow/outlet/overtopping still explicit. Mode `1` reserved. Per-step diagnostics when structures present (API v34). |
 | Reach geometry | `blocked_obstructions`; `ineffective_flow_areas` on any cross section (steady and unsteady) |
 | Reach densification | `max_spacing` inserts interior nodes; set `densify_reach_modifier_policy: 1` when reach ineffective or blocked must apply between user sections (default `0` = table blend only) |
 | Bridge cuts | `guide_banks`, `bridge_ineffective_*`, approach/departure ineffective on explicit cuts; interpolated BU/BD inherit bridge ineffective, not reach modifiers |
@@ -196,7 +197,7 @@ WASM API: [`docs/web/wasm_integration.md`](docs/web/wasm_integration.md).
 | [`docs/web/wasm_integration.md`](docs/web/wasm_integration.md) | WASM build and JavaScript usage |
 | [`docs/development/testing.md`](docs/development/testing.md) | Test suites and CI |
 | [`docs/development/publishing.md`](docs/development/publishing.md) | PyPI trusted publishing and releases |
-| [`tech_spec.md`](tech_spec.md) | Host-application architecture |
+| [`docs/development/tech_spec.md`](docs/development/tech_spec.md) | Host-application architecture |
 
 ## Repository layout
 

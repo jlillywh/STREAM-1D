@@ -234,7 +234,7 @@ fn steady_validation_guide_bank_polyline_warning() {
 fn wasm_api_metadata_version() {
     let meta = build_api_metadata();
     assert_eq!(meta.api_version, API_VERSION);
-    assert_eq!(API_VERSION, 33);
+    assert_eq!(API_VERSION, 34);
     assert!(meta.culvert_tier1_fields.inputs.contains(&"culvert_inlet_types".to_string()));
     assert_eq!(
         meta.bridge_fields.rating_curve_entry_point,
@@ -1187,4 +1187,73 @@ fn wasm_pier_footing_nosing_deserialize_and_solve() {
     let unsteady_result = solve_unsteady(&unsteady);
     assert_eq!(unsteady_result.wsel.len(), 2);
     assert!(unsteady_result.wsel[0][0] > 2.5);
+}
+
+#[test]
+fn unsteady_hybrid_structure_coupling_diagnostics_contract() {
+    use stream1d::solvers::{solve_unsteady, UnsteadyInputs};
+
+    let json = r#"{
+        "cross_sections": [
+            {"station": 1000, "x": [0, 0, 10, 10], "y": [6, 1, 1, 6], "n_stations": [0], "n_values": [0.02], "unit_system": "Metric"},
+            {"station": 500, "x": [0, 0, 10, 10], "y": [5.5, 0.5, 0.5, 5.5], "n_stations": [0], "n_values": [0.02], "unit_system": "Metric"},
+            {"station": 0, "x": [0, 0, 10, 10], "y": [5, 0, 0, 5], "n_stations": [0], "n_values": [0.02], "unit_system": "Metric"}
+        ],
+        "initial_wsel": [1.8, 1.5, 0.5],
+        "initial_q": [10.0, 10.0, 10.0],
+        "dt": 60.0,
+        "num_steps": 4,
+        "upstream_q_hydrograph": [10.0, 10.0, 10.0, 10.0],
+        "downstream_wsel_hydrograph": [0.5, 0.5, 0.5, 0.5],
+        "max_spacing": 600.0,
+        "unsteady_structure_coupling_mode": 2,
+        "culvert_stations": [250.0],
+        "culvert_shape_types": [0],
+        "culvert_spans": [2.0],
+        "culvert_rises": [2.0],
+        "culvert_roughness_ns": [0.013],
+        "culvert_lengths": [30.0],
+        "culvert_entrance_loss_coeffs": [0.5],
+        "culvert_exit_loss_coeffs": [1.0],
+        "culvert_barrels": [1],
+        "culvert_inlet_types": [1]
+    }"#;
+    let inputs: UnsteadyInputs = serde_json::from_str(json).expect("hybrid culvert unsteady JSON");
+    assert_eq!(inputs.unsteady_structure_coupling_mode, Some(2));
+    let result = solve_unsteady(&inputs);
+    assert_eq!(result.wsel.len(), 4);
+
+    let converged = result
+        .structure_coupling_converged
+        .as_ref()
+        .expect("structure_coupling_converged");
+    let implicit = result
+        .structure_implicit_interval_count
+        .as_ref()
+        .expect("structure_implicit_interval_count");
+    let fallback = result
+        .structure_explicit_fallback_count
+        .as_ref()
+        .expect("structure_explicit_fallback_count");
+    assert_eq!(converged.len(), 4);
+    assert_eq!(implicit.len(), 4);
+    assert_eq!(fallback.len(), 4);
+    assert!(implicit.iter().any(|c| *c > 0), "mode 2 should inject implicit rows");
+    assert!(converged.iter().all(|c| *c));
+
+    let out_json = serde_json::to_string(&result).unwrap();
+    assert!(out_json.contains("structure_implicit_interval_count"));
+    assert!(out_json.contains("structure_explicit_fallback_count"));
+
+    let meta = build_api_metadata();
+    assert!(meta
+        .unsteady_structure_coupling_outputs
+        .contains(&"structure_coupling_converged".to_string()));
+    assert_eq!(
+        meta.unsteady_structure_coupling_modes
+            .iter()
+            .find(|e| e.code == 2)
+            .map(|e| e.name.as_str()),
+        Some("HybridImplicit")
+    );
 }

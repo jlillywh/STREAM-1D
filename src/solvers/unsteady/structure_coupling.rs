@@ -46,9 +46,19 @@ pub(crate) struct CoupledStructure {
     pub idx: usize,
 }
 
+/// Post-step structure coupling diagnostics for one time step.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct StructureCouplingStepDiagnostics {
+    /// `true` when the post-step face-update loop converged within tolerance.
+    pub converged: bool,
+    /// Structure intervals that ran explicit face overwrite (not satisfied by implicit residual).
+    pub explicit_fallback_count: u32,
+}
+
 pub(crate) struct StructureCouplingStepResults {
     pub culvert: Option<Vec<crate::solvers::culvert::CulvertSolveResult>>,
     pub bridge: Option<Vec<crate::solvers::bridge::BridgeSolveResult>>,
+    pub diagnostics: Option<StructureCouplingStepDiagnostics>,
 }
 
 pub(crate) fn build_coupled_structure_order(
@@ -360,10 +370,14 @@ pub(crate) fn apply_structure_internal_boundaries(
         return StructureCouplingStepResults {
             culvert: None,
             bridge: None,
+            diagnostics: None,
         };
     }
 
     let step_tol = culvert_step_tolerance(raw_units);
+    let implicit_mode = inputs.unsteady_structure_coupling_mode == Some(2);
+    let mut explicit_fallback_count = 0_u32;
+    let mut converged = false;
     let dm = densified_tables.len();
     let mut culvert_results = if num_culverts > 0 {
         empty_culvert_step_results(num_culverts)
@@ -376,7 +390,7 @@ pub(crate) fn apply_structure_internal_boundaries(
         Vec::new()
     };
 
-    for _pass in 0..CULVERT_STEP_MAX_PASSES {
+    for pass in 0..CULVERT_STEP_MAX_PASSES {
         let mut max_delta = 0.0_f64;
 
         for structure in &coupled {
@@ -386,17 +400,19 @@ pub(crate) fn apply_structure_internal_boundaries(
 
             match structure.kind {
                 StructureKind::Culvert => {
-                    if super::culvert_implicit::culvert_implicit_post_step_satisfied(
-                        inputs,
-                        structure.idx,
-                        i,
-                        raw_units,
-                        densified_tables,
-                        densified_xs,
-                        densified_z_mins,
-                        y_metric,
-                        q_metric,
-                    ) {
+                    let implicit_satisfied = implicit_mode
+                        && super::culvert_implicit::culvert_implicit_post_step_satisfied(
+                            inputs,
+                            structure.idx,
+                            i,
+                            raw_units,
+                            densified_tables,
+                            densified_xs,
+                            densified_z_mins,
+                            y_metric,
+                            q_metric,
+                        );
+                    if implicit_satisfied {
                         culvert_results[structure.idx] =
                             super::culvert_implicit::culvert_implicit_diagnostics(
                                 inputs,
@@ -410,6 +426,9 @@ pub(crate) fn apply_structure_internal_boundaries(
                                 q_metric,
                             );
                         continue;
+                    }
+                    if pass == 0 {
+                        explicit_fallback_count += 1;
                     }
                     let result = converge_culvert_headwater(
                         inputs,
@@ -434,18 +453,20 @@ pub(crate) fn apply_structure_internal_boundaries(
                 }
                 StructureKind::Bridge => {
                     let b_idx = structure.idx;
-                    if super::bridge_implicit::bridge_implicit_post_step_satisfied(
-                        inputs,
-                        b_idx,
-                        i,
-                        raw_units,
-                        densified_stations,
-                        densified_tables,
-                        densified_xs,
-                        densified_z_mins,
-                        y_metric,
-                        q_metric,
-                    ) {
+                    let implicit_satisfied = implicit_mode
+                        && super::bridge_implicit::bridge_implicit_post_step_satisfied(
+                            inputs,
+                            b_idx,
+                            i,
+                            raw_units,
+                            densified_stations,
+                            densified_tables,
+                            densified_xs,
+                            densified_z_mins,
+                            y_metric,
+                            q_metric,
+                        );
+                    if implicit_satisfied {
                         bridge_results[structure.idx] =
                             super::bridge_implicit::bridge_implicit_diagnostics(
                                 inputs,
@@ -460,6 +481,9 @@ pub(crate) fn apply_structure_internal_boundaries(
                                 q_metric,
                             );
                         continue;
+                    }
+                    if pass == 0 {
+                        explicit_fallback_count += 1;
                     }
                     let b = &inputs.bridge;
                     let interval_length_m =
@@ -516,6 +540,7 @@ pub(crate) fn apply_structure_internal_boundaries(
         }
 
         if max_delta <= step_tol {
+            converged = true;
             break;
         }
     }
@@ -531,6 +556,10 @@ pub(crate) fn apply_structure_internal_boundaries(
         } else {
             None
         },
+        diagnostics: Some(StructureCouplingStepDiagnostics {
+            converged,
+            explicit_fallback_count,
+        }),
     }
 }
 

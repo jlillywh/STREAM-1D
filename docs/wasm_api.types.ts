@@ -614,8 +614,9 @@ export interface UnsteadyInputs extends UnsteadyCulvertInputs, BridgeArrays {
    */
   structure_coupling_order?: number;
   /**
-   * Preissmann structure coupling (API v33): 0 = post-step only (default),
-   * 2 = implicit Jacobian where supported (opt-in).
+   * Preissmann structure coupling (API v33+): 0 = post-step only (default),
+   * 1 = reserved (reach–structure–reach outer loop, not implemented),
+   * 2 = hybrid implicit + explicit fallback where needed.
    */
   unsteady_structure_coupling_mode?: number;
 }
@@ -640,6 +641,10 @@ export interface UnsteadyResult {
   bridge_wsel_upstream?: number[][];
   bridge_wsel_downstream?: number[][];
   bridge_head_losses?: number[][];
+  /** Present when inline structures are modeled — one value per time step (API v34). */
+  structure_coupling_converged?: boolean[];
+  structure_implicit_interval_count?: number[];
+  structure_explicit_fallback_count?: number[];
 }
 
 export type BridgeFlowRegime = 'low_a' | 'low_b' | 'low_c' | 'pressure' | 'weir' | 'energy';
@@ -680,8 +685,10 @@ export interface WasmApiMetadata {
     rating_curve_outputs: string[];
   };
   structure_coupling_orders: WasmEnumEntry[];
-  /** API v33 — Preissmann structure coupling mode (`unsteady_structure_coupling_mode`). */
+  /** API v33+ — Preissmann structure coupling mode (`unsteady_structure_coupling_mode`). */
   unsteady_structure_coupling_modes: WasmEnumEntry[];
+  /** API v34 — per-step structure coupling diagnostics on `UnsteadyResult`. */
+  unsteady_structure_coupling_outputs: string[];
 }
 
 /** Module exports from `pkg/stream1d.js` after `wasm-pack build --target web` */

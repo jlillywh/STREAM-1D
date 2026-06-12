@@ -3,7 +3,7 @@
 use serde::Serialize;
 
 /// API contract version — increment when SteadyInputs / SteadyResult fields change.
-pub const API_VERSION: u32 = 33;
+pub const API_VERSION: u32 = 34;
 
 /// Engine package version (keep in sync with `Cargo.toml`).
 pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -30,6 +30,8 @@ pub struct WasmApiMetadata {
     pub bridge_fields: BridgeFields,
     pub structure_coupling_orders: Vec<EnumEntry>,
     pub unsteady_structure_coupling_modes: Vec<EnumEntry>,
+    /// Per-step `solve_unsteady` outputs when inline structures are present (API v34).
+    pub unsteady_structure_coupling_outputs: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -413,9 +415,14 @@ pub fn build_api_metadata() -> WasmApiMetadata {
             },
             EnumEntry {
                 code: 2,
-                name: "Implicit".to_string(),
-                description: "Embed structure residuals in the Preissmann Jacobian where supported (opt-in)".to_string(),
+                name: "HybridImplicit".to_string(),
+                description: "Hybrid coupling: implicit Preissmann residuals where eligible; explicit post-step fallback elsewhere (production mode)".to_string(),
             },
+        ],
+        unsteady_structure_coupling_outputs: vec![
+            "structure_coupling_converged".to_string(),
+            "structure_implicit_interval_count".to_string(),
+            "structure_explicit_fallback_count".to_string(),
         ],
     }
 }
@@ -429,9 +436,11 @@ mod tests {
     fn test_api_metadata_serializes() {
         let json = serde_json::to_string(&build_api_metadata()).unwrap();
         assert!(json.contains("culvert_inlet_types"));
-        assert!(json.contains("\"api_version\":33"));
+        assert!(json.contains("\"api_version\":34"));
         assert!(json.contains("structure_coupling_orders"));
         assert!(json.contains("unsteady_structure_coupling_modes"));
+        assert!(json.contains("unsteady_structure_coupling_outputs"));
+        assert!(json.contains("structure_implicit_interval_count"));
     }
 
     #[test]

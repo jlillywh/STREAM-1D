@@ -35,3 +35,19 @@ __pycache__/
 *$py.class
 *.so
 .venv/
+
+# Accidental root scratch (coverage logs, Windows NUL device, agent captures)
+/nul
+/patch_diff.txt
+/cargo_*_out.txt
+/cargo_test_*.txt
+/*_test_out.txt
+/unc_*.txt
+/uncovered_snippets.txt
+/_cov_patch.py
+/parse_lcov_tmp.py
+/parse_patch_uncovered.py
+/dump_uncovered_snippets.py
+
+# Local workspace scratch (not part of the engine)
+/local/
