@@ -2,7 +2,7 @@
 
 **System architecture and integration blueprint for host applications (web, Python, and batch pipelines).**
 
-This document describes how STREAM-1D fits into a larger application. Mathematical formulations, verification results, and build instructions are in [`README.md`](README.md). GUI integration specs for the hosted [stream1d.com](https://stream1d.com) web application are maintained in that product's repository, not here.
+This document describes how STREAM-1D fits into a larger application. Mathematical formulations, verification results, and build instructions are in [`README.md`](../../README.md). GUI integration specs for the hosted [stream1d.com](https://stream1d.com) web application are maintained in that product's repository, not here.
 
 **Core language:** Rust (compiled to WebAssembly and a native Python extension via maturin)
 
@@ -44,7 +44,7 @@ Transforms arbitrary $(x, y)$ cross-section polylines into vertical lookup table
 * Area, wetted perimeter, top width, conveyance
 * Horton–Einstein composite Manning's $n$ when $n$ varies by station
 * Optional channel / overbank subdivision via `is_overbank` → `channel_area` for structure-adjacent calculations
-* Cross-section modifiers — see [`docs/reference/equations.md`](docs/reference/equations.md) §H0
+* Cross-section modifiers — see [`equations.md`](../reference/equations.md) §H0
 
 ### Module B: Steady-State Solver (`src/solvers/steady.rs`, `junction.rs`, `bridge.rs`, `bridge_abutment.rs`, `culvert.rs`)
 
@@ -62,12 +62,12 @@ Transforms arbitrary $(x, y)$ cross-section polylines into vertical lookup table
 
 ## 3. Scope Boundaries (Important for Integrators)
 
-See the full **[Limitations (read before comparing to HEC-RAS)](README.md#limitations-read-before-comparing-to-hec-ras)** section in `README.md` for what STREAM-1D does and does not model relative to HEC-RAS.
+See the full **[Limitations (read before comparing to HEC-RAS)](../../README.md#limitations-read-before-comparing-to-hec-ras)** section in `README.md` for what STREAM-1D does and does not model relative to HEC-RAS.
 
 | Feature | Steady | Unsteady |
 |---------|--------|----------|
 | Single reach | Yes | Yes |
-| Culverts / bridges on main stem | Yes | **Yes** — inline culverts and bridges via explicit post-step coupling (not implicit in Preissmann Jacobian). Stronger coupling planned: [`docs/development/unsteady_implicit_bridge_coupling.md`](docs/development/unsteady_implicit_bridge_coupling.md) |
+| Culverts / bridges on main stem | Yes | **Yes** — inline culverts and bridges; default explicit post-step coupling; optional hybrid implicit mode (`unsteady_structure_coupling_mode: 2`). See [`unsteady_implicit_bridge_coupling.md`](unsteady_implicit_bridge_coupling.md) |
 | One tributary junction | Yes (subcritical) | **No** |
 | Multiple tributaries / networks | **No** | **No** |
 | 2D floodplain, sediment, water quality | **No** | **No** |
@@ -93,7 +93,7 @@ Entry points (see `src/lib.rs`):
 
 Inputs and outputs are plain JavaScript objects using **snake_case** field names (same schema as Python JSON). Steady junction runs additionally return `tributary_wsel`, `tributary_velocity`, and `tributary_froude` when tributary fields are set.
 
-Check `getWasmApiMetadata().api_version` on each upgrade — history in [`docs/reference/api_changelog.md`](docs/reference/api_changelog.md). Types and examples: [`docs/wasm_api.types.ts`](docs/wasm_api.types.ts), [`examples/wasm/`](../examples/wasm/). Bridge BU/BD design: [`docs/BRIDGE_INTERIOR_SECTIONS_API.md`](docs/BRIDGE_INTERIOR_SECTIONS_API.md).
+Check `getWasmApiMetadata().api_version` on each upgrade — history in [`api_changelog.md`](../reference/api_changelog.md). Types and examples: [`wasm_api.types.ts`](../wasm_api.types.ts), [`examples/wasm/`](../../examples/wasm/). Bridge BU/BD design: [`BRIDGE_INTERIOR_SECTIONS_API.md`](../BRIDGE_INTERIOR_SECTIONS_API.md).
 
 **Build outputs:** `./build_wasm.sh` produces `./pkg` (web) and `./pkg-node` (Node), runs JSON contract tests, and executes a Node smoke test.
 
@@ -133,7 +133,7 @@ Automated checks ship with the repository:
 * `tests/bridge_abutment_hecras_verification.rs` — per-side abutment hand-calc / WSPRO benchmarks (`verification/fixtures/bridge_abutment_hecras.json`)
 * `tests/wasm_json_contract.rs` — JSON schema contract (including API v21 abutment fields)
 * `python/test_stream1d.py`, `python/test_python_bindings.py` — Python binding and HEC-RAS ConSpan benchmark (run `maturin develop --features python` after engine changes)
-* [`python/stream1d_verification.ipynb`](python/stream1d_verification.ipynb) — interactive Binder notebook with HEC-RAS WSEL overlay
+* [`python/stream1d_verification.ipynb`](../../python/stream1d_verification.ipynb) — interactive Binder notebook with HEC-RAS WSEL overlay
 
 ConSpan steady benchmark tolerance: **±0.04 ft** WSEL vs HEC-RAS at key stations (see README verification table).
 
@@ -143,6 +143,6 @@ ConSpan steady benchmark tolerance: **±0.04 ft** WSEL vs HEC-RAS at key station
 
 | Document | Purpose |
 |----------|---------|
-| [`README.md`](README.md) | Equations, build, usage examples, verification summary |
-| [`docs/wasm_api.types.ts`](docs/wasm_api.types.ts) | TypeScript definitions for WASM integrators |
-| [`examples/wasm/`](../examples/wasm/) | Worker reference and Node smoke test |
+| [`README.md`](../../README.md) | Equations, build, usage examples, verification summary |
+| [`wasm_api.types.ts`](../wasm_api.types.ts) | TypeScript definitions for WASM integrators |
+| [`examples/wasm/`](../../examples/wasm/) | Worker reference and Node smoke test |

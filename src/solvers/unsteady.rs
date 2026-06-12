@@ -13,7 +13,9 @@ mod culvert_implicit;
 #[path = "unsteady/bridge_implicit.rs"]
 mod bridge_implicit;
 
-pub use preissmann::{solve_preissmann_step, PreissmannStepParams, UnsteadyStructureCouplingMode};
+pub use preissmann::{
+    solve_preissmann_step, PreissmannStepParams, PreissmannStepStats, UnsteadyStructureCouplingMode,
+};
 
 /// Culvert model fields for unsteady routing (flattened into JSON; same keys as steady).
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -488,6 +490,15 @@ pub struct UnsteadyResult {
     pub bridge_wsel_downstream: Option<Vec<Vec<f64>>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bridge_head_losses: Option<Vec<Vec<f64>>>,
+    /// Per time step: post-step structure face loop converged within tolerance (when structures present).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub structure_coupling_converged: Option<Vec<bool>>,
+    /// Per time step: structure intervals with implicit Preissmann momentum rows (mode `2` only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub structure_implicit_interval_count: Option<Vec<u32>>,
+    /// Per time step: structure intervals that required explicit post-step face overwrite.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub structure_explicit_fallback_count: Option<Vec<u32>>,
 }
 
 /// Solves a single unsteady time step (reach-only; no structure interval tags).
@@ -526,7 +537,7 @@ pub fn solve_unsteady_step(
         #[cfg(test)]
         implicit_hook_probe: None,
     };
-    preissmann::solve_preissmann_step(&params)
+    preissmann::solve_preissmann_step(&params).map(|(y, q, _)| (y, q))
 }
 
 /// Solves unsteady-state Saint-Venant flow routing.
@@ -966,6 +977,12 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
         track_bridge_diagnostics.then(|| Vec::with_capacity(inputs.num_steps));
     let mut history_bridge_head_losses: Option<Vec<Vec<f64>>> =
         track_bridge_diagnostics.then(|| Vec::with_capacity(inputs.num_steps));
+    let mut history_structure_coupling_converged: Option<Vec<bool>> =
+        has_structures.then(|| Vec::with_capacity(inputs.num_steps));
+    let mut history_structure_implicit_interval_count: Option<Vec<u32>> =
+        has_structures.then(|| Vec::with_capacity(inputs.num_steps));
+    let mut history_structure_explicit_fallback_count: Option<Vec<u32>> =
+        has_structures.then(|| Vec::with_capacity(inputs.num_steps));
 
     // Loop through time steps
     for step in 0..inputs.num_steps {
@@ -1000,11 +1017,13 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
             implicit_hook_probe: None,
         };
 
-        if let Some((y_next, q_next)) = preissmann::solve_preissmann_step(&step_params) {
+        if let Some((y_next, q_next, preissmann_stats)) =
+            preissmann::solve_preissmann_step(&step_params)
+        {
             densified_y_current = y_next;
             densified_q_current = q_next;
 
-             let structure_step_results = structure_coupling::apply_structure_internal_boundaries(
+            let structure_step_results = structure_coupling::apply_structure_internal_boundaries(
                 &inputs,
                 raw_units,
                 &densified_tables,
@@ -1016,6 +1035,18 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
                 &culvert_intervals,
                 &bridge_intervals,
             );
+
+            if let Some(history) = history_structure_implicit_interval_count.as_mut() {
+                history.push(preissmann_stats.implicit_interval_count);
+            }
+            if let Some(diag) = structure_step_results.diagnostics {
+                if let Some(history) = history_structure_coupling_converged.as_mut() {
+                    history.push(diag.converged);
+                }
+                if let Some(history) = history_structure_explicit_fallback_count.as_mut() {
+                    history.push(diag.explicit_fallback_count);
+                }
+            }
 
             if let (Some(step_results), Some(ctrl)) = (
                 structure_step_results.culvert.as_ref(),
@@ -1154,6 +1185,9 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
         bridge_wsel_upstream: history_bridge_wsel_upstream,
         bridge_wsel_downstream: history_bridge_wsel_downstream,
         bridge_head_losses: history_bridge_head_losses,
+        structure_coupling_converged: history_structure_coupling_converged,
+        structure_implicit_interval_count: history_structure_implicit_interval_count,
+        structure_explicit_fallback_count: history_structure_explicit_fallback_count,
     }
 }
 
@@ -2697,6 +2731,48 @@ mod tests {
             regime.starts_with("low_"),
             "expected low-flow regime, got {regime}"
         );
+    }
+
+    #[test]
+    fn test_structure_coupling_diagnostics_mode2_culvert() {
+        let run = solve_unsteady(&inline_culvert_reach_inputs());
+        let implicit = run
+            .structure_implicit_interval_count
+            .as_ref()
+            .expect("implicit counts");
+        let fallback = run
+            .structure_explicit_fallback_count
+            .as_ref()
+            .expect("fallback counts");
+        let converged = run
+            .structure_coupling_converged
+            .as_ref()
+            .expect("converged flags");
+        assert_eq!(implicit.len(), run.wsel.len());
+        assert!(implicit.iter().any(|c| *c > 0));
+        assert!(
+            fallback.iter().all(|c| *c <= 1),
+            "hybrid mode should use at most one explicit pass per structure per step"
+        );
+        assert!(converged.iter().all(|c| *c));
+    }
+
+    #[test]
+    fn test_structure_coupling_diagnostics_mode0_explicit_only() {
+        let mut inputs = inline_culvert_reach_inputs();
+        inputs.unsteady_structure_coupling_mode = None;
+        inputs.num_steps = 3;
+        let run = solve_unsteady(&inputs);
+        let implicit = run
+            .structure_implicit_interval_count
+            .as_ref()
+            .expect("implicit counts");
+        let fallback = run
+            .structure_explicit_fallback_count
+            .as_ref()
+            .expect("fallback counts");
+        assert!(implicit.iter().all(|c| *c == 0));
+        assert!(fallback.iter().all(|c| *c == 1));
     }
 
     #[test]
