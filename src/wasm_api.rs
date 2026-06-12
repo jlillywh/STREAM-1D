@@ -3,7 +3,7 @@
 use serde::Serialize;
 
 /// API contract version — increment when SteadyInputs / SteadyResult fields change.
-pub const API_VERSION: u32 = 32;
+pub const API_VERSION: u32 = 33;
 
 /// Engine package version (keep in sync with `Cargo.toml`).
 pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -29,6 +29,7 @@ pub struct WasmApiMetadata {
     pub culvert_geometry_fields: CulvertGeometryFields,
     pub bridge_fields: BridgeFields,
     pub structure_coupling_orders: Vec<EnumEntry>,
+    pub unsteady_structure_coupling_modes: Vec<EnumEntry>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -399,6 +400,23 @@ pub fn build_api_metadata() -> WasmApiMetadata {
                 description: "All bridges (downstream-first), then all culverts (downstream-first)".to_string(),
             },
         ],
+        unsteady_structure_coupling_modes: vec![
+            EnumEntry {
+                code: 0,
+                name: "PostStepOnly".to_string(),
+                description: "Preissmann reach step only; structures corrected in post-step passes (default)".to_string(),
+            },
+            EnumEntry {
+                code: 1,
+                name: "ReachStructureReach".to_string(),
+                description: "Reserved: outer reach–structure–reach iteration per time step".to_string(),
+            },
+            EnumEntry {
+                code: 2,
+                name: "Implicit".to_string(),
+                description: "Embed structure residuals in the Preissmann Jacobian where supported (opt-in)".to_string(),
+            },
+        ],
     }
 }
 
@@ -411,8 +429,9 @@ mod tests {
     fn test_api_metadata_serializes() {
         let json = serde_json::to_string(&build_api_metadata()).unwrap();
         assert!(json.contains("culvert_inlet_types"));
-        assert!(json.contains("\"api_version\":32"));
+        assert!(json.contains("\"api_version\":33"));
         assert!(json.contains("structure_coupling_orders"));
+        assert!(json.contains("unsteady_structure_coupling_modes"));
     }
 
     #[test]

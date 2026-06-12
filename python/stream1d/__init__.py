@@ -479,6 +479,7 @@ class UnsteadyInputs:
         bridge_opening_anchor_modes: Optional[List[int]] = None,
         bridge_opening_anchor_reach_stations: Optional[List[float]] = None,
         structure_coupling_order: Optional[int] = None,
+        unsteady_structure_coupling_mode: Optional[int] = None,
     ):
         self.cross_sections = cross_sections
         self.initial_wsel = initial_wsel
@@ -572,6 +573,7 @@ class UnsteadyInputs:
         self.bridge_opening_anchor_modes = bridge_opening_anchor_modes or []
         self.bridge_opening_anchor_reach_stations = bridge_opening_anchor_reach_stations or []
         self.structure_coupling_order = structure_coupling_order
+        self.unsteady_structure_coupling_mode = unsteady_structure_coupling_mode
 
     def to_dict(self) -> dict:
         res = {
@@ -669,6 +671,8 @@ class UnsteadyInputs:
         }
         if self.structure_coupling_order is not None:
             res['structure_coupling_order'] = self.structure_coupling_order
+        if self.unsteady_structure_coupling_mode is not None:
+            res['unsteady_structure_coupling_mode'] = self.unsteady_structure_coupling_mode
         return res
 
 def solve_steady(inputs: Any) -> dict:

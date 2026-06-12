@@ -1,8 +1,7 @@
 //! Shared bridge test fixtures and helpers.
 
 use super::*;
-use crate::geometry::{CrossSection, GuideBankToe, GuideBanks, IneffectiveFlowAreas, row_at_elevation};
-use crate::solvers::deck_vent_geometry::DeckVentUserInput;
+use crate::geometry::{CrossSection, GuideBankToe, GuideBanks, IneffectiveFlowAreas};
 use crate::solvers::pier_geometry::{
     resolve_pier_width_specs, PierAttachmentsUserInput, PierWidthSpec, PierWidthUserInput,
     ResolvedPier,

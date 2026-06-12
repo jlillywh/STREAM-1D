@@ -140,7 +140,7 @@ fn culvert_step_tolerance(raw_units: UnitSystem) -> f64 {
     }
 }
 
-fn build_unsteady_culvert_params(
+pub(crate) fn build_unsteady_culvert_params(
     inputs: &UnsteadyInputs,
     c_idx: usize,
     i: usize,
@@ -386,6 +386,31 @@ pub(crate) fn apply_structure_internal_boundaries(
 
             match structure.kind {
                 StructureKind::Culvert => {
+                    if super::culvert_implicit::culvert_implicit_post_step_satisfied(
+                        inputs,
+                        structure.idx,
+                        i,
+                        raw_units,
+                        densified_tables,
+                        densified_xs,
+                        densified_z_mins,
+                        y_metric,
+                        q_metric,
+                    ) {
+                        culvert_results[structure.idx] =
+                            super::culvert_implicit::culvert_implicit_diagnostics(
+                                inputs,
+                                structure.idx,
+                                i,
+                                raw_units,
+                                densified_tables,
+                                densified_xs,
+                                densified_z_mins,
+                                y_metric,
+                                q_metric,
+                            );
+                        continue;
+                    }
                     let result = converge_culvert_headwater(
                         inputs,
                         structure.idx,

@@ -1338,6 +1338,92 @@ pub fn solve_culvert_wsel(
     solve_culvert(&params).wsel
 }
 
+/// Implicit Preissmann residual $R = y_\mathrm{us} - \mathrm{HW}_\mathrm{inlet}$ and partial derivatives.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CulvertHeadwaterResidual {
+    pub r: f64,
+    pub dr_dy_us: f64,
+    pub dr_dy_ds: f64,
+    pub dr_dq: f64,
+}
+
+fn wsel_user_to_metric(wsel_user: f64, units: UnitSystem) -> f64 {
+    if units == UnitSystem::USCustomary {
+        wsel_user * FT_TO_M
+    } else {
+        wsel_user
+    }
+}
+
+/// True when Phase 3 implicit inlet residual may replace the reach momentum row.
+pub fn culvert_implicit_inlet_eligible(params: &CulvertSolveParams) -> bool {
+    let shape = CulvertShape::from_i32(params.shape_type);
+    if !matches!(shape, CulvertShape::Circular | CulvertShape::Box) {
+        return false;
+    }
+    if params.crest_elev.is_some() {
+        return false;
+    }
+    if params.barrel_spans.is_some() || params.barrel_rises.is_some() {
+        return false;
+    }
+    if params.num_barrels > 1 || params.active_barrels > 1 {
+        return false;
+    }
+    if params.q <= 1e-6 {
+        return false;
+    }
+    true
+}
+
+fn culvert_inlet_wsel_metric(y_ds_metric: f64, q_metric: f64, params: &CulvertSolveParams) -> Option<f64> {
+    if !culvert_implicit_inlet_eligible(params) {
+        return None;
+    }
+    let mut p = params.clone();
+    if p.units == UnitSystem::USCustomary {
+        p.q = q_metric / CFS_TO_CMS;
+        p.tw_wsel = y_ds_metric / FT_TO_M;
+    } else {
+        p.q = q_metric;
+        p.tw_wsel = y_ds_metric;
+    }
+    normalize_culvert_params(&mut p);
+    let barrel = solve_culvert_barrels(&p, p.q);
+    if barrel.wsel_inlet + 1e-4 < barrel.wsel_outlet {
+        return None;
+    }
+    Some(wsel_user_to_metric(barrel.wsel_inlet, p.units))
+}
+
+/// Inlet-control headwater residual at metric faces. Returns `None` when outlet controls or unsupported.
+pub fn culvert_headwater_residual(
+    y_us_metric: f64,
+    y_ds_metric: f64,
+    q_metric: f64,
+    params: &CulvertSolveParams,
+) -> Option<CulvertHeadwaterResidual> {
+    let wsel_inlet_metric = culvert_inlet_wsel_metric(y_ds_metric, q_metric, params)?;
+    let r = y_us_metric - wsel_inlet_metric;
+
+    let dr_dy_us = 1.0;
+    let dr_dy_ds = 0.0;
+
+    let dq_metric = (q_metric.abs() * 1e-4).max(1e-4);
+    let q_lo = (q_metric - dq_metric).max(1e-6);
+    let q_hi = q_metric + dq_metric;
+    let w_lo = culvert_inlet_wsel_metric(y_ds_metric, q_lo, params).unwrap_or(wsel_inlet_metric);
+    let w_hi = culvert_inlet_wsel_metric(y_ds_metric, q_hi, params).unwrap_or(wsel_inlet_metric);
+    let dr_dq = -(w_hi - w_lo) / (q_hi - q_lo);
+
+    Some(CulvertHeadwaterResidual {
+        r,
+        dr_dy_us,
+        dr_dy_ds,
+        dr_dq,
+    })
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -1373,6 +1459,30 @@ mod tests {
             barrel_spans: None,
             barrel_rises: None,
         }
+    }
+
+    #[test]
+    fn culvert_headwater_residual_matches_solve_culvert() {
+        let params = us_circular_baseline();
+        let solved = solve_culvert(&params);
+        assert_eq!(solved.control_type, "inlet");
+        let y_ds = if params.units == UnitSystem::Metric {
+            params.tw_wsel
+        } else {
+            params.tw_wsel * FT_TO_M
+        };
+        let q = if params.units == UnitSystem::Metric {
+            params.q
+        } else {
+            params.q * CFS_TO_CMS
+        };
+        let y_us = if params.units == UnitSystem::Metric {
+            solved.wsel
+        } else {
+            solved.wsel * FT_TO_M
+        };
+        let residual = culvert_headwater_residual(y_us, y_ds, q, &params).expect("inlet residual");
+        assert!(residual.r.abs() < 0.05);
     }
 
     #[test]
