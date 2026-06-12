@@ -39,6 +39,7 @@ pub enum StructureIntervalTag {
 pub struct PreissmannStepParams<'a> {
     pub tables: &'a [GeometryTable],
     pub xs_list: &'a [CrossSection],
+    pub densified_stations: &'a [f64],
     pub z_mins: &'a [f64],
     pub y_current: &'a [f64],
     pub q_current: &'a [f64],
@@ -99,7 +100,18 @@ fn try_implicit_structure_momentum_row(
             params.y_current,
             params.q_current,
         ),
-        StructureIntervalTag::Bridge(_) => None,
+        StructureIntervalTag::Bridge(b_idx) => super::bridge_implicit::try_bridge_implicit_momentum_row(
+            inputs,
+            params.raw_units,
+            b_idx,
+            interval_i,
+            params.densified_stations,
+            params.tables,
+            params.xs_list,
+            params.z_mins,
+            params.y_current,
+            params.q_current,
+        ),
     }
 }
 
@@ -377,9 +389,11 @@ mod tests {
         let z_mins = vec![0.0, 0.0];
         let y0 = vec![2.0, 2.0];
         let q0 = vec![15.0, 15.0];
+        let densified_stations = vec![100.0, 0.0];
         let params = PreissmannStepParams {
             tables: &tables,
             xs_list: &[xs_us, xs_ds],
+            densified_stations: &densified_stations,
             z_mins: &z_mins,
             y_current: &y0,
             q_current: &q0,

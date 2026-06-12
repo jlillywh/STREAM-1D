@@ -434,6 +434,33 @@ pub(crate) fn apply_structure_internal_boundaries(
                 }
                 StructureKind::Bridge => {
                     let b_idx = structure.idx;
+                    if super::bridge_implicit::bridge_implicit_post_step_satisfied(
+                        inputs,
+                        b_idx,
+                        i,
+                        raw_units,
+                        densified_stations,
+                        densified_tables,
+                        densified_xs,
+                        densified_z_mins,
+                        y_metric,
+                        q_metric,
+                    ) {
+                        bridge_results[structure.idx] =
+                            super::bridge_implicit::bridge_implicit_diagnostics(
+                                inputs,
+                                b_idx,
+                                i,
+                                raw_units,
+                                densified_stations,
+                                densified_tables,
+                                densified_xs,
+                                densified_z_mins,
+                                y_metric,
+                                q_metric,
+                            );
+                        continue;
+                    }
                     let b = &inputs.bridge;
                     let interval_length_m =
                         (densified_stations[i] - densified_stations[i + 1]).abs();

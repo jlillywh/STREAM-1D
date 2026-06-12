@@ -10,6 +10,8 @@ mod structure_coupling;
 mod preissmann;
 #[path = "unsteady/culvert_implicit.rs"]
 mod culvert_implicit;
+#[path = "unsteady/bridge_implicit.rs"]
+mod bridge_implicit;
 
 pub use preissmann::{solve_preissmann_step, PreissmannStepParams, UnsteadyStructureCouplingMode};
 
@@ -502,9 +504,11 @@ pub fn solve_unsteady_step(
     c_contraction: f64,
     c_expansion: f64,
 ) -> Option<(Vec<f64>, Vec<f64>)> {
+    let densified_stations: Vec<f64> = xs_list.iter().map(|xs| xs.station).collect();
     let params = PreissmannStepParams {
         tables,
         xs_list,
+        densified_stations: &densified_stations,
         z_mins,
         y_current,
         q_current,
@@ -977,6 +981,7 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
         let step_params = PreissmannStepParams {
             tables: &densified_tables,
             xs_list: &densified_xs,
+            densified_stations: &densified_stations,
             z_mins: &densified_z_mins,
             y_current: &densified_y_current,
             q_current: &densified_q_current,
@@ -2360,17 +2365,7 @@ mod tests {
             coeff_contraction: None,
             coeff_expansion: None,
             culvert: UnsteadyCulvertInputs::default(),
-            bridge: UnsteadyBridgeInputs {
-                bridge_stations: Some(vec![250.0]),
-                bridge_low_chords: Some(vec![5.0]),
-                bridge_high_chords: Some(vec![7.0]),
-                bridge_pier_widths: Some(vec![0.5]),
-                bridge_num_piers: Some(vec![2]),
-                bridge_pier_shapes: Some(vec![0]),
-                bridge_weir_coeffs: Some(vec![1.44]),
-                bridge_orifice_coeffs: Some(vec![0.5]),
-                ..Default::default()
-            },
+            bridge: UnsteadyBridgeInputs::default(),
             structure_coupling_order: None,
             unsteady_structure_coupling_mode: None,
         };
@@ -2550,6 +2545,179 @@ mod tests {
         assert!(run.wsel.iter().flatten().all(|w| w.is_finite()));
         assert!(run.q.iter().flatten().all(|q| q.is_finite()));
         assert!(run.wsel[7][1] > inputs.downstream_wsel_hydrograph[0]);
+    }
+
+    fn inline_bridge_metric_xs() -> (CrossSection, CrossSection, CrossSection) {
+        let xs1000 = CrossSection {
+            station: 1000.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![6.0, 1.0, 1.0, 6.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let xs500 = CrossSection {
+            station: 500.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![5.5, 0.5, 0.5, 5.5],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let xs0 = CrossSection {
+            station: 0.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![5.0, 0.0, 0.0, 5.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        (xs1000, xs500, xs0)
+    }
+
+    fn inline_bridge_reach_inputs(low_flow_method: Option<i32>) -> UnsteadyInputs {
+        let (xs1000, xs500, xs0) = inline_bridge_metric_xs();
+        let energy = low_flow_method == Some(3);
+        let num_piers = if energy { 0 } else { 2 };
+        let pier_width = if energy { 0.0 } else { 0.5 };
+        UnsteadyInputs {
+            cross_sections: vec![xs1000, xs500, xs0],
+            initial_wsel: vec![2.5, 2.0, 1.5],
+            initial_q: vec![15.0, 15.0, 15.0],
+            dt: 60.0,
+            num_steps: 80,
+            upstream_q_hydrograph: vec![15.0; 80],
+            downstream_wsel_hydrograph: vec![1.5; 80],
+            theta: Some(0.6),
+            num_slices: Some(50),
+            max_spacing: Some(600.0),
+            densify_reach_modifier_policy: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            culvert: UnsteadyCulvertInputs::default(),
+            bridge: UnsteadyBridgeInputs {
+                bridge_stations: Some(vec![250.0]),
+                bridge_low_chords: Some(vec![5.0]),
+                bridge_high_chords: Some(vec![7.0]),
+                bridge_pier_widths: Some(vec![pier_width]),
+                bridge_num_piers: Some(vec![num_piers]),
+                bridge_pier_shapes: Some(vec![0]),
+                bridge_weir_coeffs: Some(vec![1.44]),
+                bridge_orifice_coeffs: Some(vec![0.5]),
+                bridge_low_flow_methods: low_flow_method.map(|m| vec![m]),
+                ..Default::default()
+            },
+            structure_coupling_order: None,
+            unsteady_structure_coupling_mode: Some(2),
+        }
+    }
+
+    #[test]
+    fn test_unsteady_implicit_bridge_yarnell_constant_q_matches_steady() {
+        let (xs1000, xs500, xs0) = inline_bridge_metric_xs();
+        let run = solve_unsteady(&inline_bridge_reach_inputs(None));
+        let last = run.wsel.len() - 1;
+        let q_face = run.q[last][1];
+        let y_us = run.wsel[last][1];
+        let y_ds = run.wsel[last][2];
+
+        let steady = crate::solvers::bridge::solve_bridge_coupled(
+            q_face,
+            5.0,
+            7.0,
+            0.5,
+            2,
+            0,
+            1.44,
+            0.5,
+            0.0,
+            0.5,
+            y_ds,
+            UnitSystem::Metric,
+            &xs500.generate_lookup_table(50),
+            &xs0.generate_lookup_table(50),
+            &crate::solvers::bridge::BridgeCouplingParams::default(),
+            250.0,
+            None,
+            None,
+        );
+        assert_eq!(steady.flow_regime, "low_a");
+
+        let hw_diag = run
+            .bridge_wsel_upstream
+            .as_ref()
+            .expect("bridge diagnostics")[last][0];
+        assert!(
+            (hw_diag - steady.wsel_up).abs() < 0.05,
+            "diagnostics {hw_diag} vs steady {}",
+            steady.wsel_up
+        );
+        assert!(
+            (y_us - steady.wsel_up).abs() < 0.05,
+            "face WSEL {y_us} vs steady {}",
+            steady.wsel_up
+        );
+        let _ = xs1000;
+    }
+
+    #[test]
+    fn test_unsteady_implicit_bridge_energy_matches_explicit_poststep() {
+        let mut explicit_inputs = inline_bridge_reach_inputs(Some(3));
+        explicit_inputs.unsteady_structure_coupling_mode = None;
+        let explicit_run = solve_unsteady(&explicit_inputs);
+        let implicit_run = solve_unsteady(&inline_bridge_reach_inputs(Some(3)));
+        let last = explicit_run.wsel.len() - 1;
+
+        let y_us_implicit = implicit_run.wsel[last][1];
+        let y_us_explicit = explicit_run.wsel[last][1];
+
+        assert!(
+            (y_us_implicit - y_us_explicit).abs() < 0.05,
+            "implicit {y_us_implicit} vs explicit post-step {y_us_explicit}"
+        );
+
+        let regime = implicit_run
+            .bridge_flow_regimes
+            .as_ref()
+            .expect("regimes")[last][0]
+            .clone();
+        assert!(
+            regime.starts_with("low_"),
+            "expected low-flow regime, got {regime}"
+        );
+    }
+
+    #[test]
+    fn test_unsteady_implicit_bridge_tw_ramp_uses_explicit_fallback() {
+        let mut inputs = inline_bridge_reach_inputs(None);
+        inputs.num_steps = 6;
+        inputs.downstream_wsel_hydrograph =
+            vec![1.5, 2.5, 3.5, 4.5, 5.5, 6.0];
+        let run = solve_unsteady(&inputs);
+        let last = run.wsel.len() - 1;
+        assert!(run.wsel[last].iter().all(|w| w.is_finite()));
+
+        let regimes = run
+            .bridge_flow_regimes
+            .as_ref()
+            .expect("bridge regimes")[last][0]
+            .clone();
+        assert!(
+            regimes == "pressure" || regimes == "weir" || regimes == "energy",
+            "expected high-flow regime at TW above low chord, got {regimes}"
+        );
     }
 }
 
