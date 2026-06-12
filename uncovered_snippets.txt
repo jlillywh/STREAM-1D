@@ -1,0 +1,221 @@
+
+######## src/solvers/bridge_interior.rs (56 patch-uncovered lines) ########
+
+--- L92-93 ---
+   92|             2 => Self::ReachLateralX,
+   93|             _ => Self::BuLeft,
+
+--- L158-158 ---
+  158|         BridgeOpeningAnchorMode::ReachLateralX => None,
+
+--- L183-194 ---
+  183| pub fn cross_section_at_reach_station_dense(
+  184|     stations_metric: &[f64],
+  185|     xs: &[CrossSection],
+  186|     station_user: f64,
+  187|     raw_units: UnitSystem,
+  188| ) -> Option<CrossSection> {
+  189|     let target_m = user_length_to_metric(station_user, raw_units);
+  190|     let idx = stations_metric
+  191|         .iter()
+  192|         .position(|&s| (s - target_m).abs() <= STRUCTURE_STATION_TOL)?;
+  193|     xs.get(idx).cloned()
+  194| }
+
+--- L352-353 ---
+  352|                 cross_section_at_reach_station(densified_stations, densified_xs, st, raw_units)
+  353|             })
+
+--- L710-710 ---
+  710|         opening.to_metric(UnitSystem::USCustomary)
+
+--- L725-725 ---
+  725|         return;
+
+--- L732-732 ---
+  732|         BridgeLayoutCutKind::Internal => {}
+
+--- L764-766 ---
+  764|             BridgeLayoutCutKind::Internal => {
+  765|                 apply_reach_modifier_policy(&mut synthetic, &up_m, &down_m, t, densify_policy);
+  766|             }
+
+--- L771-771 ---
+  771|     }
+
+--- L773-790 ---
+  773|     let (table_interp, z_interp) = crate::geometry::processor::interpolate_geometry_table(
+  774|         &tables[i],
+  775|         z_mins[i],
+  776|         &tables[i + 1],
+  777|         z_mins[i + 1],
+  778|         t,
+  779|         num_slices,
+  780|     );
+  781|     let mut xs_new = xs[i]
+  782|         .clone()
+  783|         .or_else(|| xs.get(i + 1).and_then(|x| x.clone()))
+  784|         .map(|mut section| {
+  785|             section.station = station_m;
+  786|             section
+  787|         });
+  788|     if let Some(ref mut section) = xs_new {
+  789|         if matches!(
+  790|             cut.kind,
+
+--- L793-798 ---
+  793|             section.ineffective_flow_areas = None;
+  794|             apply_bridge_face_ineffective_to_section(section, cut, up_ref, raw_units);
+  795|             if section
+  796|                 .ineffective_flow_areas
+  797|                 .as_ref()
+  798|                 .is_some_and(|i| i.is_configured())
+
+--- L800-807 ---
+  800|                 let metric = section.to_metric();
+  801|                 let z = cross_section_min_bed(&metric);
+  802|                 let table = metric.generate_lookup_table(num_slices);
+  803|                 return (table, z, Some(metric));
+  804|             }
+  805|         }
+  806|     }
+  807|     (table_interp, z_interp, xs_new)
+
+######## src/solvers/steady.rs (42 patch-uncovered lines) ########
+
+--- L249-249 ---
+  249|     pub bridge_departure_guide_banks: Option<Vec<crate::geometry::GuideBanks>>,
+
+--- L586-593 ---
+  586|     let mut res_high = loop {
+  587|         match target_residual(high) {
+  588|             Some(r) => break r,
+  589|             None if is_subcritical => {
+  590|                 high -= 0.05;
+  591|                 if high <= low {
+  592|                     return None;
+  593|                 }
+
+--- L595-595 ---
+  595|             None => return None,
+
+--- L628-628 ---
+  628|                         }
+
+--- L631-631 ---
+  631|             }
+
+--- L646-646 ---
+  646|                             return Some(y_try);
+
+--- L652-652 ---
+  652|                     return Some(best_y);
+
+--- L1020-1020 ---
+ 1020|                                 s_interp,
+
+--- L1148-1148 ---
+ 1148|             let metric = if raw_units == UnitSystem::USCustomary {
+
+--- L1153-1156 ---
+ 1153|             match opening_origin {
+ 1154|                 Some(origin) => crate::solvers::bridge_interior::remap_ineffective_opening_to_reach(
+ 1155|                     Some(metric.clone()),
+ 1156|                     origin,
+
+--- L1158-1159 ---
+ 1158|                 .unwrap_or(metric),
+ 1159|                 None => metric,
+
+--- L1165-1165 ---
+ 1165|             let metric = if raw_units == UnitSystem::USCustomary {
+
+--- L1170-1173 ---
+ 1170|             match opening_origin {
+ 1171|                 Some(origin) => crate::solvers::bridge_interior::remap_ineffective_opening_to_reach(
+ 1172|                     Some(metric.clone()),
+ 1173|                     origin,
+
+--- L1175-1176 ---
+ 1175|                 .unwrap_or(metric),
+ 1176|                 None => metric,
+
+--- L2078-2079 ---
+ 2078|             wsel_sparse[0],
+ 2079|             wsel_dense[0]
+
+--- L2084-2085 ---
+ 2084|             wsel_sparse[1],
+ 2085|             wsel_dense[4]
+
+--- L2108-2109 ---
+ 2108|                 channel_with_reach_ineffective(100.0, 0.05),
+ 2109|                 channel_with_reach_ineffective(50.0, 0.025),
+
+--- L2114-2115 ---
+ 2114|             regime: 0,
+ 2115|             downstream_wsel: Some(1.6),
+
+--- L2126-2127 ---
+ 2126|             wsel_sparse[0],
+ 2127|             wsel_dense[0]
+
+--- L2132-2133 ---
+ 2132|             wsel_sparse[1],
+ 2133|             wsel_dense[4]
+
+--- L2996-2996 ---
+ 2996|             _ineffective.wsel[1],
+
+######## src/geometry/densify.rs (10 patch-uncovered lines) ########
+
+--- L24-25 ---
+   24|             2 => Self::Downstream,
+   25|             3 => Self::Nearest,
+
+--- L45-45 ---
+   45|         return None;
+
+--- L48-48 ---
+   48|         return Some(xs.y[0]);
+
+--- L59-59 ---
+   59|                 return Some(xs.y[i]);
+
+--- L65-65 ---
+   65|     None
+
+--- L185-187 ---
+  185|     match policy {
+  186|         DensifyReachModifierPolicy::Downstream => downstream,
+  187|         DensifyReachModifierPolicy::Nearest if t > 0.5 => downstream,
+
+--- L208-208 ---
+  208|         return;
+
+######## src/solvers/unsteady.rs (13 patch-uncovered lines) ########
+
+--- L262-266 ---
+  262|             crate::solvers::bridge_interior::cross_section_at_reach_station_dense(
+  263|                 densified_stations,
+  264|                 densified_xs,
+  265|                 st,
+  266|                 raw_units,
+
+--- L268-268 ---
+  268|         });
+
+--- L2108-2109 ---
+ 2108|             r_sparse.wsel[last][0],
+ 2109|             r_dense.wsel[last][0]
+
+--- L2114-2115 ---
+ 2114|             r_sparse.wsel[last][1],
+ 2115|             r_dense.wsel[last][4]
+
+--- L2592-2593 ---
+ 2592|             open.0[0],
+ 2593|             ineffective.0[0],
+
+--- L2598-2598 ---
+ 2598|             ineffective.0[1],

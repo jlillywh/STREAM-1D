@@ -773,115 +773,98 @@ pub fn solve_step(
     Some(best_y)
 }
 
+pub(crate) fn bridge_reach_fields(inputs: &SteadyInputs) -> crate::solvers::bridge::reach_coupling::BridgeReachFields<'_> {
+    crate::solvers::bridge::reach_coupling::BridgeReachFields {
+        low_chords: &inputs.bridge_low_chords,
+        high_chords: &inputs.bridge_high_chords,
+        deck_stations: &inputs.bridge_deck_stations,
+        deck_low_elevations: &inputs.bridge_deck_low_elevations,
+        deck_high_elevations: &inputs.bridge_deck_high_elevations,
+        ineffective_left_stations: &inputs.bridge_ineffective_left_stations,
+        ineffective_left_elevations: &inputs.bridge_ineffective_left_elevations,
+        ineffective_right_stations: &inputs.bridge_ineffective_right_stations,
+        ineffective_right_elevations: &inputs.bridge_ineffective_right_elevations,
+        ineffective_left_stations_upstream: &inputs.bridge_ineffective_left_stations_upstream,
+        ineffective_left_elevations_upstream: &inputs.bridge_ineffective_left_elevations_upstream,
+        ineffective_right_stations_upstream: &inputs.bridge_ineffective_right_stations_upstream,
+        ineffective_right_elevations_upstream: &inputs.bridge_ineffective_right_elevations_upstream,
+        ineffective_left_stations_downstream: &inputs.bridge_ineffective_left_stations_downstream,
+        ineffective_left_elevations_downstream: &inputs.bridge_ineffective_left_elevations_downstream,
+        ineffective_right_stations_downstream: &inputs.bridge_ineffective_right_stations_downstream,
+        ineffective_right_elevations_downstream: &inputs.bridge_ineffective_right_elevations_downstream,
+        abutment_block_widths: &inputs.bridge_abutment_block_widths,
+        abutment_left_widths: &inputs.bridge_abutment_left_widths,
+        abutment_right_widths: &inputs.bridge_abutment_right_widths,
+        abutment_left_stations: &inputs.bridge_abutment_left_stations,
+        abutment_right_stations: &inputs.bridge_abutment_right_stations,
+        abutment_left_top_elevations: &inputs.bridge_abutment_left_top_elevations,
+        abutment_right_top_elevations: &inputs.bridge_abutment_right_top_elevations,
+        abutment_left_top_profile_stations: &inputs.bridge_abutment_left_top_profile_stations,
+        abutment_left_top_profile_elevations: &inputs.bridge_abutment_left_top_profile_elevations,
+        abutment_right_top_profile_stations: &inputs.bridge_abutment_right_top_profile_stations,
+        abutment_right_top_profile_elevations: &inputs.bridge_abutment_right_top_profile_elevations,
+        low_flow_methods: &inputs.bridge_low_flow_methods,
+        high_flow_methods: &inputs.bridge_high_flow_methods,
+        lengths: &inputs.bridge_lengths,
+        friction_weighting: &inputs.bridge_friction_weighting,
+        approach_friction_lengths: &inputs.bridge_approach_friction_lengths,
+        departure_friction_lengths: &inputs.bridge_departure_friction_lengths,
+        opening_blockage_factors: &inputs.bridge_opening_blockage_factors,
+        pier_debris_widths: &inputs.bridge_pier_debris_widths,
+        pier_debris_heights: &inputs.bridge_pier_debris_heights,
+        ice_thicknesses: &inputs.bridge_ice_thicknesses,
+        ice_modes: &inputs.bridge_ice_modes,
+        deck_ice_thicknesses: &inputs.bridge_deck_ice_thicknesses,
+        wspro_coeffs: &inputs.bridge_wspro_coeffs,
+        pressure_flow_coeffs_inlet: &inputs.bridge_pressure_flow_coeffs_inlet,
+        max_weir_submergence: &inputs.bridge_max_weir_submergence,
+        coeff_contraction: inputs.coeff_contraction,
+        coeff_expansion: inputs.coeff_expansion,
+        skew_angles: &inputs.bridge_skew_angles,
+        pier_stations: &inputs.bridge_pier_stations,
+        pier_top_widths: &inputs.bridge_pier_top_widths,
+        pier_bottom_widths: &inputs.bridge_pier_bottom_widths,
+        pier_width_elevations: &inputs.bridge_pier_width_elevations,
+        pier_width_values: &inputs.bridge_pier_width_values,
+        pier_top_elevations: &inputs.bridge_pier_top_elevations,
+        pier_base_elevations: &inputs.bridge_pier_base_elevations,
+        pier_footing_top_elevations: &inputs.bridge_pier_footing_top_elevations,
+        pier_footing_widths: &inputs.bridge_pier_footing_widths,
+        pier_footing_bottom_elevations: &inputs.bridge_pier_footing_bottom_elevations,
+        pier_nosing_lengths: &inputs.bridge_pier_nosing_lengths,
+        pier_nosing_widths: &inputs.bridge_pier_nosing_widths,
+        deck_vent_left_stations: &inputs.bridge_deck_vent_left_stations,
+        deck_vent_right_stations: &inputs.bridge_deck_vent_right_stations,
+        deck_vent_stations: &inputs.bridge_deck_vent_stations,
+        deck_vent_widths: &inputs.bridge_deck_vent_widths,
+        deck_vent_invert_elevations: &inputs.bridge_deck_vent_invert_elevations,
+        deck_vent_soffit_elevations: &inputs.bridge_deck_vent_soffit_elevations,
+        deck_vent_discharge_coefficients: &inputs.bridge_deck_vent_discharge_coefficients,
+        deck_vent_types: &inputs.bridge_deck_vent_types,
+        composed_embankment_blocked: &inputs.bridge_composed_embankment_blocked,
+    }
+}
+
 fn bridge_deck_profile_for(
     inputs: &SteadyInputs,
     b_idx: usize,
     raw_units: UnitSystem,
 ) -> Option<crate::solvers::bridge::BridgeDeckProfile> {
-    let low_chord = inputs
-        .bridge_low_chords
-        .as_ref()
-        .and_then(|v| v.get(b_idx))
-        .copied()
-        .unwrap_or(0.0);
-    let high_chord = inputs
-        .bridge_high_chords
-        .as_ref()
-        .and_then(|v| v.get(b_idx))
-        .copied()
-        .unwrap_or(0.0);
-    crate::solvers::bridge::build_bridge_deck_profile(
-        low_chord,
-        high_chord,
-        inputs
-            .bridge_deck_stations
-            .as_ref()
-            .and_then(|v| v.get(b_idx))
-            .map(|s| s.as_slice()),
-        inputs
-            .bridge_deck_low_elevations
-            .as_ref()
-            .and_then(|v| v.get(b_idx))
-            .map(|s| s.as_slice()),
-        inputs
-            .bridge_deck_high_elevations
-            .as_ref()
-            .and_then(|v| v.get(b_idx))
-            .map(|s| s.as_slice()),
-        raw_units,
-    )
-}
-
-fn bridge_face_blocks(
-    face_stations: Option<&Vec<Vec<f64>>>,
-    face_elevations: Option<&Vec<Vec<f64>>>,
-    legacy_stations: Option<&Vec<Vec<f64>>>,
-    legacy_elevations: Option<&Vec<Vec<f64>>>,
-    b_idx: usize,
-) -> (Vec<f64>, Vec<f64>) {
-    let stations = face_stations
-        .and_then(|v| v.get(b_idx))
-        .filter(|blocks| !blocks.is_empty())
-        .cloned()
-        .or_else(|| {
-            legacy_stations
-                .and_then(|v| v.get(b_idx))
-                .cloned()
-        })
-        .unwrap_or_default();
-    let elevations = face_elevations
-        .and_then(|v| v.get(b_idx))
-        .filter(|blocks| !blocks.is_empty())
-        .cloned()
-        .or_else(|| {
-            legacy_elevations
-                .and_then(|v| v.get(b_idx))
-                .cloned()
-        })
-        .unwrap_or_default();
-    (stations, elevations)
+    crate::solvers::bridge::reach_coupling::deck_profile_for(&bridge_reach_fields(inputs), b_idx, raw_units)
 }
 
 pub fn bridge_ineffective_upstream_for(
     inputs: &SteadyInputs,
     b_idx: usize,
 ) -> Option<IneffectiveFlowAreas> {
-    let (left_s, left_e) = bridge_face_blocks(
-        inputs.bridge_ineffective_left_stations_upstream.as_ref(),
-        inputs.bridge_ineffective_left_elevations_upstream.as_ref(),
-        inputs.bridge_ineffective_left_stations.as_ref(),
-        inputs.bridge_ineffective_left_elevations.as_ref(),
-        b_idx,
-    );
-    let (right_s, right_e) = bridge_face_blocks(
-        inputs.bridge_ineffective_right_stations_upstream.as_ref(),
-        inputs.bridge_ineffective_right_elevations_upstream.as_ref(),
-        inputs.bridge_ineffective_right_stations.as_ref(),
-        inputs.bridge_ineffective_right_elevations.as_ref(),
-        b_idx,
-    );
-    IneffectiveFlowAreas::from_block_pairs(&left_s, &left_e, &right_s, &right_e)
+    crate::solvers::bridge::reach_coupling::ineffective_upstream_for(&bridge_reach_fields(inputs), b_idx)
 }
 
 pub fn bridge_ineffective_downstream_for(
     inputs: &SteadyInputs,
     b_idx: usize,
 ) -> Option<IneffectiveFlowAreas> {
-    let (left_s, left_e) = bridge_face_blocks(
-        inputs.bridge_ineffective_left_stations_downstream.as_ref(),
-        inputs.bridge_ineffective_left_elevations_downstream.as_ref(),
-        inputs.bridge_ineffective_left_stations.as_ref(),
-        inputs.bridge_ineffective_left_elevations.as_ref(),
-        b_idx,
-    );
-    let (right_s, right_e) = bridge_face_blocks(
-        inputs.bridge_ineffective_right_stations_downstream.as_ref(),
-        inputs.bridge_ineffective_right_elevations_downstream.as_ref(),
-        inputs.bridge_ineffective_right_stations.as_ref(),
-        inputs.bridge_ineffective_right_elevations.as_ref(),
-        b_idx,
-    );
-    IneffectiveFlowAreas::from_block_pairs(&left_s, &left_e, &right_s, &right_e)
+    crate::solvers::bridge::reach_coupling::ineffective_downstream_for(&bridge_reach_fields(inputs), b_idx)
 }
 
 fn bridge_face_geometry_for(
@@ -896,16 +879,7 @@ fn bridge_face_geometry_for(
     densified_z_mins: &[f64],
     interval_length_m: f64,
 ) -> crate::solvers::bridge_interior::BridgeFaceSolveGeometry {
-    let reach_z_up_user = if raw_units == UnitSystem::USCustomary {
-        densified_z_mins[i] / FT_TO_M
-    } else {
-        densified_z_mins[i]
-    };
-    let reach_z_down_user = if raw_units == UnitSystem::USCustomary {
-        densified_z_mins[i + 1] / FT_TO_M
-    } else {
-        densified_z_mins[i + 1]
-    };
+    let fields = bridge_reach_fields(inputs);
     let interior = crate::solvers::bridge_interior::interior_from_steady(inputs, b_idx);
     let anchor_reach_xs = interior
         .opening_anchor_reach_station
@@ -917,196 +891,26 @@ fn bridge_face_geometry_for(
                 raw_units,
             )
         });
-    let (approach_xs, departure_xs, guide_banks_approach, guide_banks_departure) =
-        crate::solvers::bridge_interior::resolve_approach_departure_sections(
-            &interior,
-            i,
-            densified_stations,
-            densified_xs,
-            raw_units,
-        );
-    crate::solvers::bridge_interior::resolve_bridge_face_solve_geometry(
-        crate::solvers::bridge_interior::BridgeFaceSolveParams {
+    crate::solvers::bridge::reach_coupling::face_geometry_for(
+        crate::solvers::bridge::reach_coupling::BridgeFaceGeometryRequest {
+            fields: &fields,
             interior: &interior,
-            anchor_reach_xs: anchor_reach_xs.as_ref(),
-            reach_xs_up: densified_xs[i].as_ref(),
-            reach_xs_down: densified_xs[i + 1].as_ref(),
-            reach_table_up: &densified_tables[i],
-            reach_table_down: &densified_tables[i + 1],
-            reach_z_up_user,
-            reach_z_down_user,
+            b_idx,
+            i,
             raw_units,
             num_slices,
-            ineffective_up: bridge_ineffective_upstream_for(inputs, b_idx),
-            ineffective_down: bridge_ineffective_downstream_for(inputs, b_idx),
-            skew_deg: inputs
-                .bridge_skew_angles
-                .as_ref()
-                .and_then(|v| v.get(b_idx))
-                .copied()
-                .unwrap_or(0.0),
-            pier_stations: inputs
-                .bridge_pier_stations
-                .as_ref()
-                .and_then(|v| v.get(b_idx))
-                .cloned(),
+            densified_stations,
+            densified_tables,
+            densified_xs,
+            densified_z_mins,
             interval_length_m,
-            bridge_length_user: inputs
-                .bridge_lengths
-                .as_ref()
-                .and_then(|v| v.get(b_idx))
-                .copied()
-                .unwrap_or(0.0),
-            friction_weighting: crate::solvers::bridge::BridgeFrictionWeighting::from_i32(
-                inputs
-                    .bridge_friction_weighting
-                    .as_ref()
-                    .and_then(|v| v.get(b_idx))
-                    .copied()
-                    .unwrap_or(0),
-            ),
-            approach_friction_length_user: inputs
-                .bridge_approach_friction_lengths
-                .as_ref()
-                .and_then(|v| v.get(b_idx))
-                .copied()
-                .unwrap_or(0.0),
-            departure_friction_length_user: inputs
-                .bridge_departure_friction_lengths
-                .as_ref()
-                .and_then(|v| v.get(b_idx))
-                .copied()
-                .unwrap_or(0.0),
-            approach_xs,
-            departure_xs,
-            guide_banks_approach,
-            guide_banks_departure,
-            pier_widths: crate::solvers::pier_geometry::pier_width_user_for_bridge_index(
-                &inputs.bridge_pier_top_widths,
-                &inputs.bridge_pier_bottom_widths,
-                &inputs.bridge_pier_width_elevations,
-                &inputs.bridge_pier_width_values,
-                &inputs.bridge_pier_top_elevations,
-                &inputs.bridge_pier_base_elevations,
-                b_idx,
-            ),
-            pier_attachments: crate::solvers::pier_geometry::pier_attachments_user_for_bridge_index(
-                &inputs.bridge_pier_footing_top_elevations,
-                &inputs.bridge_pier_footing_widths,
-                &inputs.bridge_pier_footing_bottom_elevations,
-                &inputs.bridge_pier_nosing_lengths,
-                &inputs.bridge_pier_nosing_widths,
-                b_idx,
-            ),
-            deck_vents: crate::solvers::deck_vent_geometry::deck_vents_user_for_bridge_index(
-                &inputs.bridge_deck_vent_left_stations,
-                &inputs.bridge_deck_vent_right_stations,
-                &inputs.bridge_deck_vent_stations,
-                &inputs.bridge_deck_vent_widths,
-                &inputs.bridge_deck_vent_invert_elevations,
-                &inputs.bridge_deck_vent_soffit_elevations,
-                &inputs.bridge_deck_vent_discharge_coefficients,
-                &inputs.bridge_deck_vent_types,
-                b_idx,
-            ),
-            embankment_blocked: crate::solvers::bridge_roadway_compose::composed_embankment_blocked_for(
-                &inputs.bridge_composed_embankment_blocked,
-                b_idx,
-            ),
+            anchor_reach_xs: anchor_reach_xs.as_ref(),
         },
     )
 }
 
 fn bridge_coupling_for(inputs: &SteadyInputs, b_idx: usize) -> crate::solvers::bridge::BridgeCouplingParams {
-    let abutment = crate::solvers::bridge_abutment::abutment_user_input_from_steady(
-        inputs
-            .bridge_abutment_block_widths
-            .as_ref()
-            .and_then(|v| v.get(b_idx))
-            .copied(),
-        inputs.bridge_abutment_left_widths.as_ref(),
-        inputs.bridge_abutment_right_widths.as_ref(),
-        inputs.bridge_abutment_left_stations.as_ref(),
-        inputs.bridge_abutment_right_stations.as_ref(),
-        inputs.bridge_abutment_left_top_elevations.as_ref(),
-        inputs.bridge_abutment_right_top_elevations.as_ref(),
-        inputs.bridge_abutment_left_top_profile_stations.as_ref(),
-        inputs.bridge_abutment_left_top_profile_elevations.as_ref(),
-        inputs.bridge_abutment_right_top_profile_stations.as_ref(),
-        inputs.bridge_abutment_right_top_profile_elevations.as_ref(),
-        b_idx,
-    );
-    crate::solvers::bridge::BridgeCouplingParams {
-        abutment,
-        low_flow_method: inputs
-            .bridge_low_flow_methods
-            .as_ref()
-            .and_then(|v| v.get(b_idx))
-            .copied()
-            .unwrap_or(0),
-        high_flow_method: inputs
-            .bridge_high_flow_methods
-            .as_ref()
-            .and_then(|v| v.get(b_idx))
-            .copied()
-            .unwrap_or(0),
-        length: inputs
-            .bridge_lengths
-            .as_ref()
-            .and_then(|v| v.get(b_idx))
-            .copied()
-            .unwrap_or(0.0),
-        wspro_coeff: inputs
-            .bridge_wspro_coeffs
-            .as_ref()
-            .and_then(|v| v.get(b_idx))
-            .copied()
-            .unwrap_or(0.8),
-        coeff_contraction: inputs.coeff_contraction.unwrap_or(0.1),
-        coeff_expansion: inputs.coeff_expansion.unwrap_or(0.3),
-        pressure_coeff_inlet: inputs
-            .bridge_pressure_flow_coeffs_inlet
-            .as_ref()
-            .and_then(|v| v.get(b_idx))
-            .copied()
-            .unwrap_or(0.0),
-        pressure_coeff_submerged: 0.8,
-        max_weir_submergence: inputs
-            .bridge_max_weir_submergence
-            .as_ref()
-            .and_then(|v| v.get(b_idx))
-            .copied()
-            .unwrap_or(0.98),
-        friction_weighting: crate::solvers::bridge::BridgeFrictionWeighting::from_i32(
-            inputs
-                .bridge_friction_weighting
-                .as_ref()
-                .and_then(|v| v.get(b_idx))
-                .copied()
-                .unwrap_or(0),
-        ),
-        approach_friction_length: inputs
-            .bridge_approach_friction_lengths
-            .as_ref()
-            .and_then(|v| v.get(b_idx))
-            .copied()
-            .unwrap_or(0.0),
-        departure_friction_length: inputs
-            .bridge_departure_friction_lengths
-            .as_ref()
-            .and_then(|v| v.get(b_idx))
-            .copied()
-            .unwrap_or(0.0),
-        ice_debris: crate::solvers::bridge::ice_debris_params_for_bridge(
-            &inputs.bridge_opening_blockage_factors,
-            &inputs.bridge_pier_debris_widths,
-            &inputs.bridge_pier_debris_heights,
-            &inputs.bridge_ice_thicknesses,
-            &inputs.bridge_ice_modes,
-            &inputs.bridge_deck_ice_thicknesses,
-            b_idx,
-        ),
-    }
+    crate::solvers::bridge::reach_coupling::coupling_for(&bridge_reach_fields(inputs), b_idx)
 }
 
 /// Runs the steady-state water surface profile solver.

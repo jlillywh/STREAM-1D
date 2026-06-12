@@ -106,7 +106,7 @@ Canonical list: [`pressure_weir_combined_flow_audit.md` § Intentional remaining
 | **Limitation** | `profile_opening_area_factor` | WSEL-dependent opening tables | Scalar approximation under haunched soffit |
 | **Limitation** | Global sluice/orifice switch at max low chord | May use local segment logic | Uniform-deck aligned; haunched deck simplified |
 | **Limitation** | Energy fallback / `high_flow_methods = 1` | Energy through opening | **No deck vents, no explicit weir** on this branch |
-| **Limitation** | Unsteady bridge coupling | Implicit network solve | Explicit post-step (≤5 iterations) |
+| **Limitation** | Unsteady bridge coupling | Implicit network solve | Explicit post-step (≤5 iterations) — Phase 5.1 design: [`unsteady_implicit_bridge_coupling.md`](../development/unsteady_implicit_bridge_coupling.md) |
 | **Out of scope** | Standalone weirs, multi-reach unsteady bridges | Full RAS | Product scope |
 
 **Phase 4.2 closed:** segment-wise weir onset, low/high-flow reconcile, segment submergence cap, solver-derived `flow_regime`.

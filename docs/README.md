@@ -21,5 +21,6 @@ One canonical source per topic — link instead of copying tables elsewhere.
 | Deck vents & slotted openings API (design) | [`development/deck_vents_slotted_openings.md`](development/deck_vents_slotted_openings.md) |
 | Extended pier shape catalog — Shape ID table 0–11 (API v29) | [`development/extended_pier_shape_catalog.md`](development/extended_pier_shape_catalog.md) |
 | High-flow pressure / weir / audit + intentional deltas (Phase 4) | [`development/pressure_weir_combined_flow_audit.md`](development/pressure_weir_combined_flow_audit.md) |
+| Unsteady implicit bridge coupling + `bridge/` module refactor (Phase 5.1 design) | [`development/unsteady_implicit_bridge_coupling.md`](development/unsteady_implicit_bridge_coupling.md) |
 
 **When changing behavior:** update the canonical doc above, bump `api_changelog.md` if `API_VERSION` changes, extend `tests/wasm_json_contract.rs` / geometry tests — do not restate the same tables in README or `tech_spec.md`.
