@@ -52,10 +52,6 @@ pub(crate) use low_flow::*;
 pub(crate) use high_flow::*;
 #[cfg(test)]
 pub(crate) use headwater::*;
-#[cfg(test)]
-pub(crate) use coupling::*;
-#[cfg(test)]
-pub(crate) use rating::*;
 
 #[cfg(test)]
 mod tests;

@@ -405,7 +405,7 @@ All fields optional; default preserves today’s behavior.
 | `structure_coupling_outer_iterations` | `[time_step]` |
 | `structure_coupling_converged` | `[time_step]` bool |
 
-No `API_VERSION` bump for design-only. Bump when fields ship (proposed **v33**).
+**API v33** ships `unsteady_structure_coupling_mode` and `unsteady_structure_coupling_modes` metadata (Phase 2 stub; implicit physics in Phase 3).
 
 ---
 
@@ -425,15 +425,37 @@ Fixtures: extend `verification/` with a simple unsteady bridge transient JSON on
 
 ---
 
-## Open questions (resolve before 5.2)
+## Decisions locked (Phase 1 · 2026-06-12)
+
+Sign-off before Phase 2 (Preissmann hook) and Phase 3 (culvert implicit). See also [`UNSTEADY_IMPLICIT_COUPLING_CHECKLIST.md`](../../../lillywhite_web/streams1d/docs/UNSTEADY_IMPLICIT_COUPLING_CHECKLIST.md) in the web product repo.
+
+| # | Question | Decision |
+|---|----------|----------|
+| 1 | **$Q$ at structure** | **Hold** Preissmann section $Q$ for the implicit step. Residual couples upstream/downstream **WSEL only** (`y_metric` at BU/BD faces). Do not write `q_metric` at the structure face in v33. |
+| 2 | **Supercritical unsteady** | **Explicit fallback (B3)** when $Fr > 1$ at the structure interval or when pinned regime is pressure/weir/combined high-flow. Implicit Jacobian for subcritical low-flow only. Unsteady tailwater solve deferred. |
+| 3 | **Default coupling mode** | **`unsteady_structure_coupling_mode = 0`** (status quo) until mode **`2`** passes Phase 6 acceptance tests. Hosts opt in explicitly. Mode **`1`** (A1 outer loop) optional in a later release—not v33 default. |
+| 4 | **Culvert first?** | **Yes** — prove Preissmann structure hook on culvert HW residual before bridge `implicit.rs`. |
+| 5 | **Theta / $\Delta t$** | Defer tuning until mode `2` prototype exists; relaxation / face tolerance fields exposed in v33 API for host tuning if needed. |
+| 6 | **Refactor depth** | **Done** — R1–R5 complete before implicit coding. |
+| 7 | **`unsteady.rs` split** | **Phase 2** — extract `unsteady/preissmann.rs` as part of structure-interval hook work (not deferred further). |
+| 8 | **API version** | **`v33`** when `unsteady_structure_coupling_*` inputs and step diagnostics ship. |
+
+---
+
+## Open questions (historical — pre–Phase 1)
+
+<details>
+<summary>Superseded open questions (expand for original text)</summary>
 
 1. **$Q$ at structure** — Hold Preissmann section $Q$, or require bridge rating to adjust $Q$ at the face (true internal discharge boundary)?
-2. **Supercritical unsteady** — Does coupling belong on BD (tailwater solve) when $Fr > 1$ at the bridge? Steady uses `solve_bridge_tailwater`; unsteady today always HW solve except reverse BC case.
+2. **Supercritical unsteady** — Does coupling belong on BD (tailwater solve) when $Fr > 1$ at the bridge?
 3. **Default mode** — When A1 is proven stable, flip default from `0` → `1` or keep explicit single-pass for WASM host backward compatibility?
 4. **Culvert first?** — Culvert HW relation is smoother (rating curves); some teams may prefer proving outer loop on culverts before bridges.
 5. **Theta / $\Delta t$** — Does A1 need smaller effective $\theta$ on structure steps for stability, or is relaxation enough?
-6. **Refactor depth** — Full `bridge/` split (R1–R4) before any 5.2 feature, or minimal extract (`unsteady_coupling` + `structure_coupling` only)? **Recommendation:** at least **R1 + R3 + R4** before 5.2; full hydraulics split (R2) before 5.3.
-7. **`unsteady.rs` split** — Co-split Preissmann into `unsteady/preissmann.rs` in 5.0 or defer? **Recommendation:** defer unless file exceeds ~4.5k lines after R4.
+6. **Refactor depth** — Full `bridge/` split (R1–R4) before any 5.2 feature?
+7. **`unsteady.rs` split** — Co-split Preissmann into `unsteady/preissmann.rs` in 5.0 or defer?
+
+</details>
 
 ---
 

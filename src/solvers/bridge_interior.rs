@@ -2405,6 +2405,7 @@ mod tests {
                 ..Default::default()
             },
             structure_coupling_order: None,
+            unsteady_structure_coupling_mode: None,
         };
         let intervals = apply_bridge_reach_layout_unsteady(
             &inputs,

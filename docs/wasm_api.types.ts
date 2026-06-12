@@ -613,6 +613,11 @@ export interface UnsteadyInputs extends UnsteadyCulvertInputs, BridgeArrays {
    * 0 = combined downstream-first (default), 1 = culverts then bridges, 2 = bridges then culverts.
    */
   structure_coupling_order?: number;
+  /**
+   * Preissmann structure coupling (API v33): 0 = post-step only (default),
+   * 2 = implicit Jacobian where supported (opt-in).
+   */
+  unsteady_structure_coupling_mode?: number;
 }
 
 export interface UnsteadyResult {
@@ -675,6 +680,8 @@ export interface WasmApiMetadata {
     rating_curve_outputs: string[];
   };
   structure_coupling_orders: WasmEnumEntry[];
+  /** API v33 — Preissmann structure coupling mode (`unsteady_structure_coupling_mode`). */
+  unsteady_structure_coupling_modes: WasmEnumEntry[];
 }
 
 /** Module exports from `pkg/stream1d.js` after `wasm-pack build --target web` */

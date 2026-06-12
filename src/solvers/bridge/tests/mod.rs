@@ -1,13 +1,10 @@
 //! Bridge hydraulics unit tests (split by physics area).
 
 use super::*;
-pub(crate) use crate::geometry::{
-    row_at_elevation, CrossSection, GuideBankToe, GuideBanks, IneffectiveFlowAreas,
-};
+pub(crate) use crate::geometry::{row_at_elevation, CrossSection, IneffectiveFlowAreas};
 pub(crate) use crate::solvers::deck_vent_geometry::DeckVentUserInput;
 pub(crate) use crate::solvers::pier_geometry::{
-    resolve_pier_width_specs, PierAttachmentsUserInput, PierWidthSpec, PierWidthUserInput,
-    ResolvedPier,
+    resolve_pier_width_specs, PierAttachmentsUserInput, PierWidthUserInput,
 };
 
 mod common;
