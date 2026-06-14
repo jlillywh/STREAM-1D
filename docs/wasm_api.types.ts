@@ -601,6 +601,17 @@ export interface UnsteadyInputs extends UnsteadyCulvertInputs, BridgeArrays {
   num_steps: number;
   upstream_q_hydrograph: number[];
   downstream_wsel_hydrograph: number[];
+  /** 0 = known WSEL hydrograph (default), 1 = critical depth, 2 = friction slope, 3 = rating curve */
+  downstream_bc_type?: number;
+  downstream_bc_slope?: number;
+  downstream_bc_rating_q?: number[];
+  downstream_bc_rating_wsel?: number[];
+  /** Reserved — upstream Q(t) remains default when omitted */
+  upstream_wsel_hydrograph?: number[];
+  upstream_bc_type?: number;
+  upstream_bc_slope?: number;
+  upstream_bc_rating_q?: number[];
+  upstream_bc_rating_wsel?: number[];
   theta?: number;
   num_slices?: number;
   max_spacing?: number;
