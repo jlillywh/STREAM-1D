@@ -185,7 +185,7 @@ def parse_g01(path: Path) -> ParsedGeometry:
                 bridge_section = "pier_data"
                 continue
             if bridge_section == "pier_data":
-                if line.startswith(("Pier Skew", "BR Coef=", "WSPro=", "Type RM")):
+                if line.startswith(("BR Coef=", "WSPro=", "Type RM")):
                     bridge_section = None
                     i -= 1
                     continue

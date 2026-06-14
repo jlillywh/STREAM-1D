@@ -43,6 +43,89 @@
       "notes": "Requires Python stream1d extension; optional live HEC-RAS via --live-ras"
     },
     {
+      "id": "chunk3_culvert_steady_gate",
+      "title": "Chunk 3.1 — steady culvert parity gate",
+      "source_of_truth": "ConSpan HEC-RAS profiles + linked steady oracle",
+      "source_artifacts": [
+        "fixtures/hecras_conspan_profiles.json",
+        "fixtures/conspan_project_12.json",
+        "oracle/scenarios/conspan_steady_linked.json"
+      ],
+      "fixture": "oracle/docs/CHUNK3_STEADY_CULVERT.md",
+      "tests": [
+        "tests/culvert_hecras_verification.rs",
+        "python/test_hecras_culvert_verification.py",
+        "verification/oracle/scripts/run_chunk3_culvert_steady_gate.py"
+      ],
+      "tolerance": "±0.04 ft WSEL (profiles); ±0.04 ft linked steady ConSpan",
+      "quantity": "wsel",
+      "optional": false,
+      "notes": "Chunk 3.1 exit; run run_chunk3_culvert_steady_gate.sh"
+    },
+    {
+      "id": "chunk3_bridge_steady_gate",
+      "title": "Chunk 3.2 — steady bridge parity gate",
+      "source_of_truth": "HEC-RAS golden bridge fixtures",
+      "source_artifacts": [
+        "fixtures/bridge_abutment_hecras.json",
+        "fixtures/bridge_bu_bd_hecras.json",
+        "fixtures/bridge_high_flow_hecras.json",
+        "fixtures/bridge_roadway_embankment.json",
+        "fixtures/bridge_friction_weighting_hecras.json",
+        "fixtures/bridge_reverse_flow_rating.json"
+      ],
+      "fixture": "oracle/docs/CHUNK3_STEADY_BRIDGE.md",
+      "tests": [
+        "tests/bridge_abutment_hecras_verification.rs",
+        "tests/bridge_bu_bd_hecras_verification.rs",
+        "tests/bridge_high_flow_hecras_verification.rs",
+        "tests/bridge_roadway_embankment_verification.rs",
+        "tests/bridge_guide_bank_contraction_verification.rs",
+        "tests/bridge_friction_weighting_hecras_verification.rs",
+        "tests/bridge_reverse_flow_rating_verification.rs",
+        "tests/bridge_opening_alignment_verification.rs",
+        "verification/oracle/scripts/run_chunk3_bridge_steady_gate.py"
+      ],
+      "tolerance": "±2–5 mm per fixture notes",
+      "quantity": "wsel",
+      "optional": false,
+      "notes": "Chunk 3.2 exit"
+    },
+    {
+      "id": "chunk3_g01_mapping_gate",
+      "title": "Chunk 3.3 — g01 bridge mapping smoke",
+      "source_of_truth": "Beaver bundled g01 + beaver_mapper",
+      "source_artifacts": [
+        "oracle/projects/beaver/beaver.g01",
+        "oracle/projects/beaver/beaver.u02",
+        "oracle/lib/hecras_geom_parser.py",
+        "oracle/lib/beaver_mapper.py"
+      ],
+      "fixture": "oracle/docs/CHUNK3_G01_MAPPING.md",
+      "tests": [
+        "verification/oracle/scripts/test_chunk3_g01_mapping.py",
+        "verification/oracle/scripts/smoke_beaver_parse.py",
+        "verification/oracle/scripts/run_chunk3_g01_mapping_gate.py"
+      ],
+      "tolerance": "smoke assertions (deck, piers, BU/BD faces present)",
+      "quantity": "geometry",
+      "optional": true,
+      "notes": "Requires Python stream1d extension"
+    },
+    {
+      "id": "chunk3_steady_gate",
+      "title": "Chunk 3 — full steady structure parity gate",
+      "source_of_truth": "Chunks 3.1 + 3.2 + 3.3",
+      "fixture": "oracle/docs/CHUNK3_STEADY_CULVERT.md",
+      "tests": [
+        "verification/oracle/scripts/run_chunk3_steady_gate.py"
+      ],
+      "tolerance": "per sub-gate",
+      "quantity": "wsel",
+      "optional": false,
+      "notes": "Run run_chunk3_steady_gate.sh before Chunk 4"
+    },
+    {
       "id": "reach_mild_unsteady_linked_oracle",
       "title": "Reach mild \u00e2\u20ac\u201d linked HEC-RAS unsteady reach-only (Chunk 2 gate)",
       "source_of_truth": "ConSpan 50 yr steady export at open-channel RMs 20.208\u00e2\u20ac\u201c20.095 (below culvert)",

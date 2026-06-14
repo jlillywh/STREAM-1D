@@ -70,6 +70,22 @@ bash verification/oracle/run_oracle.sh \
 python3 verification/oracle/scripts/run_phase0.py
 ```
 
+**Chunk 3.1 culvert steady gate:**
+
+```bash
+bash verification/oracle/scripts/run_chunk3_culvert_steady_gate.sh
+```
+
+See [`docs/CHUNK3_STEADY_CULVERT.md`](docs/CHUNK3_STEADY_CULVERT.md).
+
+**Chunk 3 full steady structure gate (3.1 + 3.2 + 3.3):**
+
+```bash
+bash verification/oracle/scripts/run_chunk3_steady_gate.sh
+```
+
+See also [`docs/CHUNK3_STEADY_BRIDGE.md`](docs/CHUNK3_STEADY_BRIDGE.md), [`docs/CHUNK3_G01_MAPPING.md`](docs/CHUNK3_G01_MAPPING.md).
+
 Runs parse smoke (0.1), committed-reference verify (0.2), and `run_oracle.sh` (0.3). On every PR, GitHub Actions job `reach-mild-phase0` in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) runs the same script on `ubuntu-latest`.
 
 **Requires:** `maturin develop --features python` (same as [`python/test_hecras_culvert_verification.py`](../../python/test_hecras_culvert_verification.py)).
