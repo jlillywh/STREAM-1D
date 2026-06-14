@@ -30,3 +30,23 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: lcov.info
           fail_ci_if_error: false
+
+  reach-mild-phase0:
+    name: Phase 0 — reach_mild oracle (no HEC-RAS)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build stream1d and run Phase 0 verify gate
+        run: |
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip maturin
+          maturin develop --features python --release
+          python3 verification/oracle/scripts/run_phase0.py

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "description": "STREAM-1D verification catalog — golden fixtures vs external sources of truth",
+  "description": "STREAM-1D verification catalog \u00e2\u20ac\u201d golden fixtures vs external sources of truth",
   "default_tolerances": {
     "wsel_ft": 0.04,
     "wsel_mm": 2.0
@@ -19,16 +19,121 @@
         "tests/culvert_hecras_verification.rs",
         "python/test_hecras_culvert_verification.py"
       ],
-      "tolerance": "±0.04 ft WSEL per profile station",
+      "tolerance": "\u00c2\u00b10.04 ft WSEL per profile station",
       "quantity": "wsel"
     },
     {
+      "id": "culvert_conspan_linked_oracle",
+      "title": "ConSpan culvert \u00e2\u20ac\u201d linked HEC-RAS project oracle",
+      "source_of_truth": "Bundled HEC-RAS project (.g01 + .p01 + .f01) profile export",
+      "source_artifacts": [
+        "oracle/projects/conspan/ConSpan.g01",
+        "oracle/projects/conspan/ConSpan.p01",
+        "oracle/projects/conspan/ConSpan.f01",
+        "fixtures/ConSpan.csv",
+        "fixtures/conspan_project_12.json"
+      ],
+      "fixture": "oracle/scenarios/conspan_steady_linked.json",
+      "tests": [
+        "verification/oracle/run_linked_verify.py"
+      ],
+      "tolerance": "\u00c2\u00b10.04 ft WSEL per profile station",
+      "quantity": "wsel",
+      "optional": true,
+      "notes": "Requires Python stream1d extension; optional live HEC-RAS via --live-ras"
+    },
+    {
+      "id": "reach_mild_unsteady_linked_oracle",
+      "title": "Reach mild \u00e2\u20ac\u201d linked HEC-RAS unsteady reach-only (Chunk 2 gate)",
+      "source_of_truth": "ConSpan 50 yr steady export at open-channel RMs 20.208\u00e2\u20ac\u201c20.095 (below culvert)",
+      "source_artifacts": [
+        "oracle/projects/reach_mild/reach_mild.g01",
+        "oracle/projects/reach_mild/reach_mild.u02",
+        "oracle/projects/reach_mild/reach_mild.p02",
+        "oracle/projects/reach_mild/reference_wsel_peaks.json",
+        "fixtures/conspan_project_12.json"
+      ],
+      "fixture": "oracle/scenarios/reach_mild_unsteady_linked.json",
+      "tests": [
+        "verification/oracle/run_linked_verify.py"
+      ],
+      "tolerance": "\u00c2\u00b10.15 ft terminal WSEL at 3 checkpoint RMs (reach-only, known stage DS)",
+      "quantity": "terminal_wsel",
+      "optional": false,
+      "notes": "Chunk 2 certification candidate; Phase 0 CI gate via run_phase0.py (no HEC-RAS)"
+    },
+    {
+      "id": "conspan_unsteady_mild_linked_oracle",
+      "title": "ConSpan culvert \u00e2\u20ac\u201d mild unsteady mode 0 (Chunk 4 gate)",
+      "source_of_truth": "ConSpan 50 yr steady proxy (HDF target); BU/BD + 2 off-structure RMs",
+      "source_artifacts": [
+        "oracle/projects/conspan/ConSpan.g01",
+        "oracle/projects/conspan/conspan.u02",
+        "oracle/projects/conspan/conspan.p02",
+        "oracle/projects/conspan/reference_wsel_peaks_unsteady.json",
+        "fixtures/conspan_project_12.json"
+      ],
+      "fixture": "oracle/scenarios/conspan_unsteady_mild_linked.json",
+      "tests": [
+        "verification/oracle/run_linked_verify.py"
+      ],
+      "tolerance": "\u00c2\u00b10.5 ft terminal WSEL at 4 checkpoints (culvert mode 0)",
+      "quantity": "terminal_wsel",
+      "optional": true,
+      "notes": "Chunk 4 baseline; requires Python stream1d extension"
+    },
+    {
+      "id": "conspan_unsteady_mild_implicit_linked_oracle",
+      "title": "ConSpan culvert \u00e2\u20ac\u201d mild unsteady mode 2 (Chunk 5 gate)",
+      "source_of_truth": "ConSpan 50 yr steady proxy (HDF target); same checkpoints as mode 0",
+      "source_artifacts": [
+        "oracle/projects/conspan/ConSpan.g01",
+        "oracle/projects/conspan/conspan.u02",
+        "oracle/projects/conspan/conspan.p02",
+        "fixtures/conspan_project_12.json"
+      ],
+      "fixture": "oracle/scenarios/conspan_unsteady_mild_implicit_linked.json",
+      "tests": [
+        "verification/oracle/run_linked_verify.py",
+        "verification/oracle/scripts/test_conspan_unsteady_warm_start.py",
+        "verification/oracle/scripts/diagnose_conspan_implicit.py"
+      ],
+      "tolerance": "\u00c2\u00b10.5 ft terminal WSEL; warm-start \u00c2\u00b10.04 ft vs steady",
+      "quantity": "terminal_wsel",
+      "optional": true,
+      "notes": "Chunk 5 hybrid implicit culvert; requires Python stream1d extension"
+    },
+    {
+      "id": "beaver_unsteady_linked_oracle",
+      "title": "Beaver Creek bridge \u00e2\u20ac\u201d Chunk 8 certification (100-yr high flow)",
+      "source_of_truth": "Observed HWM in beaver.u02 (dev); HDF WSEL(t) target for certified",
+      "source_artifacts": [
+        "oracle/projects/beaver/beaver.g01",
+        "oracle/projects/beaver/beaver.u02",
+        "oracle/projects/beaver/beaver.p03",
+        "oracle/projects/beaver/gap_table_beaver_unsteady.json"
+      ],
+      "fixture": "oracle/scenarios/beaver_unsteady_linked.json",
+      "tests": [
+        "verification/oracle/run_linked_verify.py",
+        "verification/oracle/scripts/smoke_beaver_parse.py",
+        "verification/oracle/scripts/test_beaver_unsteady_warm_start.py",
+        "verification/oracle/scripts/diagnose_beaver_unsteady.py"
+      ],
+      "tolerance": "\u00c2\u00b10.5 ft peak max WSEL; warm-start \u00c2\u00b10.04 ft vs steady @ initial Q",
+      "quantity": "max_wsel",
+      "optional": true,
+      "notes": "Chunk 8 flagship; run run_chunk8_verify.sh"
+    },
+    {
       "id": "bridge_abutment_wspro",
-      "title": "Per-side abutments — WSPRO headwater",
+      "title": "Per-side abutments \u00e2\u20ac\u201d WSPRO headwater",
       "source_of_truth": "Hand geometry + WSPRO energy reference (HEC-RAS method family)",
       "fixture": "fixtures/bridge_abutment_hecras.json",
-      "tests": ["tests/bridge_abutment_hecras_verification.rs"],
-      "tolerance": "±2 mm upstream HW",
+      "tests": [
+        "tests/bridge_abutment_hecras_verification.rs"
+      ],
+      "tolerance": "\u00c2\u00b12 mm upstream HW",
       "quantity": "wsel"
     },
     {
@@ -36,17 +141,21 @@
       "title": "Explicit BU/BD bridge interior cuts",
       "source_of_truth": "HEC-RAS Yarnell / WSPRO golden headwater",
       "fixture": "fixtures/bridge_bu_bd_hecras.json",
-      "tests": ["tests/bridge_bu_bd_hecras_verification.rs"],
-      "tolerance": "±2 mm upstream HW",
+      "tests": [
+        "tests/bridge_bu_bd_hecras_verification.rs"
+      ],
+      "tolerance": "\u00c2\u00b12 mm upstream HW",
       "quantity": "wsel"
     },
     {
       "id": "bridge_high_flow",
-      "title": "Bridge high flow — pressure, weir, energy",
+      "title": "Bridge high flow \u00e2\u20ac\u201d pressure, weir, energy",
       "source_of_truth": "HEC-RAS 6.x high-flow equation set (FHWA sluice, submerged orifice, Bradley weir)",
       "fixture": "fixtures/bridge_high_flow_hecras.json",
-      "tests": ["tests/bridge_high_flow_hecras_verification.rs"],
-      "tolerance": "±2 mm upstream HW; ≥5 cases",
+      "tests": [
+        "tests/bridge_high_flow_hecras_verification.rs"
+      ],
+      "tolerance": "\u00c2\u00b12 mm upstream HW; \u00e2\u2030\u00a55 cases",
       "quantity": "wsel",
       "case_count": 6
     },
@@ -55,20 +164,22 @@
       "title": "Approach guide banks vs contraction coefficient",
       "source_of_truth": "Steady profile reference WSEL",
       "fixture": "fixtures/bridge_guide_bank_contraction.json",
-      "tests": ["tests/bridge_guide_bank_contraction_verification.rs"],
-      "tolerance": "±2 mm WSEL at bridge",
+      "tests": [
+        "tests/bridge_guide_bank_contraction_verification.rs"
+      ],
+      "tolerance": "\u00c2\u00b12 mm WSEL at bridge",
       "quantity": "wsel"
     },
     {
       "id": "bridge_friction_weighting",
-      "title": "Bridge friction weighting — opening only vs three segments (API v30)",
-      "source_of_truth": "Steady profile ordering: omit/0 ≡ HEC-RAS default; 1 > 0 at same Q",
+      "title": "Bridge friction weighting \u00e2\u20ac\u201d opening only vs three segments (API v30)",
+      "source_of_truth": "Steady profile ordering: omit/0 \u00e2\u2030\u00a1 HEC-RAS default; 1 > 0 at same Q",
       "fixture": "fixtures/bridge_friction_weighting_hecras.json",
       "tests": [
         "tests/bridge_friction_weighting_hecras_verification.rs",
         "src/solvers/bridge_tests.rs"
       ],
-      "tolerance": "±5 mm WSEL (omit≡0); segments > opening at same Q",
+      "tolerance": "\u00c2\u00b15 mm WSEL (omit\u00e2\u2030\u00a10); segments > opening at same Q",
       "quantity": "wsel"
     },
     {
@@ -76,20 +187,22 @@
       "title": "Unified roadway embankment compose (API v26)",
       "source_of_truth": "Hand-authored equivalent to flat bridge fields",
       "fixture": "fixtures/bridge_roadway_embankment.json",
-      "tests": ["tests/bridge_roadway_embankment_verification.rs"],
-      "tolerance": "±2 mm WSEL",
+      "tests": [
+        "tests/bridge_roadway_embankment_verification.rs"
+      ],
+      "tolerance": "\u00c2\u00b12 mm WSEL",
       "quantity": "wsel"
     },
     {
       "id": "bridge_reverse_flow_rating",
-      "title": "Bi-directional bridge rating curve Q ∈ [-Qmax, +Qmax] (API v31)",
+      "title": "Bi-directional bridge rating curve Q \u00e2\u02c6\u02c6 [-Qmax, +Qmax] (API v31)",
       "source_of_truth": "Symmetric channel energy low-flow; |Q|=20 head loss parity",
       "fixture": "fixtures/bridge_reverse_flow_rating.json",
       "tests": [
         "tests/bridge_reverse_flow_rating_verification.rs",
         "src/solvers/bridge_tests.rs"
       ],
-      "tolerance": "±20 mm head loss; per-direction HW monotonicity",
+      "tolerance": "\u00c2\u00b120 mm head loss; per-direction HW monotonicity",
       "quantity": "head_loss"
     },
     {
@@ -97,7 +210,9 @@
       "title": "Bridge opening reach alignment (skew, offset origin)",
       "source_of_truth": "Geometric invariants (preprocessor)",
       "fixture": null,
-      "tests": ["tests/bridge_opening_alignment_verification.rs"],
+      "tests": [
+        "tests/bridge_opening_alignment_verification.rs"
+      ],
       "tolerance": "exact layout",
       "quantity": "geometry"
     }

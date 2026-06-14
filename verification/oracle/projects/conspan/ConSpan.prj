@@ -1,0 +1,12 @@
+Proj Title=ConSpan Culvert
+Program Version=5.00
+Current Plan=p02
+Default Exp/Contr=0.3,0.1
+SI Units=0
+English Units=1
+Geom File=g01
+Geom Title=ConSpan Culvert Geometry
+Unsteady File=u02
+Unsteady Title=ConSpan mild constant Q unsteady
+Plan File=p02
+Plan Title=ConSpan mild unsteady constant Q

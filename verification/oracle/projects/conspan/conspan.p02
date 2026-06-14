@@ -1,0 +1,17 @@
+Plan Title=ConSpan mild unsteady constant Q
+Program Version=5.00
+Short Identifier=ConSpanU01
+Simulation Date=01JAN2000,0000,03JAN2000,0000
+Geom File=g01
+Flow File=u02
+Subcritical Flow
+Friction Slope Method= 1 
+Unsteady Friction Slope Method= 2 
+Computation Interval=15MIN
+Output Interval=1HOUR
+Run HTab= 1 
+Run UNet= 1 
+Run PostProcess= 1 
+UNET Theta= 1 
+UNET ZTol= 0.01 
+UNET MxIter= 20 

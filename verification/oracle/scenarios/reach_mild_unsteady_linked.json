@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "id": "reach_mild_unsteady_linked",
+  "title": "Reach mild — linked HEC-RAS unsteady reach-only (constant Q, known stage DS)",
+  "mode": "unsteady",
+  "parity_program": {
+    "chunk": 2,
+    "certification": "candidate",
+    "notes": "Reach-only gate: constant Q=1000 cfs, DS stage 30.51 ft at RM 20.0. Terminal WSEL ±0.05 ft vs HEC-RAS Plan 02 HDF (measured max |Δ| ≈ 0.024 ft)."
+  },
+  "scope": {
+    "single_reach": true,
+    "structures": [],
+    "notes": "Eight cross sections (RM 20.535–20.0), open channel only (no culvert)."
+  },
+  "linked_project": {
+    "directory": "projects/reach_mild",
+    "geometry": "reach_mild.g01",
+    "unsteady_flow": "reach_mild.u02",
+    "plan": "reach_mild.p02",
+    "plan_number": "02",
+    "notes": "Eight open-channel XS (RM 20.535–20.0, no culvert); DS stage 30.51 ft."
+  },
+  "stream1d": {
+    "mapper": "reach_mapper.build_reach_unsteady_inputs",
+    "notes": "g01 geometry (stations, Manning, bank stations); u02 BCs; steady warm-start IC; theta from plan."
+  },
+  "reference": {
+    "source": "linked_json_peaks",
+    "file": "projects/reach_mild/reference_wsel_reach_mild_unsteady.json",
+    "profile": "50 yr",
+    "fallback_conspan_profile": true,
+    "fallback_u02_observed_hwm": true,
+    "notes": "Refresh from plan HDF: scripts/run_ras_reference.py --scenario scenarios/reach_mild_unsteady_linked.json (Windows recommended)."
+  },
+  "compare": {
+    "quantity": "terminal_wsel",
+    "match_by": "river_mile",
+    "checkpoints_rm": [20.208, 20.189, 20.095]
+  },
+  "tolerance_ft": 0.05,
+  "quantity": "terminal_wsel"
+}

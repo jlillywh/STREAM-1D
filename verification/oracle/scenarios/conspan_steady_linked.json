@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "id": "conspan_steady_linked",
+  "title": "ConSpan culvert reach — linked HEC-RAS steady profiles",
+  "mode": "steady",
+  "scope": {
+    "single_reach": true,
+    "structures": ["culvert"],
+    "notes": "Single main-stem reach with inline ConSpan arch culvert. No junctions."
+  },
+  "linked_project": {
+    "directory": "projects/conspan",
+    "geometry": "ConSpan.g01",
+    "plan": "ConSpan.p01",
+    "flow": "ConSpan.f01",
+    "plan_number": "01",
+    "notes": "HEC-RAS example project (legacy 3.x lineage). STREAM-1D inputs in conspan_project_12.json were mapped from this geometry file."
+  },
+  "stream1d": {
+    "project_fixture": "fixtures/conspan_project_12.json",
+    "profiles_fixture": "fixtures/hecras_conspan_profiles.json"
+  },
+  "reference": {
+    "source": "linked_export",
+    "csv": "fixtures/ConSpan.csv",
+    "live_ras_optional": true,
+    "notes": "ConSpan.csv is a profile export from running the linked .g01 + .p01 + .f01 project. Use --live-ras to re-run HEC-RAS when installed (requires ras-commander and a compatible HEC-RAS version)."
+  },
+  "tolerance_ft": 0.04,
+  "quantity": "wsel"
+}
