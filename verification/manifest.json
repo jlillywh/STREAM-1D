@@ -146,6 +146,48 @@
       "notes": "Chunk 1 certified; requires API v35 downstream BC types."
     },
     {
+      "id": "simple_channel_ramp_unsteady_linked_oracle",
+      "title": "Simple trapezoidal channel — ramp Q, friction-slope DS (Chunk 1 transient)",
+      "source_of_truth": "HEC-RAS plan 04 WSEL timeseries at hours 0/6/12/18/24/30/36/48 (friction-slope DS)",
+      "source_artifacts": [
+        "oracle/projects/simple_channel/simple_channel.g01",
+        "oracle/projects/simple_channel/simple_channel.u04",
+        "oracle/projects/simple_channel/simple_channel.p04",
+        "oracle/projects/simple_channel/reference_wsel_simple_channel_ramp_unsteady.json"
+      ],
+      "fixture": "oracle/scenarios/simple_channel_ramp_unsteady_linked.json",
+      "tests": [
+        "verification/oracle/run_linked_verify.py",
+        "verification/oracle/scripts/smoke_simple_channel_ramp_parse.py",
+        "verification/oracle/scripts/run_simple_channel_ramp_verify.sh"
+      ],
+      "tolerance": "±0.05 ft WSEL at 4 RMs × 8 hours (Q ramp 100→200→100 cfs, friction-slope DS)",
+      "quantity": "wsel_timeseries",
+      "optional": true,
+      "notes": "Certified: Plan 04 HDF; requires API v35 downstream BC types."
+    },
+    {
+      "id": "simple_channel_ramp_rating_unsteady_linked_oracle",
+      "title": "Simple trapezoidal channel — ramp Q, rating-curve DS (Chunk 1 transient)",
+      "source_of_truth": "HEC-RAS plan 05 WSEL timeseries (development — bootstrap ref until HDF capture)",
+      "source_artifacts": [
+        "oracle/projects/simple_channel/simple_channel.g01",
+        "oracle/projects/simple_channel/simple_channel.u05",
+        "oracle/projects/simple_channel/simple_channel.p05",
+        "oracle/projects/simple_channel/rating_curve_ds.json",
+        "oracle/projects/simple_channel/reference_wsel_simple_channel_ramp_rating_unsteady.json"
+      ],
+      "fixture": "oracle/scenarios/simple_channel_ramp_rating_unsteady_linked.json",
+      "tests": [
+        "verification/oracle/run_linked_verify.py",
+        "verification/oracle/scripts/smoke_simple_channel_ramp_parse.py"
+      ],
+      "tolerance": "±0.05 ft WSEL at 4 RMs × 8 hours (Q ramp, rating-curve DS)",
+      "quantity": "wsel_timeseries",
+      "optional": true,
+      "notes": "Development: replace bootstrap reference after Plan 05 HEC-RAS HDF capture."
+    },
+    {
       "id": "beaver_unsteady_linked_oracle",
       "title": "Beaver Creek bridge \u00e2\u20ac\u201d Chunk 8 certification (100-yr high flow)",
       "source_of_truth": "Observed HWM in beaver.u02 (dev); HDF WSEL(t) target for certified",

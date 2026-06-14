@@ -69,3 +69,45 @@ py -3 verification\oracle\scripts\chunk1_import_gui_u02.py
 ```
 
 Linked scenario: `scenarios/simple_channel_unsteady_linked.json`
+
+## Ramp transient (Plans 04 / 05)
+
+Slow upstream **Q ramp** 100 → 200 → 100 cfs over **48 hr** (8-hour checkpoints). Same geometry; separate unsteady/plan files:
+
+| File | Role |
+|------|------|
+| `simple_channel.u04` / `p04` | Friction-slope DS (type 2) — **certified** vs Plan 04 HDF |
+| `simple_channel.u05` / `p05` | Rating-curve DS (type 3) — development until Plan 05 HDF |
+| `reference_wsel_simple_channel_ramp_unsteady.json` | Oracle reference (Plan 04 HDF) |
+| `reference_wsel_simple_channel_ramp_rating_unsteady.json` | Bootstrap placeholder (replace after Plan 05) |
+
+### Regenerate u04/u05
+
+```bash
+python3 verification/oracle/scripts/write_simple_channel_ramp.py
+```
+
+### Prep (Windows, Plan 04)
+
+```powershell
+py -3 verification\oracle\scripts\chunk1_simple_channel_ramp_prep.py --plan 04 --open-ras
+```
+
+Warm-start: flat Q=100 run → Prior WS from that HDF → restore ramp hydrograph → compute Plan 04.
+
+### Capture (Windows)
+
+```powershell
+py -3 verification\oracle\scripts\chunk1_simple_channel_ramp_capture.py --plan 04 `
+  --hdf C:\Users\jason\Documents\hecras_testing\simple_channel\simple_channel.p04.hdf
+```
+
+### Verify friction ramp (WSL)
+
+```bash
+bash verification/oracle/scripts/run_simple_channel_ramp_verify.sh
+```
+
+**Pass:** max |Δ| ≤ **0.05 ft** at 4 RMs × hours 0/6/12/18/24/30/36/48.
+
+Linked scenarios: `scenarios/simple_channel_ramp_unsteady_linked.json`, `scenarios/simple_channel_ramp_rating_unsteady_linked.json`
