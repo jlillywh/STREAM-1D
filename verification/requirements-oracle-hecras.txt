@@ -1,0 +1,4 @@
+# Headless HEC-RAS reference capture (optional; verify-only runs do not need these)
+ras-commander
+h5py
+pandas

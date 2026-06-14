@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "id": "beaver_unsteady_linked",
+  "title": "Beaver Creek bridge — linked HEC-RAS unsteady (plan 03 / u02 hydrograph)",
+  "mode": "unsteady",
+  "parity_program": {
+    "chunk": 8,
+    "certification": "development",
+    "prerequisite_chunks": [1, 6],
+    "optional_chunks": [7],
+    "notes": "Flagship high-flow bridge certification. Requires friction-slope DS BC (Chunk 1), hybrid implicit bridge mode 2 (Chunk 6). HDF WSEL(t) required for certified status — Observed HWM is dev reference only."
+  },
+  "scope": {
+    "single_reach": true,
+    "structures": ["bridge"],
+    "flow_regime": "100-yr high flow (pressure/weir at bridge)",
+    "notes": "Classic HEC-RAS Beaver Creek / Kentwood reach with inline bridge at RM 5.4 (9 piers, WSPRO). ~57 cross sections."
+  },
+  "linked_project": {
+    "directory": "projects/beaver",
+    "geometry": "beaver.g01",
+    "unsteady_flow": "beaver.u02",
+    "plan": "beaver.p03",
+    "plan_number": "03",
+    "notes": "Plan 03: Unsteady 100-yr event. Computation Interval 2MIN; upstream Q input 1HOUR in u02; UNET theta=1.0; DS boundary friction slope 0.002."
+  },
+  "stream1d": {
+    "mapper": "beaver_mapper.build_beaver_unsteady_inputs",
+    "coupling_mode": 2,
+    "notes": "Piecewise deck + 9 piers + WSPRO (method 4) from g01; explicit BU/BD face cuts and per-face ineffective from XS descriptions; three-segment friction (weighting=1); Q(t) resampled hourly→2MIN; downstream_bc_type=2 friction-slope normal depth on DS XS; theta=1.0 from plan; initial_wsel from solve_steady at initial Q. High-flow bridge uses explicit post-step fallback (B3)."
+  },
+  "reference": {
+    "source": "linked_u02_observed_hwm",
+    "field": "Observed HWM",
+    "file": "projects/beaver/beaver.u02",
+    "certification_target": "hdf_timeseries",
+    "hdf_extract": "projects/beaver/reference_wsel_hdf_plan03.json",
+    "live_ras_optional": true,
+    "notes": "Observed HWM = peak WSEL at each RM from RAS plan 03 (dev convenience). Certification requires HDF extract at ≥10 checkpoint RMs — see extract_hdf_wsel.py."
+  },
+  "compare": {
+    "quantity": "max_wsel",
+    "match_by": "river_mile",
+    "checkpoints_rm": [5.99, 5.875, 5.76, 5.685, 5.61, 5.41, 5.39, 5.13, 5.065, 5.0]
+  },
+  "tolerance_ft": 0.5,
+  "quantity": "max_wsel"
+}

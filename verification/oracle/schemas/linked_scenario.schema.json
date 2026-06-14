@@ -1,0 +1,209 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stream1d.dev/schemas/linked_scenario.schema.json",
+  "title": "STREAM-1D linked HEC-RAS oracle scenario",
+  "description": "Manifest for verification/oracle/run_linked_verify.py — single-reach steady or unsteady linked verify.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "id",
+    "title",
+    "mode",
+    "linked_project",
+    "reference",
+    "tolerance_ft",
+    "quantity"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["steady", "unsteady"]
+    },
+    "parity_program": {
+      "type": "object",
+      "description": "Roadmap chunk and certification status (Chunk 0+)",
+      "properties": {
+        "chunk": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9,
+          "description": "UNSTEADY_HECRAS_PARITY_ROADMAP chunk required before certification"
+        },
+        "certification": {
+          "type": "string",
+          "enum": ["development", "candidate", "certified"]
+        },
+        "notes": {
+          "type": "string"
+        }
+      },
+      "required": ["chunk", "certification"]
+    },
+    "scope": {
+      "type": "object",
+      "properties": {
+        "single_reach": { "type": "boolean" },
+        "structures": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["none", "culvert", "bridge"] }
+        },
+        "notes": { "type": "string" }
+      }
+    },
+    "linked_project": {
+      "type": "object",
+      "required": ["directory", "geometry"],
+      "properties": {
+        "directory": {
+          "type": "string",
+          "description": "Relative to verification/oracle/, e.g. projects/reach_mild"
+        },
+        "geometry": { "type": "string", "description": "e.g. reach.g01" },
+        "plan": { "type": "string" },
+        "plan_number": { "type": "string" },
+        "flow": { "type": "string", "description": "Steady flow .fXX" },
+        "unsteady_flow": { "type": "string", "description": "Unsteady flow .uXX" },
+        "notes": { "type": "string" }
+      }
+    },
+    "stream1d": {
+      "type": "object",
+      "description": "How STREAM-1D inputs are built",
+      "properties": {
+        "mapper": {
+          "type": "string",
+          "description": "Python callable, e.g. beaver_mapper.build_beaver_unsteady_inputs"
+        },
+        "project_fixture": { "type": "string", "description": "Steady: path under verification/" },
+        "profiles_fixture": { "type": "string" },
+        "coupling_mode": {
+          "type": "integer",
+          "enum": [0, 1, 2],
+          "description": "unsteady_structure_coupling_mode"
+        },
+        "notes": { "type": "string" }
+      }
+    },
+    "reference": {
+      "type": "object",
+      "required": ["source"],
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": [
+            "linked_export",
+            "hdf_timeseries",
+            "hdf_max_wsel",
+            "linked_u02_observed_hwm"
+          ]
+        },
+        "hecras_version": { "type": "string", "description": "e.g. 6.6 — required when certified" },
+        "generated": { "type": "string", "format": "date" },
+        "csv": { "type": "string", "description": "Steady profile export path under verification/" },
+        "hdf_extract": {
+          "type": "string",
+          "description": "Normalized WSEL time series JSON under oracle/projects/ or verification/fixtures/"
+        },
+        "file": { "type": "string", "description": "e.g. projects/beaver/beaver.u02 for Observed HWM" },
+        "field": { "type": "string" },
+        "live_ras_optional": { "type": "boolean", "default": false },
+        "notes": { "type": "string" }
+      }
+    },
+    "compare": {
+      "type": "object",
+      "properties": {
+        "quantity": {
+          "type": "string",
+          "enum": ["wsel", "max_wsel", "wsel_timeseries", "q"]
+        },
+        "match_by": {
+          "type": "string",
+          "enum": ["river_mile", "station", "profile_name"]
+        },
+        "checkpoints_rm": {
+          "type": "array",
+          "items": { "type": "number" }
+        },
+        "checkpoints_station": {
+          "type": "array",
+          "items": { "type": "number" }
+        }
+      }
+    },
+    "tolerance_ft": { "type": "number", "exclusiveMinimum": 0 },
+    "quantity": {
+      "type": "string",
+      "enum": ["wsel", "max_wsel", "wsel_timeseries", "q"]
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "mode": { "const": "steady" } } },
+      "then": {
+        "properties": {
+          "linked_project": {
+            "anyOf": [
+              { "required": ["flow"] },
+              { "required": ["plan"] }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "mode": { "const": "unsteady" } } },
+      "then": {
+        "properties": {
+          "linked_project": {
+            "required": ["unsteady_flow"]
+          },
+          "compare": {
+            "required": ["checkpoints_rm"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "reference": {
+            "properties": { "source": { "const": "linked_export" } }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "reference": { "required": ["csv"] }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "reference": {
+            "properties": { "source": { "const": "hdf_timeseries" } }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "reference": { "required": ["hdf_extract", "hecras_version"] }
+        }
+      }
+    }
+  ]
+}

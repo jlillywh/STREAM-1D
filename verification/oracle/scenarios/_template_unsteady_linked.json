@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "id": "reach_mild_unsteady_linked",
+  "title": "Mild reach — linked HEC-RAS unsteady (reach-only, Chunk 2 target)",
+  "mode": "unsteady",
+  "parity_program": {
+    "chunk": 2,
+    "certification": "development",
+    "notes": "Copy this template for new reach-only scenarios. Do not certify until Chunk 1 BC parity passes."
+  },
+  "scope": {
+    "single_reach": true,
+    "structures": ["none"],
+    "notes": "No inline culverts or bridges. Subcritical friction-slope downstream BC."
+  },
+  "linked_project": {
+    "directory": "projects/reach_mild",
+    "geometry": "reach.g01",
+    "unsteady_flow": "reach.u01",
+    "plan": "reach.p01",
+    "plan_number": "01",
+    "notes": "Sync from lillywhite_web/streams1d/hecras_outputs/<name>/ after RAS 6.x run."
+  },
+  "stream1d": {
+    "mapper": "reach_mild_mapper.build_reach_unsteady_inputs",
+    "coupling_mode": 0,
+    "notes": "Chunk 1: downstream_bc_type friction slope. Chunk 2: compare vs HDF extract."
+  },
+  "reference": {
+    "source": "hdf_timeseries",
+    "hecras_version": "6.6",
+    "generated": "2026-01-01",
+    "hdf_extract": "projects/reach_mild/reference_wsel.json",
+    "live_ras_optional": true,
+    "notes": "Replace with actual extract from verification/oracle/docs/HDF_REFERENCE.md workflow."
+  },
+  "compare": {
+    "quantity": "max_wsel",
+    "match_by": "river_mile",
+    "checkpoints_rm": [0.0, 0.5, 1.0]
+  },
+  "tolerance_ft": 0.15,
+  "quantity": "max_wsel"
+}

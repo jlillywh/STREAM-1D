@@ -1,0 +1,10 @@
+{
+  "format": "oracle_wsel_peaks_v1",
+  "source": "ConSpan.csv 50 yr steady profile at open-channel RMs below culvert",
+  "notes": "Checkpoints RM 20.208–20.095 only; upstream ConSpan refs include culvert backwater (Chunk 4+).",
+  "checkpoints": [
+    {"rm": 20.208, "max_wsel_ft": 31.6},
+    {"rm": 20.189, "max_wsel_ft": 31.48},
+    {"rm": 20.095, "max_wsel_ft": 31.0}
+  ]
+}

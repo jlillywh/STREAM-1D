@@ -1,0 +1,23 @@
+Flow Title=Reach mild constant Q unsteady
+Program Version=5.00
+Use Restart= 0 
+Initial Flow Loc=Spring Creek    ,Culvrt Reach    ,20.535  ,1000
+Boundary Location=Spring Creek    ,Culvrt Reach    ,20.535  ,        ,                ,                ,                
+Interval=1HOUR
+Flow Hydrograph= 49 
+ 1000.00 1000.00 1000.00 1000.00 1000.00 1000.00 1000.00 1000.00 1000.00 1000.00
+ 1000.00 1000.00 1000.00 1000.00 1000.00 1000.00 1000.00 1000.00 1000.00 1000.00
+ 1000.00 1000.00 1000.00 1000.00 1000.00 1000.00 1000.00 1000.00 1000.00 1000.00
+ 1000.00 1000.00 1000.00 1000.00 1000.00 1000.00 1000.00 1000.00 1000.00 1000.00
+ 1000.00 1000.00 1000.00 1000.00 1000.00 1000.00 1000.00 1000.00 1000.00
+Boundary Location=Spring Creek    ,Culvrt Reach    ,20.0    ,        ,                ,                ,                
+Interval=1HOUR
+Stage Hydrograph= 49 
+   30.51   30.51   30.51   30.51   30.51   30.51   30.51   30.51   30.51   30.51
+   30.51   30.51   30.51   30.51   30.51   30.51   30.51   30.51   30.51   30.51
+   30.51   30.51   30.51   30.51   30.51   30.51   30.51   30.51   30.51   30.51
+   30.51   30.51   30.51   30.51   30.51   30.51   30.51   30.51   30.51   30.51
+   30.51   30.51   30.51   30.51   30.51   30.51   30.51   30.51   30.51
+Observed HWM=Spring Creek    ,Culvrt Reach ,20.2    ,,31.5907
+Observed HWM=Spring Creek    ,Culvrt Reach ,20.2    ,,31.4791
+Observed HWM=Spring Creek    ,Culvrt Reach ,20.1    ,,30.9982

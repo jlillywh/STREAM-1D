@@ -1,0 +1,24 @@
+Flow Title=ConSpan mild constant Q unsteady
+Program Version=5.00
+Use Restart= 0 
+Initial Flow Loc=Spring Creek    ,Culvrt Reach    ,20.535  ,1000
+Boundary Location=Spring Creek    ,Culvrt Reach    ,20.535  ,        ,                ,                ,                
+Interval=1HOUR
+Flow Hydrograph= 49 
+    1000    1000    1000    1000    1000    1000    1000    1000    1000    1000
+    1000    1000    1000    1000    1000    1000    1000    1000    1000    1000
+    1000    1000    1000    1000    1000    1000    1000    1000    1000    1000
+    1000    1000    1000    1000    1000    1000    1000    1000    1000    1000
+    1000    1000    1000    1000    1000    1000    1000    1000    1000
+Boundary Location=Spring Creek    ,Culvrt Reach    ,20.0    ,        ,                ,                ,                
+Stage Hydrograph= 49 
+    30.51    30.51    30.51    30.51    30.51    30.51    30.51    30.51    30.51    30.51
+    30.51    30.51    30.51    30.51    30.51    30.51    30.51    30.51    30.51    30.51
+    30.51    30.51    30.51    30.51    30.51    30.51    30.51    30.51    30.51    30.51
+    30.51    30.51    30.51    30.51    30.51    30.51    30.51    30.51    30.51    30.51
+    30.51    30.51    30.51    30.51    30.51    30.51    30.51    30.51    30.51
+Observed HWM=Spring Creek    ,Culvrt Reach    ,20.535  ,,33.72
+Observed HWM=Spring Creek    ,Culvrt Reach    ,20.238  ,,32.92
+Observed HWM=Spring Creek    ,Culvrt Reach    ,20.227  ,,31.68
+Observed HWM=Spring Creek    ,Culvrt Reach    ,20.208  ,,31.6
+Observed HWM=Spring Creek    ,Culvrt Reach    ,20.095  ,,31.0

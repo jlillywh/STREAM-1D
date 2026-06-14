@@ -10,6 +10,9 @@ Fixtures live in [`fixtures/`](fixtures/). Machine-readable index: [`manifest.js
 # Run all HEC-RAS / golden regression tests (Rust)
 bash verification/run.sh
 
+# Linked HEC-RAS oracle — STREAM-1D vs bundled RAS project (optional; needs Python ext)
+bash verification/oracle/run_oracle.sh
+
 # Culvert profiles only (Python)
 PYTHONPATH=python python python/test_hecras_culvert_verification.py
 
@@ -35,6 +38,7 @@ jupyter notebook python/stream1d_verification.ipynb
 | Type | Description | Examples here |
 |------|-------------|---------------|
 | **HEC-RAS export** | WSEL or geometry taken from a HEC-RAS 6.x model run | ConSpan culvert profiles, ConSpan.csv |
+| **Linked HEC-RAS project** | Bundled `.g01` + plan/flow; STREAM-1D mapped from same geometry; compare via [`oracle/`](oracle/) | ConSpan steady linked scenario |
 | **Hand-calibrated golden** | Reference HW derived from the same equation set HEC-RAS uses, documented per case in JSON `notes` | Bridge abutment, high-flow cases |
 | **Independent hand check** | Sub-step verified (e.g. submerged area) before comparing full solve | Abutment `expected_a_eff_tw_m2` |
 
@@ -47,11 +51,34 @@ Golden values are **frozen** in JSON. Changing the solver requires updating fixt
 3. Add or extend a `tests/*_verification.rs` harness (pattern: `include_str!("../verification/fixtures/…")`).
 4. Register in [`docs/development/testing.md`](../docs/development/testing.md) and the root [`README.md`](../README.md) verification table.
 
+## Linked HEC-RAS oracle
+
+For trust-building comparisons against **live or bundled HEC-RAS project files** (not only frozen JSON goldens), see **[`oracle/README.md`](oracle/README.md)**.
+
+```bash
+bash verification/oracle/run_oracle.sh
+```
+
+Requires the Python extension; optional live HEC-RAS re-run via `--live-ras` when ras-commander and HEC-RAS are installed locally.
+
+**Scenarios:**
+
+| Scenario | Mode | Linked project |
+|----------|------|----------------|
+| `scenarios/conspan_steady_linked.json` | Steady culvert | `projects/conspan/` |
+| `scenarios/beaver_unsteady_linked.json` | Unsteady bridge | `projects/beaver/` |
+
+```bash
+# Beaver Creek unsteady bridge (Observed HWM from beaver.u02)
+bash verification/oracle/run_oracle.sh \
+  --scenario verification/oracle/scenarios/beaver_unsteady_linked.json
+```
+
 ## What is *not* here
 
 - **Unit tests** (`src/**`, `#[test]` in modules) — internal consistency, not external truth.
 - **WASM contract tests** — schema/metadata only.
-- **Full HEC-RAS project import** — hosts must export geometry and reference WSEL into JSON; this repo does not ship `.g01` files.
+- **Full HEC-RAS project builder** — linked verify uses bundled or user-supplied `.g01` + plan/flow; STREAM-1D inputs are mapped fixtures, not auto-generated from `.g01` at runtime (yet).
 
 Known intentional deltas vs HEC-RAS (deck vents, energy-path limits, etc.): [`docs/development/pressure_weir_combined_flow_audit.md`](../docs/development/pressure_weir_combined_flow_audit.md#intentional-remaining-deltas).
 
