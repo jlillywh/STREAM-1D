@@ -1,9 +1,10 @@
 # API changelog
 
-JSON/Python input schema version (`api_version` in WASM metadata). Current version: **34**.
+JSON/Python input schema version (`api_version` in WASM metadata). Current version: **35**.
 
 | Version | Change |
 |---------|--------|
+| 35 | Unsteady downstream BC types mirror steady: `downstream_bc_type` (`0` WSEL hydrograph default, `1` critical depth, `2` dynamic friction slope, `3` rating curve), `downstream_bc_slope`, `downstream_bc_rating_*`; reserved upstream stage fields; `theta` default **0.6** (clamp $[0.55,1.0]$) — see [`equations.md` §4](equations.md) |
 | 34 | Hybrid structure coupling diagnostics on `solve_unsteady` when inline structures are present: `structure_coupling_converged`, `structure_implicit_interval_count`, `structure_explicit_fallback_count` (per time step); WASM metadata `unsteady_structure_coupling_outputs`. Mode `2` enum renamed `HybridImplicit` (description: implicit where eligible + explicit fallback). |
 | 33 | Unsteady Preissmann structure coupling (Phases 2–4): `unsteady_structure_coupling_mode` (`0` = post-step only default, `2` = hybrid implicit Jacobian); WASM metadata `unsteady_structure_coupling_modes`. Mode `2` embeds inlet-controlled culvert and subcritical low-flow bridge residuals — see [`unsteady_implicit_bridge_coupling.md`](../development/unsteady_implicit_bridge_coupling.md) |
 | 32 | Bridge ice / debris hydraulics (Phase 4.4): `bridge_opening_blockage_factors`, `bridge_pier_debris_widths` / `bridge_pier_debris_heights`, `bridge_ice_thicknesses` / `bridge_ice_modes`, `bridge_deck_ice_thicknesses`; rating curve keys `opening_blockage_factor`, `pier_debris_*`, `ice_thickness`, `ice_mode`, `deck_ice_thickness` — reduces net opening area, pier-side blockage, ice-under-deck, and weir crest — see [`bridge_ice_debris.md`](../development/bridge_ice_debris.md) |

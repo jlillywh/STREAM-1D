@@ -12,6 +12,8 @@ mod preissmann;
 mod culvert_implicit;
 #[path = "unsteady/bridge_implicit.rs"]
 mod bridge_implicit;
+#[path = "unsteady/boundary.rs"]
+mod boundary;
 
 pub use preissmann::{
     solve_preissmann_step, PreissmannStepParams, PreissmannStepStats, UnsteadyStructureCouplingMode,
@@ -414,7 +416,33 @@ pub struct UnsteadyInputs {
     /// Upstream flow hydrograph boundary condition (in user units, array of size num_steps).
     pub upstream_q_hydrograph: Vec<f64>,
     /// Downstream stage hydrograph boundary condition (in user units, array of size num_steps).
+    /// Used when `downstream_bc_type` is `0` or omitted.
     pub downstream_wsel_hydrograph: Vec<f64>,
+    /// Downstream boundary condition type: `0` known WSEL hydrograph (default), `1` critical depth,
+    /// `2` friction slope / normal depth, `3` rating curve.
+    #[serde(default)]
+    pub downstream_bc_type: Option<i32>,
+    /// Target friction slope $S_0$ for `downstream_bc_type == 2` (dimensionless).
+    #[serde(default)]
+    pub downstream_bc_slope: Option<f64>,
+    /// Rating-curve flows for `downstream_bc_type == 3` (user units).
+    #[serde(default)]
+    pub downstream_bc_rating_q: Option<Vec<f64>>,
+    /// Rating-curve stages for `downstream_bc_type == 3` (user units).
+    #[serde(default)]
+    pub downstream_bc_rating_wsel: Option<Vec<f64>>,
+    /// Optional upstream stage hydrograph (user units). Reserved — upstream `Q(t)` remains default.
+    #[serde(default)]
+    pub upstream_wsel_hydrograph: Option<Vec<f64>>,
+    /// Upstream BC type when stage hydrograph is used (reserved; same codes as downstream).
+    #[serde(default)]
+    pub upstream_bc_type: Option<i32>,
+    #[serde(default)]
+    pub upstream_bc_slope: Option<f64>,
+    #[serde(default)]
+    pub upstream_bc_rating_q: Option<Vec<f64>>,
+    #[serde(default)]
+    pub upstream_bc_rating_wsel: Option<Vec<f64>>,
     /// Preissmann weighting factor theta (typically 0.55 to 0.7, default 0.6).
     pub theta: Option<f64>,
     /// Number of uniform vertical slices for geometry lookup tables (default 100).
@@ -546,7 +574,7 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
     let raw_units = inputs.cross_sections.first().map(|xs| xs.unit_system).unwrap_or(UnitSystem::Metric);
     let dt = inputs.dt;
     let num_slices = inputs.num_slices.unwrap_or(100);
-    let theta = inputs.theta.unwrap_or(0.85).clamp(0.85, 1.0);
+    let theta = inputs.theta.unwrap_or(0.6).clamp(0.55, 1.0);
     let c_contraction = inputs.coeff_contraction.unwrap_or(0.1);
     let c_expansion = inputs.coeff_expansion.unwrap_or(0.3);
 
@@ -580,7 +608,14 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
             coeff_contraction: inputs.coeff_contraction,
             coeff_expansion: inputs.coeff_expansion,
             regime: 0, // Subcritical GVF sweep
-            downstream_wsel: inputs.downstream_wsel_hydrograph.first().cloned(),
+            downstream_wsel: match inputs.downstream_bc_type.unwrap_or(0) {
+                0 => inputs.downstream_wsel_hydrograph.first().cloned(),
+                _ => None,
+            },
+            downstream_bc_type: inputs.downstream_bc_type,
+            downstream_bc_slope: inputs.downstream_bc_slope,
+            downstream_bc_rating_q: inputs.downstream_bc_rating_q.clone(),
+            downstream_bc_rating_wsel: inputs.downstream_bc_rating_wsel.clone(),
             upstream_wsel: None,
             max_spacing: inputs.max_spacing,
             densify_reach_modifier_policy: inputs.densify_reach_modifier_policy,
@@ -739,11 +774,13 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
     let tables: Vec<GeometryTable> = xs_list.iter().map(|xs| xs.generate_lookup_table(num_slices)).collect();
     let z_mins: Vec<f64> = xs_list.iter().map(|xs| xs.y.iter().cloned().fold(f64::INFINITY, f64::min)).collect();
 
-    // DENSIFICATION STEP: Automatic Reach Interpolation
+    // DENSIFICATION STEP: Automatic Reach Interpolation (stations in metric after `to_metric()`)
     let max_sp = inputs.max_spacing.map(|sp| {
         if raw_units == UnitSystem::USCustomary { sp * FT_TO_M } else { sp }
-    }).unwrap_or_else(|| {
-        if raw_units == UnitSystem::USCustomary { 50.0 * FT_TO_M } else { 15.0 }
+    }).unwrap_or(if raw_units == UnitSystem::USCustomary {
+        50.0 * FT_TO_M
+    } else {
+        15.0
     });
     let densify_policy = DensifyReachModifierPolicy::from_option(inputs.densify_reach_modifier_policy);
 
@@ -987,13 +1024,18 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
     // Loop through time steps
     for step in 0..inputs.num_steps {
         let q_up_next = q_up_hydrograph[step];
-        let mut y_down_next = y_down_hydrograph[step];
+        let known_ds_wsel = y_down_hydrograph[step];
 
-        // Clamp downstream stage BC to prevent dry downstream boundary
-        let ds_z_min = densified_z_mins[dm - 1];
-        if y_down_next < ds_z_min + 0.05 {
-            y_down_next = ds_z_min + 0.05;
-        }
+        let ds_bc = boundary::DownstreamBcParams {
+            bc_type: inputs.downstream_bc_type.unwrap_or(0),
+            slope: inputs.downstream_bc_slope.unwrap_or(0.01),
+            known_wsel_metric: known_ds_wsel,
+            rating_q: inputs.downstream_bc_rating_q.as_deref(),
+            rating_wsel: inputs.downstream_bc_rating_wsel.as_deref(),
+            ds_table: &densified_tables[dm - 1],
+            ds_z_min: densified_z_mins[dm - 1],
+            raw_units,
+        };
 
         let step_params = PreissmannStepParams {
             tables: &densified_tables,
@@ -1004,7 +1046,7 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
             q_current: &densified_q_current,
             dt,
             q_up_next,
-            y_down_next,
+            y_down_next: known_ds_wsel,
             theta,
             c_contraction,
             c_expansion,
@@ -1018,7 +1060,7 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
         };
 
         if let Some((y_next, q_next, preissmann_stats)) =
-            preissmann::solve_preissmann_step(&step_params)
+            boundary::solve_preissmann_with_downstream_bc(step_params, &ds_bc)
         {
             densified_y_current = y_next;
             densified_q_current = q_next;
@@ -1125,7 +1167,10 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
                 }
             }
             // Enforce downstream boundary stage exactly
-            densified_y_current[dm - 1] = y_down_next;
+            densified_y_current[dm - 1] = boundary::downstream_wsel_from_flow(
+                &ds_bc,
+                densified_q_current[dm - 1],
+            );
         } else {
             // If the matrix solver fails to invert (rare), maintain current state as fallback
         }
@@ -1257,6 +1302,15 @@ mod tests {
             bridge: UnsteadyBridgeInputs::default(),
             structure_coupling_order: None,
             unsteady_structure_coupling_mode: None,
+            downstream_bc_type: None,
+            downstream_bc_slope: None,
+            downstream_bc_rating_q: None,
+            downstream_bc_rating_wsel: None,
+            upstream_wsel_hydrograph: None,
+            upstream_bc_type: None,
+            upstream_bc_slope: None,
+            upstream_bc_rating_q: None,
+            upstream_bc_rating_wsel: None,
         };
 
         let result = solve_unsteady(&inputs);
@@ -1323,6 +1377,15 @@ mod tests {
             bridge: UnsteadyBridgeInputs::default(),
             structure_coupling_order: None,
             unsteady_structure_coupling_mode: None,
+            downstream_bc_type: None,
+            downstream_bc_slope: None,
+            downstream_bc_rating_q: None,
+            downstream_bc_rating_wsel: None,
+            upstream_wsel_hydrograph: None,
+            upstream_bc_type: None,
+            upstream_bc_slope: None,
+            upstream_bc_rating_q: None,
+            upstream_bc_rating_wsel: None,
         };
 
         let result = solve_unsteady(&inputs);
@@ -1383,6 +1446,15 @@ mod tests {
             bridge: UnsteadyBridgeInputs::default(),
             structure_coupling_order: None,
             unsteady_structure_coupling_mode: None,
+            downstream_bc_type: None,
+            downstream_bc_slope: None,
+            downstream_bc_rating_q: None,
+            downstream_bc_rating_wsel: None,
+            upstream_wsel_hydrograph: None,
+            upstream_bc_type: None,
+            upstream_bc_slope: None,
+            upstream_bc_rating_q: None,
+            upstream_bc_rating_wsel: None,
         };
         let dense = UnsteadyInputs {
             cross_sections: vec![
@@ -1408,6 +1480,15 @@ mod tests {
             bridge: UnsteadyBridgeInputs::default(),
             structure_coupling_order: None,
             unsteady_structure_coupling_mode: None,
+            downstream_bc_type: None,
+            downstream_bc_slope: None,
+            downstream_bc_rating_q: None,
+            downstream_bc_rating_wsel: None,
+            upstream_wsel_hydrograph: None,
+            upstream_bc_type: None,
+            upstream_bc_slope: None,
+            upstream_bc_rating_q: None,
+            upstream_bc_rating_wsel: None,
         };
 
         let r_sparse = solve_unsteady(&sparse);
@@ -1477,6 +1558,15 @@ mod tests {
             bridge: UnsteadyBridgeInputs::default(),
             structure_coupling_order: None,
             unsteady_structure_coupling_mode: None,
+            downstream_bc_type: None,
+            downstream_bc_slope: None,
+            downstream_bc_rating_q: None,
+            downstream_bc_rating_wsel: None,
+            upstream_wsel_hydrograph: None,
+            upstream_bc_type: None,
+            upstream_bc_slope: None,
+            upstream_bc_rating_q: None,
+            upstream_bc_rating_wsel: None,
         };
         let result = solve_unsteady(&inputs);
         assert_eq!(result.wsel.len(), 2);
@@ -1537,6 +1627,15 @@ mod tests {
             },
             structure_coupling_order: None,
             unsteady_structure_coupling_mode: None,
+            downstream_bc_type: None,
+            downstream_bc_slope: None,
+            downstream_bc_rating_q: None,
+            downstream_bc_rating_wsel: None,
+            upstream_wsel_hydrograph: None,
+            upstream_bc_type: None,
+            upstream_bc_slope: None,
+            upstream_bc_rating_q: None,
+            upstream_bc_rating_wsel: None,
         };
         let result = solve_unsteady(&inputs);
         assert_eq!(result.wsel.len(), 2);
@@ -1644,6 +1743,15 @@ mod tests {
             bridge: UnsteadyBridgeInputs::default(),
             structure_coupling_order: None,
             unsteady_structure_coupling_mode: None,
+            downstream_bc_type: None,
+            downstream_bc_slope: None,
+            downstream_bc_rating_q: None,
+            downstream_bc_rating_wsel: None,
+            upstream_wsel_hydrograph: None,
+            upstream_bc_type: None,
+            upstream_bc_slope: None,
+            upstream_bc_rating_q: None,
+            upstream_bc_rating_wsel: None,
         };
 
         let result = solve_unsteady(&inputs);
@@ -1711,6 +1819,15 @@ mod tests {
             bridge: UnsteadyBridgeInputs::default(),
             structure_coupling_order: None,
             unsteady_structure_coupling_mode: None,
+            downstream_bc_type: None,
+            downstream_bc_slope: None,
+            downstream_bc_rating_q: None,
+            downstream_bc_rating_wsel: None,
+            upstream_wsel_hydrograph: None,
+            upstream_bc_type: None,
+            upstream_bc_slope: None,
+            upstream_bc_rating_q: None,
+            upstream_bc_rating_wsel: None,
         };
 
         let with_culvert = UnsteadyInputs {
@@ -1820,6 +1937,15 @@ mod tests {
             bridge: UnsteadyBridgeInputs::default(),
             structure_coupling_order: None,
             unsteady_structure_coupling_mode: None,
+            downstream_bc_type: None,
+            downstream_bc_slope: None,
+            downstream_bc_rating_q: None,
+            downstream_bc_rating_wsel: None,
+            upstream_wsel_hydrograph: None,
+            upstream_bc_type: None,
+            upstream_bc_slope: None,
+            upstream_bc_rating_q: None,
+            upstream_bc_rating_wsel: None,
         };
 
         let result = solve_unsteady(&inputs);
@@ -1885,6 +2011,15 @@ mod tests {
             bridge: UnsteadyBridgeInputs::default(),
             structure_coupling_order: None,
             unsteady_structure_coupling_mode: None,
+            downstream_bc_type: None,
+            downstream_bc_slope: None,
+            downstream_bc_rating_q: None,
+            downstream_bc_rating_wsel: None,
+            upstream_wsel_hydrograph: None,
+            upstream_bc_type: None,
+            upstream_bc_slope: None,
+            upstream_bc_rating_q: None,
+            upstream_bc_rating_wsel: None,
         };
 
         let with_bridge = UnsteadyInputs {
@@ -1995,6 +2130,15 @@ mod tests {
             },
             structure_coupling_order: None,
             unsteady_structure_coupling_mode: None,
+            downstream_bc_type: None,
+            downstream_bc_slope: None,
+            downstream_bc_rating_q: None,
+            downstream_bc_rating_wsel: None,
+            upstream_wsel_hydrograph: None,
+            upstream_bc_type: None,
+            upstream_bc_slope: None,
+            upstream_bc_rating_q: None,
+            upstream_bc_rating_wsel: None,
         };
         let forward = solve_unsteady(&base);
         let reverse = solve_unsteady(&UnsteadyInputs {
@@ -2083,6 +2227,15 @@ mod tests {
             },
             structure_coupling_order: None,
             unsteady_structure_coupling_mode: None,
+            downstream_bc_type: None,
+            downstream_bc_slope: None,
+            downstream_bc_rating_q: None,
+            downstream_bc_rating_wsel: None,
+            upstream_wsel_hydrograph: None,
+            upstream_bc_type: None,
+            upstream_bc_slope: None,
+            upstream_bc_rating_q: None,
+            upstream_bc_rating_wsel: None,
         });
 
         assert_eq!(result.q.len(), 4);
@@ -2312,6 +2465,15 @@ mod tests {
             },
             structure_coupling_order: None,
             unsteady_structure_coupling_mode: None,
+            downstream_bc_type: None,
+            downstream_bc_slope: None,
+            downstream_bc_rating_q: None,
+            downstream_bc_rating_wsel: None,
+            upstream_wsel_hydrograph: None,
+            upstream_bc_type: None,
+            upstream_bc_slope: None,
+            upstream_bc_rating_q: None,
+            upstream_bc_rating_wsel: None,
         };
 
         let combined = solve_unsteady(&base);
@@ -2402,6 +2564,15 @@ mod tests {
             bridge: UnsteadyBridgeInputs::default(),
             structure_coupling_order: None,
             unsteady_structure_coupling_mode: None,
+            downstream_bc_type: None,
+            downstream_bc_slope: None,
+            downstream_bc_rating_q: None,
+            downstream_bc_rating_wsel: None,
+            upstream_wsel_hydrograph: None,
+            upstream_bc_type: None,
+            upstream_bc_slope: None,
+            upstream_bc_rating_q: None,
+            upstream_bc_rating_wsel: None,
         };
 
         let default_run = solve_unsteady(&base);
@@ -2494,6 +2665,161 @@ mod tests {
         }
     }
 
+    fn simple_reach_metric_xs() -> Vec<CrossSection> {
+        let mk = |station: f64, bed: f64| CrossSection {
+            station,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![bed + 5.0, bed, bed, bed + 5.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.03],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        vec![mk(1000.0, 1.0), mk(500.0, 0.5), mk(0.0, 0.0)]
+    }
+
+    #[test]
+    fn unsteady_friction_slope_ds_converges_to_steady_normal_depth() {
+        let q = 20.0;
+        let slope = 0.001;
+        let n_steps = 240;
+        let inputs = UnsteadyInputs {
+            cross_sections: simple_reach_metric_xs(),
+            initial_wsel: vec![3.0, 2.5, 2.0],
+            initial_q: vec![q; 3],
+            dt: 60.0,
+            num_steps: n_steps,
+            upstream_q_hydrograph: vec![q; n_steps],
+            downstream_wsel_hydrograph: vec![0.0; n_steps],
+            downstream_bc_type: Some(2),
+            downstream_bc_slope: Some(slope),
+            theta: Some(0.6),
+            num_slices: Some(50),
+            max_spacing: Some(600.0),
+            densify_reach_modifier_policy: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            culvert: UnsteadyCulvertInputs::default(),
+            bridge: UnsteadyBridgeInputs::default(),
+            structure_coupling_order: None,
+            unsteady_structure_coupling_mode: None,
+            downstream_bc_rating_q: None,
+            downstream_bc_rating_wsel: None,
+            upstream_wsel_hydrograph: None,
+            upstream_bc_type: None,
+            upstream_bc_slope: None,
+            upstream_bc_rating_q: None,
+            upstream_bc_rating_wsel: None,
+        };
+
+        let steady = crate::solvers::steady::solve_steady(&crate::solvers::steady::SteadyInputs {
+            cross_sections: inputs.cross_sections.clone(),
+            flow_rate: q,
+            downstream_bc_type: Some(2),
+            downstream_bc_slope: Some(slope),
+            regime: 0,
+            max_spacing: inputs.max_spacing,
+            ..Default::default()
+        });
+
+        let run = solve_unsteady(&inputs);
+        let ds_idx = run.wsel[0].len() - 1;
+        let final_wsel = run.wsel[n_steps - 1][ds_idx];
+        let steady_ds = steady.wsel[steady.wsel.len() - 1];
+        assert!(
+            (final_wsel - steady_ds).abs() < 0.05,
+            "dynamic friction-slope DS {final_wsel} vs steady normal depth {steady_ds}"
+        );
+    }
+
+    #[test]
+    fn unsteady_known_wsel_hydrograph_ds_matches_prescribed() {
+        let prescribed = 1.75;
+        let n_steps = 20;
+        let inputs = UnsteadyInputs {
+            cross_sections: simple_reach_metric_xs(),
+            initial_wsel: vec![3.0, 2.5, prescribed],
+            initial_q: vec![15.0; 3],
+            dt: 60.0,
+            num_steps: n_steps,
+            upstream_q_hydrograph: vec![15.0; n_steps],
+            downstream_wsel_hydrograph: vec![prescribed; n_steps],
+            downstream_bc_type: Some(0),
+            theta: Some(0.6),
+            num_slices: Some(50),
+            max_spacing: Some(600.0),
+            densify_reach_modifier_policy: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            culvert: UnsteadyCulvertInputs::default(),
+            bridge: UnsteadyBridgeInputs::default(),
+            structure_coupling_order: None,
+            unsteady_structure_coupling_mode: None,
+            downstream_bc_slope: None,
+            downstream_bc_rating_q: None,
+            downstream_bc_rating_wsel: None,
+            upstream_wsel_hydrograph: None,
+            upstream_bc_type: None,
+            upstream_bc_slope: None,
+            upstream_bc_rating_q: None,
+            upstream_bc_rating_wsel: None,
+        };
+
+        let run = solve_unsteady(&inputs);
+        let ds_idx = run.wsel[0].len() - 1;
+        for step in 0..n_steps {
+            assert!(
+                (run.wsel[step][ds_idx] - prescribed).abs() < 1e-6,
+                "step {step}: WSEL {} != prescribed {prescribed}",
+                run.wsel[step][ds_idx]
+            );
+        }
+    }
+
+    #[test]
+    fn unsteady_downstream_bc_omitted_matches_type_zero() {
+        let prescribed = 1.6;
+        let base = UnsteadyInputs {
+            cross_sections: simple_reach_metric_xs(),
+            initial_wsel: vec![3.0, 2.5, prescribed],
+            initial_q: vec![12.0; 3],
+            dt: 60.0,
+            num_steps: 10,
+            upstream_q_hydrograph: vec![12.0; 10],
+            downstream_wsel_hydrograph: vec![prescribed; 10],
+            theta: Some(0.6),
+            num_slices: Some(50),
+            max_spacing: Some(600.0),
+            densify_reach_modifier_policy: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            culvert: UnsteadyCulvertInputs::default(),
+            bridge: UnsteadyBridgeInputs::default(),
+            structure_coupling_order: None,
+            unsteady_structure_coupling_mode: None,
+            downstream_bc_type: None,
+            downstream_bc_slope: None,
+            downstream_bc_rating_q: None,
+            downstream_bc_rating_wsel: None,
+            upstream_wsel_hydrograph: None,
+            upstream_bc_type: None,
+            upstream_bc_slope: None,
+            upstream_bc_rating_q: None,
+            upstream_bc_rating_wsel: None,
+        };
+        let explicit = UnsteadyInputs {
+            downstream_bc_type: Some(0),
+            ..base.clone()
+        };
+        let omitted = solve_unsteady(&base);
+        let typed = solve_unsteady(&explicit);
+        assert_eq!(omitted.wsel, typed.wsel);
+        assert_eq!(omitted.q, typed.q);
+    }
+
     fn inline_culvert_reach_inputs() -> UnsteadyInputs {
         let (xs1000, xs500, xs0) = inline_culvert_metric_xs();
         UnsteadyInputs {
@@ -2526,6 +2852,15 @@ mod tests {
             bridge: UnsteadyBridgeInputs::default(),
             structure_coupling_order: None,
             unsteady_structure_coupling_mode: Some(2),
+            downstream_bc_type: None,
+            downstream_bc_slope: None,
+            downstream_bc_rating_q: None,
+            downstream_bc_rating_wsel: None,
+            upstream_wsel_hydrograph: None,
+            upstream_bc_type: None,
+            upstream_bc_slope: None,
+            upstream_bc_rating_q: None,
+            upstream_bc_rating_wsel: None,
         }
     }
 
@@ -2624,8 +2959,9 @@ mod tests {
     fn inline_bridge_reach_inputs(low_flow_method: Option<i32>) -> UnsteadyInputs {
         let (xs1000, xs500, xs0) = inline_bridge_metric_xs();
         let energy = low_flow_method == Some(3);
-        let num_piers = if energy { 0 } else { 2 };
-        let pier_width = if energy { 0.0 } else { 0.5 };
+        let wspro = low_flow_method == Some(4);
+        let num_piers = if energy || wspro { 0 } else { 2 };
+        let pier_width = if energy || wspro { 0.0 } else { 0.5 };
         UnsteadyInputs {
             cross_sections: vec![xs1000, xs500, xs0],
             initial_wsel: vec![2.5, 2.0, 1.5],
@@ -2655,6 +2991,15 @@ mod tests {
             },
             structure_coupling_order: None,
             unsteady_structure_coupling_mode: Some(2),
+            downstream_bc_type: None,
+            downstream_bc_slope: None,
+            downstream_bc_rating_q: None,
+            downstream_bc_rating_wsel: None,
+            upstream_wsel_hydrograph: None,
+            upstream_bc_type: None,
+            upstream_bc_slope: None,
+            upstream_bc_rating_q: None,
+            upstream_bc_rating_wsel: None,
         }
     }
 
@@ -2775,6 +3120,151 @@ mod tests {
         assert!(fallback.iter().all(|c| *c == 1));
     }
 
+    fn conspan_mild_unsteady_inputs() -> UnsteadyInputs {
+        let v: serde_json::Value =
+            serde_json::from_str(include_str!("../../verification/fixtures/conspan_project_12.json"))
+                .expect("conspan fixture");
+        let mut cross_sections = Vec::new();
+        for xs in v["geometry_data"].as_array().expect("geometry_data") {
+            cross_sections.push(CrossSection {
+                station: xs["station"].as_f64().expect("station"),
+                x: xs["x"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|n| n.as_f64().unwrap())
+                    .collect(),
+                y: xs["y"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|n| n.as_f64().unwrap())
+                    .collect(),
+                n_stations: xs["n_stations"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|n| n.as_f64().unwrap())
+                    .collect(),
+                n_values: xs["n_values"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|n| n.as_f64().unwrap())
+                    .collect(),
+                unit_system: UnitSystem::USCustomary,
+                is_overbank: xs.get("is_overbank").and_then(|v| {
+                    Some(
+                        v.as_array()?
+                            .iter()
+                            .map(|b| b.as_bool().unwrap())
+                            .collect(),
+                    )
+                }),
+                blocked_obstructions: None,
+                ineffective_flow_areas: None,
+                guide_banks: None,
+            });
+        }
+        cross_sections.sort_by(|a, b| b.station.partial_cmp(&a.station).unwrap());
+
+        let c = &v["culvert_stations"][0];
+        let n_xs = cross_sections.len();
+        let steady = crate::solvers::steady::SteadyInputs {
+            cross_sections: cross_sections.clone(),
+            flow_rate: 1000.0,
+            num_slices: Some(100),
+            max_spacing: Some(100.0),
+            regime: 0,
+            downstream_wsel: Some(30.51),
+            downstream_bc_type: Some(0),
+            culvert_stations: Some(vec![c["station"].as_f64().unwrap()]),
+            culvert_shape_types: Some(vec![c["shape_type"].as_i64().unwrap() as i32]),
+            culvert_spans: Some(vec![c["span"].as_f64().unwrap()]),
+            culvert_rises: Some(vec![c["rise"].as_f64().unwrap()]),
+            culvert_roughness_ns: Some(vec![c["roughness_n"].as_f64().unwrap()]),
+            culvert_lengths: Some(vec![c["length"].as_f64().unwrap()]),
+            culvert_entrance_loss_coeffs: Some(vec![c["entrance_loss_coeff"].as_f64().unwrap()]),
+            culvert_exit_loss_coeffs: Some(vec![c["exit_loss_coeff"].as_f64().unwrap()]),
+            culvert_barrels: Some(vec![c["num_barrels"].as_i64().unwrap_or(1) as i32]),
+            culvert_roughness_n_bottoms: Some(vec![c["roughness_n_bottom"].as_f64().unwrap_or(
+                c["roughness_n"].as_f64().unwrap(),
+            )]),
+            culvert_depth_bottom_ns: Some(vec![c["depth_bottom_n"].as_f64().unwrap_or(0.0)]),
+            culvert_depth_blockeds: Some(vec![c["depth_blocked"].as_f64().unwrap_or(0.0)]),
+            culvert_inlet_types: Some(vec![21]),
+            ..Default::default()
+        };
+        let initial_wsel = crate::solvers::steady::solve_steady(&steady).wsel;
+
+        UnsteadyInputs {
+            cross_sections,
+            initial_wsel,
+            initial_q: vec![1000.0; n_xs],
+            dt: 900.0,
+            num_steps: 48,
+            upstream_q_hydrograph: vec![1000.0; 48],
+            downstream_wsel_hydrograph: vec![30.51; 48],
+            downstream_bc_type: Some(0),
+            downstream_bc_slope: None,
+            downstream_bc_rating_q: None,
+            downstream_bc_rating_wsel: None,
+            upstream_wsel_hydrograph: None,
+            upstream_bc_type: None,
+            upstream_bc_slope: None,
+            upstream_bc_rating_q: None,
+            upstream_bc_rating_wsel: None,
+            theta: Some(1.0),
+            num_slices: Some(100),
+            max_spacing: Some(100.0),
+            densify_reach_modifier_policy: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            culvert: UnsteadyCulvertInputs {
+                culvert_stations: Some(vec![c["station"].as_f64().unwrap()]),
+                culvert_shape_types: Some(vec![c["shape_type"].as_i64().unwrap() as i32]),
+                culvert_spans: Some(vec![c["span"].as_f64().unwrap()]),
+                culvert_rises: Some(vec![c["rise"].as_f64().unwrap()]),
+                culvert_roughness_ns: Some(vec![c["roughness_n"].as_f64().unwrap()]),
+                culvert_lengths: Some(vec![c["length"].as_f64().unwrap()]),
+                culvert_entrance_loss_coeffs: Some(vec![c["entrance_loss_coeff"].as_f64().unwrap()]),
+                culvert_exit_loss_coeffs: Some(vec![c["exit_loss_coeff"].as_f64().unwrap()]),
+                culvert_barrels: Some(vec![c["num_barrels"].as_i64().unwrap_or(1) as i32]),
+                culvert_roughness_n_bottoms: Some(vec![c["roughness_n_bottom"].as_f64().unwrap_or(
+                    c["roughness_n"].as_f64().unwrap(),
+                )]),
+                culvert_depth_bottom_ns: Some(vec![c["depth_bottom_n"].as_f64().unwrap_or(0.0)]),
+                culvert_depth_blockeds: Some(vec![c["depth_blocked"].as_f64().unwrap_or(0.0)]),
+                culvert_inlet_types: Some(vec![21]),
+                ..Default::default()
+            },
+            bridge: UnsteadyBridgeInputs::default(),
+            structure_coupling_order: None,
+            unsteady_structure_coupling_mode: Some(2),
+        }
+    }
+
+    #[test]
+    fn test_unsteady_implicit_conspan_mild_mode2_outlet_uses_explicit_fallback() {
+        let run = solve_unsteady(&conspan_mild_unsteady_inputs());
+        let implicit = run
+            .structure_implicit_interval_count
+            .as_ref()
+            .expect("structure_implicit_interval_count");
+        let fallback = run
+            .structure_explicit_fallback_count
+            .as_ref()
+            .expect("structure_explicit_fallback_count");
+        let controls = run
+            .culvert_control_types
+            .as_ref()
+            .expect("culvert_control_types");
+        let last_control = &controls[controls.len() - 1][0];
+        assert_eq!(last_control, "outlet");
+        assert!(implicit.iter().all(|c| *c == 0));
+        assert!(fallback.iter().all(|c| *c == 1));
+    }
+
     #[test]
     fn test_unsteady_implicit_bridge_tw_ramp_uses_explicit_fallback() {
         let mut inputs = inline_bridge_reach_inputs(None);
@@ -2794,6 +3284,107 @@ mod tests {
             regimes == "pressure" || regimes == "weir" || regimes == "energy",
             "expected high-flow regime at TW above low chord, got {regimes}"
         );
+
+        let fallback = run
+            .structure_explicit_fallback_count
+            .as_ref()
+            .expect("fallback counts");
+        assert!(
+            fallback.iter().any(|c| *c > 0),
+            "high-flow TW ramp should invoke explicit post-step fallback"
+        );
+    }
+
+    #[test]
+    fn test_structure_coupling_diagnostics_mode2_bridge() {
+        let run = solve_unsteady(&inline_bridge_reach_inputs(None));
+        let implicit = run
+            .structure_implicit_interval_count
+            .as_ref()
+            .expect("implicit counts");
+        let fallback = run
+            .structure_explicit_fallback_count
+            .as_ref()
+            .expect("fallback counts");
+        let converged = run
+            .structure_coupling_converged
+            .as_ref()
+            .expect("converged flags");
+        assert_eq!(implicit.len(), run.wsel.len());
+        assert!(
+            implicit.iter().any(|c| *c > 0),
+            "subcritical Yarnell bridge should use implicit Jacobian rows"
+        );
+        assert!(
+            fallback.iter().all(|c| *c <= 1),
+            "hybrid mode should use at most one explicit pass per structure per step"
+        );
+        assert!(converged.iter().all(|c| *c));
+    }
+
+    #[test]
+    fn test_unsteady_implicit_bridge_wspro_mode2_subcritical_finite() {
+        let mut inputs = inline_bridge_reach_inputs(Some(4));
+        inputs.bridge.bridge_wspro_coeffs = Some(vec![0.8]);
+        inputs.bridge.bridge_pier_widths = Some(vec![0.0]);
+        inputs.bridge.bridge_num_piers = Some(vec![0]);
+        let run = solve_unsteady(&inputs);
+        let last = run.wsel.len() - 1;
+        assert!(run.wsel[last].iter().all(|w| w.is_finite()));
+        let regime = run
+            .bridge_flow_regimes
+            .as_ref()
+            .expect("regimes")[last][0]
+            .clone();
+        assert!(
+            regime.starts_with("low_"),
+            "expected subcritical WSPRO low-flow, got {regime}"
+        );
+        let implicit = run
+            .structure_implicit_interval_count
+            .as_ref()
+            .expect("implicit counts");
+        assert!(
+            implicit.iter().any(|c| *c > 0),
+            "WSPRO subcritical bridge should use implicit rows"
+        );
+    }
+
+    #[test]
+    fn test_unsteady_implicit_bridge_reverse_q_mode2() {
+        let mut inputs = inline_bridge_reach_inputs(None);
+        inputs.initial_q = vec![-15.0, -15.0, -15.0];
+        inputs.upstream_q_hydrograph = vec![-15.0; inputs.num_steps];
+        let run = solve_unsteady(&inputs);
+        let last = run.wsel.len() - 1;
+        assert!(run.wsel[last].iter().all(|w| w.is_finite()));
+        assert!(run.q[last].iter().all(|q| q.is_finite()));
+        let hl = run
+            .bridge_head_losses
+            .as_ref()
+            .expect("bridge diagnostics")[last][0];
+        assert!(hl > 0.0, "reverse-flow head loss should be positive");
+    }
+
+    /// Chunk 7: approximate reach Q balance and finite faces on constant-Q implicit bridge.
+    #[test]
+    fn test_unsteady_structure_interval_mass_budget() {
+        let run = solve_unsteady(&inline_bridge_reach_inputs(None));
+        assert!(run.wsel.iter().flatten().all(|w| w.is_finite() && *w > 0.0));
+        assert!(run.q.iter().flatten().all(|q| q.is_finite()));
+        for (step, q_step) in run.q.iter().enumerate() {
+            let q_us = q_step[0];
+            let q_ds = q_step[q_step.len() - 1];
+            assert!(
+                (q_us - q_ds).abs() < 3.0,
+                "step {step}: reach Q drift {q_us} vs {q_ds} exceeds loose budget"
+            );
+        }
+        let converged = run
+            .structure_coupling_converged
+            .as_ref()
+            .expect("structure_coupling_converged");
+        assert!(converged.iter().all(|c| *c));
     }
 }
 

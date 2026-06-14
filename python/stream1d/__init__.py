@@ -62,6 +62,14 @@ class CrossSection:
             res['ineffective_flow_areas'] = self.ineffective_flow_areas
         return res
 
+
+def _cross_sections_to_dict(items: list) -> list:
+    return [xs.to_dict() if hasattr(xs, "to_dict") else xs for xs in items]
+
+
+def _internal_cross_sections_to_dict(items: list) -> list:
+    return [_cross_sections_to_dict(group) for group in items]
+
 class SteadyInputs:
     def __init__(
         self,
@@ -353,9 +361,9 @@ class SteadyInputs:
             'bridge_pier_width_values': self.bridge_pier_width_values,
             'bridge_pier_top_elevations': self.bridge_pier_top_elevations,
             'bridge_pier_base_elevations': self.bridge_pier_base_elevations,
-            'bridge_upstream_cross_sections': self.bridge_upstream_cross_sections,
-            'bridge_downstream_cross_sections': self.bridge_downstream_cross_sections,
-            'bridge_internal_cross_sections': self.bridge_internal_cross_sections,
+            'bridge_upstream_cross_sections': _cross_sections_to_dict(self.bridge_upstream_cross_sections),
+            'bridge_downstream_cross_sections': _cross_sections_to_dict(self.bridge_downstream_cross_sections),
+            'bridge_internal_cross_sections': _internal_cross_sections_to_dict(self.bridge_internal_cross_sections),
             'bridge_opening_reach_station_origins': self.bridge_opening_reach_station_origins,
             'bridge_opening_anchor_modes': self.bridge_opening_anchor_modes,
             'bridge_opening_anchor_reach_stations': self.bridge_opening_anchor_reach_stations,
@@ -399,6 +407,15 @@ class UnsteadyInputs:
         max_spacing: Optional[float] = None,
         coeff_contraction: Optional[float] = 0.1,
         coeff_expansion: Optional[float] = 0.3,
+        downstream_bc_type: Optional[int] = None,
+        downstream_bc_slope: Optional[float] = None,
+        downstream_bc_rating_q: Optional[List[float]] = None,
+        downstream_bc_rating_wsel: Optional[List[float]] = None,
+        upstream_wsel_hydrograph: Optional[List[float]] = None,
+        upstream_bc_type: Optional[int] = None,
+        upstream_bc_slope: Optional[float] = None,
+        upstream_bc_rating_q: Optional[List[float]] = None,
+        upstream_bc_rating_wsel: Optional[List[float]] = None,
         culvert_stations: Optional[List[float]] = None,
         culvert_shape_types: Optional[List[int]] = None,
         culvert_spans: Optional[List[float]] = None,
@@ -488,6 +505,15 @@ class UnsteadyInputs:
         self.num_steps = num_steps
         self.upstream_q_hydrograph = upstream_q_hydrograph
         self.downstream_wsel_hydrograph = downstream_wsel_hydrograph
+        self.downstream_bc_type = downstream_bc_type
+        self.downstream_bc_slope = downstream_bc_slope
+        self.downstream_bc_rating_q = downstream_bc_rating_q
+        self.downstream_bc_rating_wsel = downstream_bc_rating_wsel
+        self.upstream_wsel_hydrograph = upstream_wsel_hydrograph
+        self.upstream_bc_type = upstream_bc_type
+        self.upstream_bc_slope = upstream_bc_slope
+        self.upstream_bc_rating_q = upstream_bc_rating_q
+        self.upstream_bc_rating_wsel = upstream_bc_rating_wsel
         self.theta = theta
         self.num_slices = num_slices
         self.max_spacing = max_spacing
@@ -662,9 +688,9 @@ class UnsteadyInputs:
             'bridge_pier_width_values': self.bridge_pier_width_values,
             'bridge_pier_top_elevations': self.bridge_pier_top_elevations,
             'bridge_pier_base_elevations': self.bridge_pier_base_elevations,
-            'bridge_upstream_cross_sections': self.bridge_upstream_cross_sections,
-            'bridge_downstream_cross_sections': self.bridge_downstream_cross_sections,
-            'bridge_internal_cross_sections': self.bridge_internal_cross_sections,
+            'bridge_upstream_cross_sections': _cross_sections_to_dict(self.bridge_upstream_cross_sections),
+            'bridge_downstream_cross_sections': _cross_sections_to_dict(self.bridge_downstream_cross_sections),
+            'bridge_internal_cross_sections': _internal_cross_sections_to_dict(self.bridge_internal_cross_sections),
             'bridge_opening_reach_station_origins': self.bridge_opening_reach_station_origins,
             'bridge_opening_anchor_modes': self.bridge_opening_anchor_modes,
             'bridge_opening_anchor_reach_stations': self.bridge_opening_anchor_reach_stations,
@@ -673,6 +699,24 @@ class UnsteadyInputs:
             res['structure_coupling_order'] = self.structure_coupling_order
         if self.unsteady_structure_coupling_mode is not None:
             res['unsteady_structure_coupling_mode'] = self.unsteady_structure_coupling_mode
+        if self.downstream_bc_type is not None:
+            res['downstream_bc_type'] = self.downstream_bc_type
+        if self.downstream_bc_slope is not None:
+            res['downstream_bc_slope'] = self.downstream_bc_slope
+        if self.downstream_bc_rating_q is not None:
+            res['downstream_bc_rating_q'] = self.downstream_bc_rating_q
+        if self.downstream_bc_rating_wsel is not None:
+            res['downstream_bc_rating_wsel'] = self.downstream_bc_rating_wsel
+        if self.upstream_wsel_hydrograph is not None:
+            res['upstream_wsel_hydrograph'] = self.upstream_wsel_hydrograph
+        if self.upstream_bc_type is not None:
+            res['upstream_bc_type'] = self.upstream_bc_type
+        if self.upstream_bc_slope is not None:
+            res['upstream_bc_slope'] = self.upstream_bc_slope
+        if self.upstream_bc_rating_q is not None:
+            res['upstream_bc_rating_q'] = self.upstream_bc_rating_q
+        if self.upstream_bc_rating_wsel is not None:
+            res['upstream_bc_rating_wsel'] = self.upstream_bc_rating_wsel
         return res
 
 def solve_steady(inputs: Any) -> dict:

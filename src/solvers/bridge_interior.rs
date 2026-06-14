@@ -2406,6 +2406,15 @@ mod tests {
             },
             structure_coupling_order: None,
             unsteady_structure_coupling_mode: None,
+            downstream_bc_type: None,
+            downstream_bc_slope: None,
+            downstream_bc_rating_q: None,
+            downstream_bc_rating_wsel: None,
+            upstream_wsel_hydrograph: None,
+            upstream_bc_type: None,
+            upstream_bc_slope: None,
+            upstream_bc_rating_q: None,
+            upstream_bc_rating_wsel: None,
         };
         let intervals = apply_bridge_reach_layout_unsteady(
             &inputs,
