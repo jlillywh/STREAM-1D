@@ -39,7 +39,6 @@ if str(ORACLE_ROOT) not in sys.path:
 import stream1d as st  # noqa: E402
 
 from lib.beaver_mapper import build_beaver_unsteady_inputs  # noqa: E402
-from lib.bridge_mild_mapper import build_bridge_mild_unsteady_inputs  # noqa: E402
 from lib.compare import (  # noqa: E402
     compare_steady_linked,
     compare_unsteady_peak_wsel,
@@ -64,7 +63,6 @@ from lib.conspan_reference import (  # noqa: E402
     rm_to_conspan_payload_index,
 )
 from lib.reach_mapper import build_reach_unsteady_inputs  # noqa: E402
-from lib.simple_channel_mapper import build_simple_channel_unsteady_inputs  # noqa: E402
 from lib.scenario import LinkedScenario, load_scenario  # noqa: E402
 from lib.stream1d_runner import run_steady_profiles  # noqa: E402
 
@@ -129,6 +127,8 @@ def _build_unsteady_payload(
         xs_list = load_conspan_cross_sections_for_rms([xs.rm for xs in geom.cross_sections])
         parsed_xs = geom.cross_sections
     elif mapper == "simple_channel_mapper.build_simple_channel_unsteady_inputs":
+        from lib.simple_channel_mapper import build_simple_channel_unsteady_inputs
+
         payload, flow = build_simple_channel_unsteady_inputs(
             project_dir,
             geometry_name=linked["geometry"],
@@ -138,6 +138,8 @@ def _build_unsteady_payload(
         xs_list = geom.cross_sections
         parsed_xs = geom.cross_sections
     elif mapper == "bridge_mild_mapper.build_bridge_mild_unsteady_inputs":
+        from lib.bridge_mild_mapper import build_bridge_mild_unsteady_inputs
+
         stream_cfg = scenario.raw.get("stream1d", {})
         case = str(stream_cfg.get("case", "yarnell"))
         coupling = int(stream_cfg.get("coupling_mode", 0))
