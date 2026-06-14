@@ -28,11 +28,14 @@
     "notes": "Fixture geometry + culvert from conspan_project_12.json; mode 0 post-step; downstream-first structure order (default 0)."
   },
   "reference": {
-    "source": "linked_conspan_profile",
+    "source": "linked_json_peaks",
+    "file": "projects/conspan/reference_wsel_peaks_unsteady.json",
     "profile": "50 yr",
+    "fallback_conspan_profile": true,
     "fallback_u02_observed_hwm": true,
     "live_ras_optional": true,
-    "notes": "Certification target: RAS plan HDF WSEL(t). Until extract ships, ConSpan 50 yr steady + u02 HWM fallback."
+    "certification_target": "hdf_timeseries",
+    "notes": "Bootstrap reference from ConSpan 50 yr steady (Q=1000 cfs). Refresh from plan HDF via run_ras_reference.py."
   },
   "compare": {
     "quantity": "terminal_wsel",

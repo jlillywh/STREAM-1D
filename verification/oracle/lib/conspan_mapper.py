@@ -37,7 +37,7 @@ def build_conspan_unsteady_inputs(
         raise ValueError(f"expected ≥8 open-channel XS in {geometry_name}")
 
     flow = parse_unsteady_flow(project_dir / flow_name)
-    plan_path = find_plan_file(project_dir)
+    plan_path = find_plan_file(project_dir, flow_name=flow_name)
     plan = parse_plan(plan_path) if plan_path else None
 
     cross_sections = load_all_conspan_cross_sections()
@@ -56,13 +56,13 @@ def build_conspan_unsteady_inputs(
         )
 
     num_steps = len(upstream_q)
-    ds_wsel, downstream_bc_type, downstream_bc_slope = downstream_bc_from_flow(flow, num_steps)
+    ds_bc = downstream_bc_from_flow(flow, num_steps)
     initial_wsel = steady_initial_wsel(
         cross_sections,
         flow.initial_flow_cfs,
-        downstream_bc_type,
-        downstream_bc_slope,
-        ds_wsel[0],
+        ds_bc.bc_type,
+        ds_bc.slope,
+        ds_bc.wsel_series[0],
         max_spacing=solver["max_spacing"],
         num_slices=solver["num_slices"],
         structure_fields=culvert_fields,
@@ -77,9 +77,9 @@ def build_conspan_unsteady_inputs(
         dt=dt_seconds,
         num_steps=num_steps,
         upstream_q_hydrograph=upstream_q,
-        downstream_wsel_hydrograph=ds_wsel,
-        downstream_bc_type=downstream_bc_type,
-        downstream_bc_slope=downstream_bc_slope,
+        downstream_wsel_hydrograph=ds_bc.wsel_series,
+        downstream_bc_type=ds_bc.bc_type,
+        downstream_bc_slope=ds_bc.slope,
         theta=theta,
         num_slices=solver["num_slices"],
         max_spacing=solver["max_spacing"],
