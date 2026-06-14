@@ -104,6 +104,48 @@
       "notes": "Chunk 5 hybrid implicit culvert; requires Python stream1d extension"
     },
     {
+      "id": "simple_channel_unsteady_linked_oracle",
+      "title": "Simple trapezoidal channel — linked HEC-RAS unsteady (friction-slope DS)",
+      "source_of_truth": "HEC-RAS plan 01 WSEL timeseries at hours 0/12/24/48 (friction-slope DS type 2)",
+      "source_artifacts": [
+        "oracle/projects/simple_channel/simple_channel.g01",
+        "oracle/projects/simple_channel/simple_channel.u02",
+        "oracle/projects/simple_channel/simple_channel.p01",
+        "oracle/projects/simple_channel/reference_wsel_simple_channel_unsteady.json"
+      ],
+      "fixture": "oracle/scenarios/simple_channel_unsteady_linked.json",
+      "tests": [
+        "verification/oracle/run_linked_verify.py",
+        "verification/oracle/scripts/test_simple_channel_unsteady.py",
+        "verification/oracle/scripts/smoke_simple_channel_parse.py"
+      ],
+      "tolerance": "±0.05 ft WSEL at 4 RMs × hours 0/12/24/48 (constant Q=150 cfs, friction-slope DS)",
+      "quantity": "wsel_timeseries",
+      "optional": true,
+      "notes": "Chunk 1 certified; requires API v35 downstream BC types and Python stream1d extension."
+    },
+    {
+      "id": "simple_channel_rating_unsteady_linked_oracle",
+      "title": "Simple trapezoidal channel — rating-curve DS (Chunk 1 type 3)",
+      "source_of_truth": "HEC-RAS plan 03 WSEL timeseries at hours 0/12/24/48 (rating-curve DS)",
+      "source_artifacts": [
+        "oracle/projects/simple_channel/simple_channel.g01",
+        "oracle/projects/simple_channel/simple_channel.u03",
+        "oracle/projects/simple_channel/simple_channel.p03",
+        "oracle/projects/simple_channel/rating_curve_ds.json",
+        "oracle/projects/simple_channel/reference_wsel_simple_channel_rating_unsteady.json"
+      ],
+      "fixture": "oracle/scenarios/simple_channel_rating_unsteady_linked.json",
+      "tests": [
+        "verification/oracle/run_linked_verify.py",
+        "verification/oracle/scripts/test_simple_channel_rating_bc.py"
+      ],
+      "tolerance": "±0.05 ft WSEL at 4 RMs × hours 0/12/24/48 (constant Q=150 cfs, rating-curve DS)",
+      "quantity": "wsel_timeseries",
+      "optional": true,
+      "notes": "Chunk 1 certified; requires API v35 downstream BC types."
+    },
+    {
       "id": "beaver_unsteady_linked_oracle",
       "title": "Beaver Creek bridge \u00e2\u20ac\u201d Chunk 8 certification (100-yr high flow)",
       "source_of_truth": "Observed HWM in beaver.u02 (dev); HDF WSEL(t) target for certified",

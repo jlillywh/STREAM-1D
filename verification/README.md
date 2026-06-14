@@ -67,11 +67,16 @@ Requires the Python extension; optional live HEC-RAS re-run via `--live-ras` whe
 |----------|------|----------------|
 | `scenarios/conspan_steady_linked.json` | Steady culvert | `projects/conspan/` |
 | `scenarios/beaver_unsteady_linked.json` | Unsteady bridge | `projects/beaver/` |
+| `scenarios/simple_channel_unsteady_linked.json` | Unsteady reach (friction-slope DS) | `projects/simple_channel/` |
+| `scenarios/simple_channel_rating_unsteady_linked.json` | Unsteady reach (rating-curve DS) | `projects/simple_channel/` |
 
 ```bash
 # Beaver Creek unsteady bridge (Observed HWM from beaver.u02)
 bash verification/oracle/run_oracle.sh \
   --scenario verification/oracle/scenarios/beaver_unsteady_linked.json
+
+# Simple channel constant-Q (Chunk 1 — friction-slope and rating-curve DS)
+bash verification/oracle/scripts/run_simple_channel_verify.sh
 ```
 
 ## What is *not* here
