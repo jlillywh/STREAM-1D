@@ -683,4 +683,64 @@ mod tests {
         );
         assert!(xs.is_none());
     }
+
+    #[test]
+    fn elevation_at_x_edge_cases_and_opt_coeff_branches() {
+        let one_pt = CrossSection {
+            station: 0.0,
+            x: vec![0.0],
+            y: vec![1.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.03],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        assert!(elevation_at_x(&one_pt, 0.0).is_none());
+
+        let flat = CrossSection {
+            station: 0.0,
+            x: vec![0.0, 5.0],
+            y: vec![2.0, 2.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.03],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        assert!((elevation_at_x(&flat, 2.5).unwrap() - 2.0).abs() < 1e-9);
+        assert!((elevation_at_x(&flat, 0.0).unwrap() - 2.0).abs() < 1e-9);
+        assert!((elevation_at_x(&flat, 5.0).unwrap() - 2.0).abs() < 1e-9);
+
+        assert!((interpolate_opt_coeff(Some(0.1), Some(0.3), 0.5).unwrap() - 0.2).abs() < 1e-9);
+        assert_eq!(interpolate_opt_coeff(Some(0.1), None, 0.5), Some(0.1));
+        assert_eq!(interpolate_opt_coeff(None, Some(0.3), 0.5), Some(0.3));
+        assert_eq!(interpolate_opt_coeff(None, None, 0.5), None);
+    }
+
+    #[test]
+    fn apply_reach_modifier_policy_none_is_noop() {
+        let up = rect(100.0, 0.0, 10.0);
+        let down = rect(0.0, 0.0, 10.0);
+        let mut synthetic = rect(50.0, 0.0, 10.0);
+        synthetic.ineffective_flow_areas = Some(
+            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[8.0], &[3.0]).unwrap(),
+        );
+        apply_reach_modifier_policy(
+            &mut synthetic,
+            &up,
+            &down,
+            0.5,
+            DensifyReachModifierPolicy::None,
+        );
+        assert!(synthetic.ineffective_flow_areas.is_some());
+    }
 }

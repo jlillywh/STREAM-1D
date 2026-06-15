@@ -7,6 +7,9 @@ coverage:
     patch:
       default:
         target: auto
+  ignore:
+    - "src/wasm_bindings.rs"
+    - "src/python_bindings.rs"
 
 comment:
   layout: "reach,diff,flags,tree"

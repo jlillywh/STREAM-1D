@@ -516,6 +516,17 @@ mod tests {
     }
 
     #[test]
+    fn polyline_crossing_skips_submerged_then_finds_emergent_segment() {
+        let poly = GuideBankPolyline {
+            stations: vec![0.0, 10.0, 20.0, 30.0],
+            elevations: vec![1.0, 2.0, 2.0, 6.0],
+        };
+        // First segment fully submerged at wsel=5; third segment crosses between 2 and 6.
+        let station = polyline_crossing_station_at_wsel(&poly, 5.0).expect("crossing");
+        assert!(station > 20.0);
+    }
+
+    #[test]
     fn lateral_limits_none_when_unconfigured() {
         assert!(lateral_limits_at_wsel(&GuideBanks::default(), 2.0).is_none());
     }

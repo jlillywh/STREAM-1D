@@ -1420,3 +1420,224 @@ fn test_tapered_pier_exceeds_legacy_constant_headwater_in_solve() {
         "tapered HW {hw_tapered} vs legacy mean-width HW {hw_legacy}"
     );
 }
+
+#[test]
+fn bridge_flow_regime_label_covers_high_and_low_branches() {
+    use crate::solvers::bridge::coupling::bridge_flow_regime_label;
+
+    let table = rectangular_table(10.0, 0.0, 50);
+    let coupling_energy = BridgeCouplingParams {
+        high_flow_method: 1,
+        ..Default::default()
+    };
+    assert_eq!(
+        bridge_flow_regime_label(
+            6.0, 6.5, 5.0, 7.0, UnitSystem::Metric, 20.0, &table, &table, &coupling_energy,
+            50.0, 0.0, 0, 0, 1.44, 0.8, 0.0, 0.0,
+        ),
+        "energy"
+    );
+
+    let coupling_weir = BridgeCouplingParams::default();
+    assert_eq!(
+        bridge_flow_regime_label(
+            6.0, 7.5, 5.0, 7.0, UnitSystem::Metric, 20.0, &table, &table, &coupling_weir,
+            50.0, 0.0, 0, 0, 1.44, 0.8, 0.0, 0.0,
+        ),
+        "weir"
+    );
+    assert_eq!(
+        bridge_flow_regime_label(
+            6.0, 6.2, 5.0, 7.0, UnitSystem::Metric, 20.0, &table, &table, &coupling_weir,
+            50.0, 0.0, 0, 0, 1.44, 0.8, 0.0, 0.0,
+        ),
+        "pressure"
+    );
+
+    let coupling_low = BridgeCouplingParams {
+        low_flow_method: 1,
+        ..Default::default()
+    };
+    let low_regime = bridge_flow_regime_label(
+        2.5, 3.0, 5.0, 7.0, UnitSystem::Metric, 15.0, &table, &table, &coupling_low,
+        50.0, 0.5, 1, 0, 1.44, 0.8, 0.0, 0.0,
+    );
+    assert!(
+        matches!(low_regime.as_str(), "low_a" | "low_b" | "low_c"),
+        "unexpected low-flow regime {low_regime}"
+    );
+}
+
+#[test]
+fn solve_bridge_coupled_us_customary_and_reverse_q() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let table_down = rectangular_table(10.0, 0.0, 50);
+    let coupling = BridgeCouplingParams {
+        low_flow_method: 3,
+        ..Default::default()
+    };
+    let forward = solve_bridge_coupled(
+        100.0,
+        16.0,
+        20.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        18.0,
+        UnitSystem::USCustomary,
+        &table_up,
+        &table_down,
+        &coupling,
+        150.0,
+        None,
+        None,
+    );
+    assert!(forward.wsel_up > forward.wsel_down);
+    assert!(forward.head_loss >= 0.0);
+
+    let reverse = solve_bridge_coupled(
+        -100.0,
+        16.0,
+        20.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        18.0,
+        UnitSystem::USCustomary,
+        &table_up,
+        &table_down,
+        &coupling,
+        150.0,
+        None,
+        None,
+    );
+    assert!(reverse.wsel_down > reverse.wsel_up || reverse.head_loss >= 0.0);
+}
+
+#[test]
+fn solve_bridge_tailwater_reverse_q_low_flow() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let table_down = rectangular_table(10.0, 0.0, 50);
+    let coupling = BridgeCouplingParams {
+        low_flow_method: 1,
+        ..Default::default()
+    };
+    let tw = solve_bridge_tailwater(
+        -15.0,
+        4.0,
+        6.0,
+        0.5,
+        1,
+        0,
+        1.44,
+        0.5,
+        0.0,
+        0.0,
+        3.2,
+        UnitSystem::Metric,
+        &table_up,
+        &table_down,
+        &coupling,
+        50.0,
+        None,
+        None,
+    );
+    assert!(tw.is_finite());
+}
+
+#[test]
+fn bridge_flow_regime_label_each_low_class_and_us_customary() {
+    use crate::solvers::bridge::coupling::bridge_flow_regime_label;
+    use crate::solvers::bridge::low_flow::classify_low_flow;
+    use crate::solvers::bridge::types::LowFlowClass;
+
+    let coupling = BridgeCouplingParams::default();
+    let table = rectangular_table(10.0, 0.0, 50);
+
+    assert_eq!(
+        bridge_flow_regime_label(
+            3.0, 3.5, 5.0, 7.0, UnitSystem::Metric, 15.0, &table, &table, &coupling,
+            50.0, 0.5, 2, 0, 1.44, 0.8, 0.0, 0.0,
+        ),
+        "low_a"
+    );
+
+    let (q_b, tw_b, pier_w, num_piers, table_up, table_down) = class_b_energy_case();
+    let geom_b = build_bridge_geometry(
+        5.0, 7.0, pier_w, num_piers, 0, 1.44, 0.5, 0.0, 0.0,
+        UnitSystem::Metric, &coupling, 15.0, None, None,
+    );
+    assert_eq!(classify_low_flow(q_b, tw_b, &geom_b, &table_up, &table_down), LowFlowClass::B);
+    assert_eq!(
+        bridge_flow_regime_label(
+            tw_b, tw_b + 0.5, 5.0, 7.0, UnitSystem::Metric, q_b, &table_up, &table_down, &coupling,
+            15.0, pier_w, num_piers, 0, 1.44, 0.5, 0.0, 0.0,
+        ),
+        "low_b"
+    );
+
+    let table_narrow = rectangular_table(4.0, 0.0, 50);
+    let mut found_c = false;
+    'search: for q in [40.0, 60.0, 80.0, 100.0] {
+        for tw in [0.5, 0.75, 1.0, 1.25] {
+            let geom_c = build_bridge_geometry(
+                5.0, 7.0, 0.0, 0, 0, 1.44, 0.5, 0.0, 0.0,
+                UnitSystem::Metric, &coupling, 50.0, None, None,
+            );
+            if classify_low_flow(q, tw, &geom_c, &table_narrow, &table_narrow) == LowFlowClass::C {
+                assert_eq!(
+                    bridge_flow_regime_label(
+                        tw, tw + 0.2, 5.0, 7.0, UnitSystem::Metric, q, &table_narrow, &table_narrow,
+                        &coupling, 50.0, 0.0, 0, 0, 1.44, 0.5, 0.0, 0.0,
+                    ),
+                    "low_c"
+                );
+                found_c = true;
+                break 'search;
+            }
+        }
+    }
+    assert!(found_c, "expected a Class C low-flow case for regime label coverage");
+
+    let us_label = bridge_flow_regime_label(
+        8.0, 10.0, 16.0, 20.0, UnitSystem::USCustomary, 100.0, &table, &table, &coupling,
+        150.0, 0.0, 0, 0, 1.44, 0.8, 0.0, 0.0,
+    );
+    assert!(matches!(us_label.as_str(), "low_a" | "low_b" | "low_c"));
+}
+
+#[test]
+fn solve_bridge_tailwater_us_customary_high_flow_branch() {
+    let table_up = rectangular_table(10.0, 0.0, 50);
+    let table_down = rectangular_table(10.0, 0.0, 50);
+    let coupling = BridgeCouplingParams::default();
+    let tw = solve_bridge_tailwater(
+        200.0,
+        16.0,
+        20.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        18.0,
+        UnitSystem::USCustomary,
+        &table_up,
+        &table_down,
+        &coupling,
+        150.0,
+        None,
+        None,
+    );
+    assert!(tw.is_finite() && tw > 0.0);
+}

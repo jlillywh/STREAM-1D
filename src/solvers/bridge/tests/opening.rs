@@ -828,3 +828,66 @@ fn test_ice_thickness_raises_headwater() {
         "ice thickness should raise HW: clear={hw_clear}, iced={hw_iced}"
     );
 }
+
+#[test]
+fn internal_opening_friction_segments_direct_and_edge_cases() {
+    use crate::geometry::CrossSection;
+    use crate::solvers::bridge::geometry::internal_opening_friction_segments;
+
+    let empty = internal_opening_friction_segments(None, &[], None, 10.0);
+    assert!(empty.0.is_empty() && empty.1.is_empty() && empty.2.is_empty());
+
+    let bu = CrossSection {
+        station: 100.0,
+        x: vec![0.0, 0.0, 10.0, 10.0],
+        y: vec![5.0, 0.0, 0.0, 5.0],
+        n_stations: vec![0.0],
+        n_values: vec![0.03],
+        unit_system: UnitSystem::Metric,
+        is_overbank: None,
+        coeff_contraction: None,
+        coeff_expansion: None,
+        blocked_obstructions: None,
+        ineffective_flow_areas: None,
+        guide_banks: None,
+    };
+    let internal = CrossSection {
+        station: 50.0,
+        x: vec![0.0, 0.0, 10.0, 10.0],
+        y: vec![4.5, 0.0, 0.0, 4.5],
+        n_stations: vec![0.0],
+        n_values: vec![0.03],
+        unit_system: UnitSystem::Metric,
+        is_overbank: None,
+        coeff_contraction: None,
+        coeff_expansion: None,
+        blocked_obstructions: None,
+        ineffective_flow_areas: None,
+        guide_banks: None,
+    };
+    let bd = CrossSection {
+        station: 0.0,
+        x: vec![0.0, 0.0, 10.0, 10.0],
+        y: vec![4.0, 0.0, 0.0, 4.0],
+        n_stations: vec![0.0],
+        n_values: vec![0.03],
+        unit_system: UnitSystem::Metric,
+        is_overbank: None,
+        coeff_contraction: None,
+        coeff_expansion: None,
+        blocked_obstructions: None,
+        ineffective_flow_areas: None,
+        guide_banks: None,
+    };
+
+    let (tables, lengths, z_m) =
+        internal_opening_friction_segments(Some(&bu), &[internal], Some(&bd), 20.0);
+    assert_eq!(tables.len(), 1);
+    assert_eq!(lengths.len(), 2);
+    assert_eq!(z_m.len(), 1);
+    assert!(lengths[0] > 45.0, "skew should lengthen segments, got {}", lengths[0]);
+
+    let too_few_nodes =
+        internal_opening_friction_segments(Some(&bu), &[], None, 0.0);
+    assert!(too_few_nodes.0.is_empty());
+}
