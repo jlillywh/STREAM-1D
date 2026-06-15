@@ -45,6 +45,7 @@ from lib.compare import (  # noqa: E402
     compare_unsteady_timeseries_wsel,
     format_report,
     format_unsteady_report,
+    format_unsteady_timeseries_matrix_report,
     format_unsteady_timeseries_report,
 )
 from lib.hecras_geom_parser import parse_g01  # noqa: E402
@@ -62,6 +63,7 @@ from lib.conspan_reference import (  # noqa: E402
     load_conspan_cross_sections_for_rms,
     rm_to_conspan_payload_index,
 )
+from lib.generic_unsteady_mapper import build_generic_unsteady_inputs  # noqa: E402
 from lib.reach_mapper import build_reach_unsteady_inputs  # noqa: E402
 from lib.scenario import LinkedScenario, load_scenario  # noqa: E402
 from lib.stream1d_runner import run_steady_profiles  # noqa: E402
@@ -80,7 +82,8 @@ def _validate_linked_files(scenario: LinkedScenario) -> list[str]:
         if not path.is_file():
             errors.append(f"missing linked {label}: {path}")
     ref = scenario.raw.get("reference", {})
-    if ref.get("source") == "linked_json_peaks" and ref.get("file"):
+    ref_sources_needing_json = {"linked_json_peaks", "linked_json_timeseries", "hdf_timeseries"}
+    if ref.get("source") in ref_sources_needing_json and ref.get("file"):
         json_path = (scenario.oracle_root / ref["file"]).resolve()
         if not json_path.is_file():
             errors.append(f"missing reference JSON: {json_path}")
@@ -101,11 +104,16 @@ def _build_unsteady_payload(
         parsed_xs = geom.cross_sections
     elif mapper == "conspan_mapper.build_conspan_unsteady_inputs":
         coupling = int(scenario.raw.get("stream1d", {}).get("coupling_mode", 0))
+        friction_override = scenario.raw.get("stream1d", {}).get("unsteady_friction_slope_method")
         payload, flow = build_conspan_unsteady_inputs(
             project_dir,
             geometry_name=linked["geometry"],
             flow_name=linked["unsteady_flow"],
+            plan_name=linked.get("plan"),
             coupling_mode=coupling,
+            unsteady_friction_slope_method=(
+                int(friction_override) if friction_override is not None else None
+            ),
         )
         geom = parse_g01(project_dir / linked["geometry"])
         xs_list = load_all_conspan_cross_sections()
@@ -157,6 +165,24 @@ def _build_unsteady_payload(
                 self.rm = rm
 
         parsed_xs = [_StaTag(float(xs["station"])) for xs in xs_list]
+    elif mapper == "generic_unsteady_mapper.build_generic_unsteady_inputs":
+        stream_cfg = scenario.raw.get("stream1d", {})
+        friction_override = stream_cfg.get("unsteady_friction_slope_method")
+        payload, flow = build_generic_unsteady_inputs(
+            project_dir,
+            geometry_name=linked["geometry"],
+            flow_name=linked["unsteady_flow"],
+            plan_name=linked.get("plan"),
+            coupling_mode=int(stream_cfg.get("coupling_mode", 0)),
+            unsteady_friction_slope_method=(
+                int(friction_override) if friction_override is not None else None
+            ),
+            num_slices=stream_cfg.get("num_slices"),
+            max_spacing=stream_cfg.get("max_spacing"),
+        )
+        geom = parse_g01(project_dir / linked["geometry"])
+        xs_list = geom.cross_sections
+        parsed_xs = geom.cross_sections
     else:
         raise ValueError(f"Unsupported unsteady mapper: {mapper!r}")
 
@@ -227,6 +253,9 @@ def _run_unsteady(scenario: LinkedScenario, args) -> int:
     checkpoints = scenario.raw.get("compare", {}).get("checkpoints_rm")
     if not checkpoints:
         checkpoints = sorted(reference_peaks.keys(), reverse=True)
+    cli_rms = _parse_float_list(getattr(args, "checkpoints_rm", None))
+    if cli_rms is not None:
+        checkpoints = cli_rms
 
     quantity = str(
         scenario.raw.get("compare", {}).get(
@@ -238,6 +267,9 @@ def _run_unsteady(scenario: LinkedScenario, args) -> int:
     time_checkpoints_hr = [
         float(h) for h in compare_cfg.get("time_checkpoints_hr", [])
     ]
+    cli_hours = _parse_float_list(getattr(args, "time_checkpoints_hr", None))
+    if cli_hours is not None:
+        time_checkpoints_hr = cli_hours
 
     if quantity == "wsel_timeseries":
         if not time_checkpoints_hr:
@@ -246,7 +278,11 @@ def _run_unsteady(scenario: LinkedScenario, args) -> int:
                 file=sys.stderr,
             )
             return 2
-        reference_series, reference_source = load_unsteady_timeseries_reference(scenario)
+        ref_override = getattr(args, "reference_file", None)
+        reference_series, reference_source = load_unsteady_timeseries_reference(
+            scenario,
+            reference_file=ref_override,
+        )
         report = compare_unsteady_timeseries_wsel(
             scenario_id=scenario.id,
             title=scenario.title,
@@ -260,11 +296,37 @@ def _run_unsteady(scenario: LinkedScenario, args) -> int:
             reference_source=reference_source,
             num_steps=int(payload.get("num_steps", len(flow.upstream_q_cfs))),
             coupling_mode=coupling,
+            dt_seconds=float(payload.get("dt", flow.interval_seconds)),
+            overall_max_tolerance_ft=(
+                float(compare_cfg["overall_max_tolerance_ft"])
+                if compare_cfg.get("overall_max_tolerance_ft") is not None
+                else None
+            ),
         )
-        print(format_unsteady_timeseries_report(report))
+        report_fmt = getattr(args, "format", "table")
+        enforce = scenario.enforce_tolerance
+        compare_notes = str(compare_cfg.get("notes", ""))
+        if report_fmt in ("table", "both"):
+            print(
+                format_unsteady_timeseries_report(
+                    report,
+                    enforce_tolerance=enforce,
+                    compare_notes=compare_notes,
+                )
+            )
+        if report_fmt in ("matrix", "both"):
+            if report_fmt == "both":
+                print()
+            print(
+                format_unsteady_timeseries_matrix_report(
+                    report,
+                    enforce_tolerance=enforce,
+                    compare_notes=compare_notes,
+                )
+            )
         if live_status and live_status != "skipped (use --live-ras to attempt)":
             print(f"Live HEC-RAS: {live_status}")
-        return 0 if report.passed else 1
+        return 1 if enforce and not report.passed else 0
 
     report = compare_unsteady_peak_wsel(
         scenario_id=scenario.id,
@@ -287,6 +349,15 @@ def _run_unsteady(scenario: LinkedScenario, args) -> int:
     return 0 if report.passed else 1
 
 
+def _parse_float_list(raw: str | None) -> list[float] | None:
+    if raw is None:
+        return None
+    parts = [p.strip() for p in raw.split(",") if p.strip()]
+    if not parts:
+        return None
+    return [float(p) for p in parts]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Linked HEC-RAS vs STREAM-1D verification")
     parser.add_argument(
@@ -299,6 +370,30 @@ def main() -> int:
         "--live-ras",
         action="store_true",
         help="Attempt live HEC-RAS re-run when plan file is bundled (optional)",
+    )
+    parser.add_argument(
+        "--checkpoints-rm",
+        type=str,
+        default=None,
+        help="Override compare.checkpoints_rm (comma-separated river miles)",
+    )
+    parser.add_argument(
+        "--time-checkpoints-hr",
+        type=str,
+        default=None,
+        help="Override compare.time_checkpoints_hr (comma-separated hours)",
+    )
+    parser.add_argument(
+        "--reference-file",
+        type=Path,
+        default=None,
+        help="Override reference JSON for wsel_timeseries compare",
+    )
+    parser.add_argument(
+        "--format",
+        choices=("table", "matrix", "both"),
+        default="table",
+        help="Report layout for wsel_timeseries compare (default: table)",
     )
     args = parser.parse_args()
 

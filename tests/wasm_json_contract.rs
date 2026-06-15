@@ -178,6 +178,8 @@ fn steady_validation_bridge_opening_width_warning() {
         n_values: vec![0.03],
         unit_system: UnitSystem::Metric,
         is_overbank: None,
+        coeff_contraction: None,
+        coeff_expansion: None,
         blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
@@ -193,6 +195,8 @@ fn steady_validation_bridge_opening_width_warning() {
             n_values: vec![0.03],
             unit_system: UnitSystem::Metric,
             is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
             blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
@@ -234,7 +238,7 @@ fn steady_validation_guide_bank_polyline_warning() {
 fn wasm_api_metadata_version() {
     let meta = build_api_metadata();
     assert_eq!(meta.api_version, API_VERSION);
-    assert_eq!(API_VERSION, 35);
+    assert_eq!(API_VERSION, 36);
     assert!(meta.culvert_tier1_fields.inputs.contains(&"culvert_inlet_types".to_string()));
     assert_eq!(
         meta.bridge_fields.rating_curve_entry_point,
@@ -584,9 +588,11 @@ fn cross_section_blocked_obstructions_deserialize() {
         n_values: vec![0.03],
         unit_system: UnitSystem::Metric,
         is_overbank: None,
+        coeff_contraction: None,
+        coeff_expansion: None,
         blocked_obstructions: None,
         ineffective_flow_areas: None,
-    guide_banks: None,
+        guide_banks: None,
     }
     .to_metric()
     .compute_properties_at_elevation(2.0);

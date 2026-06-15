@@ -3,7 +3,13 @@
 use crate::geometry::{flow_area_for_row, geometry_row_at_elevation, CrossSection, GeometryTable};
 use crate::utils::{solve_block_tridiagonal, Mat2, UnitSystem, Vec2, G_METRIC};
 
-use super::culvert_implicit::{ImplicitMomentumRow, try_culvert_implicit_momentum_row};
+use super::culvert_implicit::{
+    culvert_approach_jacobian_omega_for, culvert_approach_jacobian_scope,
+    culvert_approach_jacobian_temporally_active, culvert_approach_monolithic_scope,
+    CULVERT_APPROACH_MONOLITHIC_OMEGA, culvert_departure_tailwater_at_interval,
+    culvert_swell_head_at_interval, try_culvert_approach_implicit_momentum_row,
+    ImplicitMomentumRow, try_culvert_implicit_momentum_row,
+};
 use super::structure_coupling;
 use super::UnsteadyInputs;
 
@@ -16,13 +22,38 @@ pub enum UnsteadyStructureCouplingMode {
     ReachStructureReach = 1,
     /// Hybrid coupling: implicit Jacobian rows where eligible, explicit post-step fallback elsewhere.
     Implicit = 2,
+    /// Convergent monolithic Newton: culvert HW + full approach backwater in Preissmann each step.
+    MonolithicNewton = 3,
+    /// Quasi-steady particular + perturbation: re-anchor to steady profile each step (mode 2 physics).
+    QuasiSteadyParticular = 4,
 }
 
+/// Max outer Newton iterations per time step (mode 3).
+pub(crate) const MONOLITHIC_NEWTON_MAX_ITER: usize = 20;
+/// Convergence tolerance on max |residual| (metric, ~0.01 ft).
+pub(crate) const MONOLITHIC_NEWTON_TOL_M: f64 = 0.003;
+/// Stage update clamp per Newton iteration (mode 3).
+pub(crate) const MONOLITHIC_NEWTON_DY_CLAMP_M: f64 = 0.5;
+/// Discharge update clamp per Newton iteration (mode 3).
+pub(crate) const MONOLITHIC_NEWTON_DQ_CLAMP: f64 = 15.0;
+
 /// Per-step Preissmann diagnostics when structures are present.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct PreissmannStepStats {
     /// Structure intervals that replaced the reach momentum row with an implicit residual.
     pub implicit_interval_count: u32,
+    /// Outer Newton iterations (mode 3 only).
+    pub newton_iterations: u32,
+    /// Outer Newton converged within tolerance (mode 3).
+    pub newton_converged: bool,
+    /// Max |residual| at last Newton iteration (mode 3).
+    pub newton_max_residual: f64,
+    /// Max |residual| before the first Newton update (mode 3).
+    pub newton_initial_residual: f64,
+    /// Max |momentum-row residual| at last Newton iteration (mode 3).
+    pub newton_momentum_residual: f64,
+    /// Max |continuity-row residual| at last Newton iteration (mode 3).
+    pub newton_continuity_residual: f64,
 }
 
 impl UnsteadyStructureCouplingMode {
@@ -30,7 +61,37 @@ impl UnsteadyStructureCouplingMode {
         match val {
             1 => Self::ReachStructureReach,
             2 => Self::Implicit,
+            3 => Self::MonolithicNewton,
+            4 => Self::QuasiSteadyParticular,
             _ => Self::PostStepOnly,
+        }
+    }
+
+    pub(crate) fn uses_implicit_rows(self) -> bool {
+        matches!(
+            self,
+            Self::Implicit | Self::MonolithicNewton | Self::QuasiSteadyParticular
+        )
+    }
+
+    pub(crate) fn uses_hybrid_friction_patches(self) -> bool {
+        matches!(self, Self::Implicit | Self::QuasiSteadyParticular)
+    }
+
+    pub(crate) fn is_monolithic_newton(self) -> bool {
+        self == Self::MonolithicNewton
+    }
+
+    pub(crate) fn is_quasi_steady_particular(self) -> bool {
+        self == Self::QuasiSteadyParticular
+    }
+
+    /// Preissmann / post-step structure coupling uses hybrid implicit physics (mode 2).
+    pub(crate) fn preissmann_coupling_mode(self) -> Self {
+        if self.is_quasi_steady_particular() {
+            Self::Implicit
+        } else {
+            self
         }
     }
 }
@@ -86,46 +147,123 @@ fn try_implicit_structure_momentum_row(
     tag: Option<StructureIntervalTag>,
     #[cfg(test)] implicit_hook_probe: Option<*mut Vec<usize>>,
 ) -> Option<ImplicitMomentumRow> {
-    if params.structure_coupling_mode != UnsteadyStructureCouplingMode::Implicit {
+    if !params.structure_coupling_mode.uses_implicit_rows() {
         return None;
     }
-    let tag = tag?;
-    #[cfg(test)]
-    if let Some(probe) = implicit_hook_probe.and_then(|p| unsafe { p.as_mut() }) {
-        probe.push(interval_i);
+    if let Some(tag) = tag {
+        #[cfg(test)]
+        if let Some(probe) = implicit_hook_probe.and_then(|p| unsafe { p.as_mut() }) {
+            probe.push(interval_i);
+        }
+        let inputs = params.unsteady_inputs?;
+        return match tag {
+            StructureIntervalTag::Culvert(c_idx) => try_culvert_implicit_momentum_row(
+                inputs,
+                params.raw_units,
+                c_idx,
+                interval_i,
+                params.tables,
+                params.xs_list,
+                params.z_mins,
+                params.y_current,
+                params.q_current,
+            ),
+            StructureIntervalTag::Bridge(b_idx) => {
+                super::bridge_implicit::try_bridge_implicit_momentum_row(
+                    inputs,
+                    params.raw_units,
+                    b_idx,
+                    interval_i,
+                    params.densified_stations,
+                    params.tables,
+                    params.xs_list,
+                    params.z_mins,
+                    params.y_current,
+                    params.q_current,
+                )
+            }
+        };
     }
-    let inputs = params.unsteady_inputs?;
-    match tag {
-        StructureIntervalTag::Culvert(c_idx) => try_culvert_implicit_momentum_row(
-            inputs,
-            params.raw_units,
-            c_idx,
-            interval_i,
-            params.tables,
-            params.xs_list,
-            params.z_mins,
-            params.y_current,
-            params.q_current,
-        ),
-        StructureIntervalTag::Bridge(b_idx) => super::bridge_implicit::try_bridge_implicit_momentum_row(
-            inputs,
-            params.raw_units,
-            b_idx,
-            interval_i,
-            params.densified_stations,
-            params.tables,
-            params.xs_list,
-            params.z_mins,
-            params.y_current,
-            params.q_current,
-        ),
+    if params.structure_coupling_mode.is_monolithic_newton() {
+        if culvert_approach_monolithic_scope(interval_i, params.culvert_intervals).is_some() {
+            #[cfg(test)]
+            if let Some(probe) = implicit_hook_probe.and_then(|p| unsafe { p.as_mut() }) {
+                probe.push(interval_i);
+            }
+            return try_culvert_approach_implicit_momentum_row(
+                interval_i,
+                params.raw_units,
+                params.densified_stations,
+                params.tables,
+                params.xs_list,
+                params.z_mins,
+                params.y_current,
+                params.q_current,
+                params.c_contraction,
+                params.c_expansion,
+                CULVERT_APPROACH_MONOLITHIC_OMEGA,
+            );
+        }
+        return None;
     }
+    if let Some(upstream_cells) =
+        culvert_approach_jacobian_scope(interval_i, params.culvert_intervals)
+    {
+        let temporally_active = culvert_approach_jacobian_temporally_active(
+            params.q_up_next,
+            params.q_current[0],
+            params.dt,
+        );
+        if temporally_active {
+            let omega = culvert_approach_jacobian_omega_for(upstream_cells);
+            if omega > 0.0 {
+                #[cfg(test)]
+                if let Some(probe) = implicit_hook_probe.and_then(|p| unsafe { p.as_mut() }) {
+                    probe.push(interval_i);
+                }
+                return try_culvert_approach_implicit_momentum_row(
+                    interval_i,
+                    params.raw_units,
+                    params.densified_stations,
+                    params.tables,
+                    params.xs_list,
+                    params.z_mins,
+                    params.y_current,
+                    params.q_current,
+                    params.c_contraction,
+                    params.c_expansion,
+                    omega,
+                );
+            }
+        }
+    }
+    None
 }
 
-/// Solves a single Preissmann time step.
-pub fn solve_preissmann_step(
-    params: &PreissmannStepParams<'_>,
-) -> Option<(Vec<f64>, Vec<f64>, PreissmannStepStats)> {
+struct PreissmannLinearSystem {
+    a: Vec<Mat2>,
+    b: Vec<Mat2>,
+    c: Vec<Mat2>,
+    d: Vec<Vec2>,
+    stats: PreissmannStepStats,
+    max_rhs: f64,
+}
+
+fn max_abs_preissmann_rhs(d: &[Vec2]) -> f64 {
+    max_abs_preissmann_rhs_split(d).0
+}
+
+fn max_abs_preissmann_rhs_split(d: &[Vec2]) -> (f64, f64, f64) {
+    let mut max_m = 0.0_f64;
+    let mut max_c = 0.0_f64;
+    for v in d {
+        max_m = max_m.max(v.v1.abs());
+        max_c = max_c.max(v.v2.abs());
+    }
+    (max_m.max(max_c), max_m, max_c)
+}
+
+fn assemble_preissmann_linear_system(params: &PreissmannStepParams<'_>) -> Option<PreissmannLinearSystem> {
     let n = params.y_current.len();
     if n < 2 {
         return None;
@@ -146,7 +284,11 @@ pub fn solve_preissmann_step(
     let dn_2 = params.y_down_next - params.y_current[n - 1];
 
     for i in 0..n - 1 {
-        let dx = params.xs_list[i].station - params.xs_list[i + 1].station;
+        let dx = if i + 1 < params.densified_stations.len() {
+            (params.densified_stations[i] - params.densified_stations[i + 1]).abs()
+        } else {
+            (params.xs_list[i].station - params.xs_list[i + 1].station).abs()
+        };
         if dx <= 0.0 {
             return None;
         }
@@ -210,6 +352,49 @@ pub fn solve_preissmann_step(
             -q_avg * q_avg.abs() / (k_avg_clamp * k_avg_clamp * k_avg_clamp) * dk_dy_ip
         };
 
+        let mut sf_eff = sf;
+        let mut d_sf_dy_i_eff = d_sf_dy_i;
+        let mut d_sf_dy_ip_eff = d_sf_dy_ip;
+        if params.structure_coupling_mode.uses_hybrid_friction_patches() {
+            if let Some(inputs) = params.unsteady_inputs {
+                if let Some(sh) = culvert_swell_head_at_interval(
+                    inputs,
+                    i,
+                    params.culvert_intervals,
+                    params.raw_units,
+                    params.densified_stations,
+                    params.tables,
+                    params.xs_list,
+                    params.z_mins,
+                    params.y_current,
+                    params.q_current,
+                    dx,
+                ) {
+                    sf_eff += sh.sh;
+                    d_sf_dy_i_eff += sh.d_sh_dy_i;
+                    d_sf_dy_ip_eff += sh.d_sh_dy_ip;
+                }
+                if let Some(tw) = culvert_departure_tailwater_at_interval(
+                    i,
+                    params.culvert_intervals,
+                    params.raw_units,
+                    params.densified_stations,
+                    params.tables,
+                    params.xs_list,
+                    params.z_mins,
+                    params.y_current,
+                    params.q_current,
+                    params.c_contraction,
+                    params.c_expansion,
+                    dx,
+                ) {
+                    sf_eff += tw.sh;
+                    d_sf_dy_i_eff += tw.d_sh_dy_i;
+                    d_sf_dy_ip_eff += tw.d_sh_dy_ip;
+                }
+            }
+        }
+
         let a_avg = (a_i * a_ip).sqrt();
 
         let c1 = t_i / (2.0 * params.dt);
@@ -258,14 +443,14 @@ pub fn solve_preissmann_step(
         let dfce_dqip = a_avg * (c_ec / dx) * sign_v * (v_ip / flow_a_ip);
 
         let m1 = params.theta / dx * (v_i * v_i * t_i) * factor_i - G_METRIC * a_avg * params.theta / dx
-            + G_METRIC * a_avg * params.theta * d_sf_dy_i
+            + G_METRIC * a_avg * params.theta * d_sf_dy_i_eff
             + params.theta * dfce_dyi;
         let m2 = (1.0 / (2.0 * params.dt)) - params.theta / dx * (2.0 * v_i) * factor_i
             + 0.5 * G_METRIC * a_avg * params.theta * d_sf_d_q
             + params.theta * dfce_dqi;
         let m3 = -params.theta / dx * (v_ip * v_ip * t_ip) * factor_ip
             + G_METRIC * a_avg * params.theta / dx
-            + G_METRIC * a_avg * params.theta * d_sf_dy_ip
+            + G_METRIC * a_avg * params.theta * d_sf_dy_ip_eff
             + params.theta * dfce_dyip;
         let m4 = (1.0 / (2.0 * params.dt)) + params.theta / dx * (2.0 * v_ip) * factor_ip
             + 0.5 * G_METRIC * a_avg * params.theta * d_sf_d_q
@@ -275,7 +460,7 @@ pub fn solve_preissmann_step(
         let flux_ip = (params.q_current[i + 1] * params.q_current[i + 1] / a_ip) * factor_ip;
         let me = (flux_i - flux_ip) / dx
             + G_METRIC * a_avg * (params.y_current[i] - params.y_current[i + 1]) / dx
-            - G_METRIC * a_avg * sf
+            - G_METRIC * a_avg * sf_eff
             - s_ce_force;
 
         let tag = tag_at_interval(i, params.culvert_intervals, params.bridge_intervals);
@@ -342,22 +527,129 @@ pub fn solve_preissmann_step(
         }
     }
 
-    let delta = solve_block_tridiagonal(&a, &b, &c, &d)?;
+    let max_rhs = max_abs_preissmann_rhs(&d);
+    let (_, max_m, max_c) = max_abs_preissmann_rhs_split(&d);
+    stats.newton_momentum_residual = max_m;
+    stats.newton_continuity_residual = max_c;
+    Some(PreissmannLinearSystem {
+        a,
+        b,
+        c,
+        d,
+        stats,
+        max_rhs,
+    })
+}
 
-    let mut y_next = vec![0.0; n];
-    let mut q_next = vec![0.0; n];
-    for i in 0..n {
-        let dy = delta[i].v1.clamp(-1.0, 1.0);
-        let dq = delta[i].v2.clamp(-25.0, 25.0);
-
-        y_next[i] = params.y_current[i] + dy;
-        q_next[i] = params.q_current[i] + dq;
+fn apply_preissmann_delta(
+    y: &mut [f64],
+    q: &mut [f64],
+    delta: &[Vec2],
+    dy_clamp: f64,
+    dq_clamp: f64,
+) {
+    for i in 0..y.len() {
+        let dy = delta[i].v1.clamp(-dy_clamp, dy_clamp);
+        let dq = delta[i].v2.clamp(-dq_clamp, dq_clamp);
+        y[i] += dy;
+        q[i] += dq;
     }
+}
+
+fn solve_preissmann_once(params: &PreissmannStepParams<'_>) -> Option<(Vec<f64>, Vec<f64>, PreissmannStepStats)> {
+    let n = params.y_current.len();
+    let system = assemble_preissmann_linear_system(params)?;
+    let delta = solve_block_tridiagonal(&system.a, &system.b, &system.c, &system.d)?;
+
+    let mut y_next = params.y_current.to_vec();
+    let mut q_next = params.q_current.to_vec();
+    let (dy_clamp, dq_clamp) = if params.structure_coupling_mode.is_monolithic_newton() {
+        (MONOLITHIC_NEWTON_DY_CLAMP_M, MONOLITHIC_NEWTON_DQ_CLAMP)
+    } else {
+        (1.0, 25.0)
+    };
+    apply_preissmann_delta(&mut y_next, &mut q_next, &delta, dy_clamp, dq_clamp);
 
     q_next[0] = params.q_up_next;
     y_next[n - 1] = params.y_down_next;
 
-    Some((y_next, q_next, stats))
+    Some((y_next, q_next, system.stats))
+}
+
+fn solve_preissmann_monolithic_newton(
+    params: &PreissmannStepParams<'_>,
+) -> Option<(Vec<f64>, Vec<f64>, PreissmannStepStats)> {
+    let n = params.y_current.len();
+    let mut y = params.y_current.to_vec();
+    let mut q = params.q_current.to_vec();
+    let mut stats = PreissmannStepStats::default();
+
+    for iter in 0..MONOLITHIC_NEWTON_MAX_ITER {
+        let trial = PreissmannStepParams {
+            tables: params.tables,
+            xs_list: params.xs_list,
+            densified_stations: params.densified_stations,
+            z_mins: params.z_mins,
+            y_current: &y,
+            q_current: &q,
+            dt: params.dt,
+            q_up_next: params.q_up_next,
+            y_down_next: params.y_down_next,
+            theta: params.theta,
+            c_contraction: params.c_contraction,
+            c_expansion: params.c_expansion,
+            structure_coupling_mode: params.structure_coupling_mode,
+            culvert_intervals: params.culvert_intervals,
+            bridge_intervals: params.bridge_intervals,
+            unsteady_inputs: params.unsteady_inputs,
+            raw_units: params.raw_units,
+            #[cfg(test)]
+            implicit_hook_probe: params.implicit_hook_probe,
+        };
+        let system = assemble_preissmann_linear_system(&trial)?;
+        stats.implicit_interval_count = stats
+            .implicit_interval_count
+            .max(system.stats.implicit_interval_count);
+        if iter == 0 {
+            stats.newton_initial_residual = system.max_rhs;
+        }
+        stats.newton_max_residual = system.max_rhs;
+        stats.newton_momentum_residual = system.stats.newton_momentum_residual;
+        stats.newton_continuity_residual = system.stats.newton_continuity_residual;
+        stats.newton_iterations = (iter + 1) as u32;
+
+        if system.max_rhs <= MONOLITHIC_NEWTON_TOL_M {
+            stats.newton_converged = true;
+            break;
+        }
+
+        let delta = solve_block_tridiagonal(&system.a, &system.b, &system.c, &system.d)?;
+        apply_preissmann_delta(
+            &mut y,
+            &mut q,
+            &delta,
+            MONOLITHIC_NEWTON_DY_CLAMP_M,
+            MONOLITHIC_NEWTON_DQ_CLAMP,
+        );
+        q[0] = params.q_up_next;
+        y[n - 1] = params.y_down_next;
+    }
+
+    Some((y, q, stats))
+}
+
+/// Solves a single Preissmann time step.
+pub fn solve_preissmann_step(
+    params: &PreissmannStepParams<'_>,
+) -> Option<(Vec<f64>, Vec<f64>, PreissmannStepStats)> {
+    if params.y_current.len() < 2 {
+        return None;
+    }
+    if params.structure_coupling_mode.is_monolithic_newton() {
+        solve_preissmann_monolithic_newton(params)
+    } else {
+        solve_preissmann_once(params)
+    }
 }
 
 #[cfg(test)]
@@ -383,6 +675,8 @@ mod tests {
             blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let xs_ds = CrossSection {
             station: 0.0,
@@ -393,6 +687,8 @@ mod tests {
             unit_system: UnitSystem::Metric,
             is_overbank: None,
             blocked_obstructions: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
             ineffective_flow_areas: None,
             guide_banks: None,
         };

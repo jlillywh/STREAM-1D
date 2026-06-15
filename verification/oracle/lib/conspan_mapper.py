@@ -8,10 +8,11 @@ from typing import Any
 import stream1d as st
 
 from .conspan_reference import (
-    conspan_culvert_fields,
     conspan_solver_params,
     load_all_conspan_cross_sections,
+    _load_conspan_project,
 )
+from .culvert_mapper import build_culvert_fields, overlay_g01_cross_section_modifiers
 from .hecras_geom_parser import parse_g01
 from .hecras_plan_parser import find_plan_file, parse_plan
 from .hecras_unsteady_parser import parse_unsteady_flow, ParsedUnsteadyFlow
@@ -24,26 +25,42 @@ def build_conspan_unsteady_inputs(
     *,
     geometry_name: str = "ConSpan.g01",
     flow_name: str = "conspan.u02",
+    plan_name: str | None = None,
     coupling_mode: int = 0,
+    unsteady_friction_slope_method: int | None = None,
 ) -> tuple[dict[str, Any], ParsedUnsteadyFlow]:
     """
     Build ConSpan unsteady inputs from bundled g01 + u02 + plan.
 
-    Cross sections and culvert fields come from `conspan_project_12.json`
-    (verified steady parity). The g01 is used for smoke validation only.
+    Reach geometry comes from `conspan_project_12.json`. Culvert parameters and
+    per-XS modifiers (Exp/Cntr, #XS Ineff) are overlaid from the g01.
     """
     geom = parse_g01(project_dir / geometry_name)
     if len(geom.cross_sections) < 8:
         raise ValueError(f"expected ≥8 open-channel XS in {geometry_name}")
 
     flow = parse_unsteady_flow(project_dir / flow_name)
-    plan_path = find_plan_file(project_dir, flow_name=flow_name)
-    plan = parse_plan(plan_path) if plan_path else None
+    if plan_name:
+        plan_path = project_dir / plan_name
+    else:
+        plan_path = find_plan_file(project_dir, flow_name=flow_name)
+    plan = parse_plan(plan_path) if plan_path and plan_path.is_file() else None
 
-    cross_sections = load_all_conspan_cross_sections()
-    culvert_fields = conspan_culvert_fields()
+    fixture = _load_conspan_project()
+    station_to_rm = {
+        float(row["station"]): float(row["rm"]) for row in fixture["geometry_data"]
+    }
+    cross_sections = overlay_g01_cross_section_modifiers(
+        load_all_conspan_cross_sections(),
+        geom.cross_sections,
+        station_to_rm=station_to_rm,
+    )
+    culvert_fields = build_culvert_fields(
+        geom,
+        fixture_rows=fixture.get("culvert_stations"),
+    )
     if not culvert_fields.get("culvert_stations"):
-        raise ValueError("ConSpan fixture must include culvert_stations")
+        raise ValueError("ConSpan must define culvert_stations in g01 or fixture")
 
     solver = conspan_solver_params()
     upstream_q = list(flow.upstream_q_cfs)
@@ -68,8 +85,12 @@ def build_conspan_unsteady_inputs(
         structure_fields=culvert_fields,
     )
     theta = plan.unsteady_theta if plan else 1.0
+    friction_method = (
+        unsteady_friction_slope_method
+        if unsteady_friction_slope_method is not None
+        else (plan.unsteady_friction_slope_method if plan else 2)
+    )
 
-    first_xs = geom.cross_sections[0]
     inputs = st.UnsteadyInputs(
         cross_sections=cross_sections,
         initial_wsel=initial_wsel,
@@ -81,10 +102,9 @@ def build_conspan_unsteady_inputs(
         downstream_bc_type=ds_bc.bc_type,
         downstream_bc_slope=ds_bc.slope,
         theta=theta,
+        unsteady_friction_slope_method=friction_method,
         num_slices=solver["num_slices"],
         max_spacing=solver["max_spacing"],
-        coeff_contraction=first_xs.coeff_contraction,
-        coeff_expansion=first_xs.coeff_expansion,
         structure_coupling_order=0,
         unsteady_structure_coupling_mode=coupling_mode,
         **culvert_fields,

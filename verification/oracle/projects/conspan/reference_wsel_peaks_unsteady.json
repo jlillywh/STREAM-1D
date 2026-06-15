@@ -1,11 +1,11 @@
 {
-  "format": "oracle_wsel_peaks_v1",
-  "source": "ConSpan.csv 50 yr steady profile (fixtures/hecras_conspan_profiles.json)",
-  "notes": "Development proxy until plan HDF extract. Constant Q=1000 cfs should match steady 50 yr at terminal time.",
+  "source": "HEC-RAS plan 03 terminal WSEL from ConSpan.p03.hdf",
+  "coupling_mode": 0,
   "checkpoints": [
-    {"rm": 20.238, "max_wsel_ft": 32.92, "label": "culvert_BU"},
-    {"rm": 20.227, "max_wsel_ft": 31.68, "label": "culvert_BD"},
-    {"rm": 20.208, "max_wsel_ft": 31.6, "label": "off_structure_below_culvert"},
-    {"rm": 20.095, "max_wsel_ft": 31.0, "label": "off_structure_downstream"}
-  ]
+    {"rm": 20.238, "max_wsel_ft": 33.01864242553711},
+    {"rm": 20.227, "max_wsel_ft": 31.649240493774414},
+    {"rm": 20.208, "max_wsel_ft": 31.59070587158203},
+    {"rm": 20.095, "max_wsel_ft": 30.998247146606445}
+  ],
+  "hdf_path": "/mnt/c/Users/jason/Documents/hecras_testing/ConSpan/ConSpan.p03.hdf"
 }

@@ -1,0 +1,45 @@
+{
+  "parity_case_version": 1,
+  "id": "conspan_arch_culvert",
+  "title": "ConSpan arch culvert — Q ramp, downstream stage BC",
+  "river": "Spring Creek",
+  "reach": "Culvrt Reach",
+  "tolerance_ft": 0.5,
+  "geometry_ref": {
+    "path": "verification/fixtures/conspan_project_12.json",
+    "include_culvert_from_fixture": true,
+    "culvert_rm": 20.237
+  },
+  "unsteady": {
+    "initial_flow_cfs": 500,
+    "upstream_rm": 20.535,
+    "downstream_rm": 20.0,
+    "interval": "15MIN",
+    "duration_hours": 48,
+    "ramp": {
+      "start_q_cfs": 500,
+      "end_q_cfs": 1000,
+      "ramp_hours": 24
+    },
+    "downstream": {
+      "type": "stage",
+      "wsel_ft": 30.51
+    }
+  },
+  "plan": {
+    "computation_interval": "15MIN",
+    "output_interval": "1HOUR",
+    "theta": 1.0,
+    "unsteady_friction_slope_method": 2
+  },
+  "stream1d": {
+    "coupling_mode": 2,
+    "num_slices": 100,
+    "max_spacing": 100
+  },
+  "compare": {
+    "quantity": "wsel_timeseries",
+    "checkpoints_rm": [20.535, 20.422, 20.308, 20.251, 20.238, 20.227, 20.208, 20.189, 20.095, 20.0],
+    "time_checkpoints_hr": [0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48]
+  }
+}

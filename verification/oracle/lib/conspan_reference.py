@@ -31,15 +31,20 @@ def rm_to_conspan_station(rm: float) -> float | None:
 
 
 def cross_section_from_fixture_row(row: dict[str, Any]) -> st.CrossSection:
-    return st.CrossSection(
-        station=float(row["station"]),
-        x=[float(v) for v in row["x"]],
-        y=[float(v) for v in row["y"]],
-        n_stations=[float(v) for v in row["n_stations"]],
-        n_values=[float(v) for v in row["n_values"]],
-        unit_system=row.get("unit_system", "USCustomary"),
-        is_overbank=row.get("is_overbank"),
-    )
+    kwargs: dict[str, Any] = {
+        "station": float(row["station"]),
+        "x": [float(v) for v in row["x"]],
+        "y": [float(v) for v in row["y"]],
+        "n_stations": [float(v) for v in row["n_stations"]],
+        "n_values": [float(v) for v in row["n_values"]],
+        "unit_system": row.get("unit_system", "USCustomary"),
+        "is_overbank": row.get("is_overbank"),
+    }
+    if "coeff_contraction" in row:
+        kwargs["coeff_contraction"] = float(row["coeff_contraction"])
+    if "coeff_expansion" in row:
+        kwargs["coeff_expansion"] = float(row["coeff_expansion"])
+    return st.CrossSection(**kwargs)
 
 
 def load_conspan_cross_sections_for_rms(rms: list[float]) -> list[st.CrossSection]:
@@ -78,24 +83,9 @@ def load_all_conspan_cross_sections() -> list[st.CrossSection]:
 
 def conspan_culvert_fields() -> dict[str, Any]:
     """Culvert arrays from verified ConSpan project fixture."""
-    culverts = _load_conspan_project().get("culvert_stations", [])
-    return {
-        "culvert_stations": [float(c["station"]) for c in culverts],
-        "culvert_shape_types": [int(c["shape_type"]) for c in culverts],
-        "culvert_spans": [float(c["span"]) for c in culverts],
-        "culvert_rises": [float(c["rise"]) for c in culverts],
-        "culvert_roughness_ns": [float(c["roughness_n"]) for c in culverts],
-        "culvert_lengths": [float(c["length"]) for c in culverts],
-        "culvert_entrance_loss_coeffs": [float(c["entrance_loss_coeff"]) for c in culverts],
-        "culvert_exit_loss_coeffs": [float(c["exit_loss_coeff"]) for c in culverts],
-        "culvert_barrels": [int(c.get("num_barrels", 1)) for c in culverts],
-        "culvert_roughness_n_bottoms": [
-            float(c.get("roughness_n_bottom", c["roughness_n"])) for c in culverts
-        ],
-        "culvert_depth_bottom_ns": [float(c.get("depth_bottom_n", 0.0)) for c in culverts],
-        "culvert_depth_blockeds": [float(c.get("depth_blocked", 0.0)) for c in culverts],
-        "culvert_inlet_types": [int(c.get("inlet_type", 21)) for c in culverts],
-    }
+    from .culvert_mapper import culvert_fields_from_fixture_rows
+
+    return culvert_fields_from_fixture_rows(_load_conspan_project().get("culvert_stations", []))
 
 
 def conspan_geometry_rms_upstream_first() -> list[float]:

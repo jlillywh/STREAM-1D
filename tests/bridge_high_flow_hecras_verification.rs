@@ -59,6 +59,8 @@ fn rectangular_table(width: f64, z_bed: f64, num_slices: usize) -> GeometryTable
         n_values: vec![0.03],
         unit_system: UnitSystem::Metric,
         is_overbank: None,
+        coeff_contraction: None,
+        coeff_expansion: None,
         blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,

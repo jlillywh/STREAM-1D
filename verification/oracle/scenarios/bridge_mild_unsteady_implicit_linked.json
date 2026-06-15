@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "id": "bridge_mild_unsteady_implicit_linked",
+  "title": "Synthetic bridge — mild subcritical pulse (mode 2 implicit)",
+  "mode": "unsteady",
+  "parity_program": {
+    "chunk": 6,
+    "certification": "candidate",
+    "notes": "Hybrid implicit low-flow bridge Jacobian (B1 pinning + B3 explicit fallback)."
+  },
+  "scope": {
+    "single_reach": true,
+    "structures": ["bridge"],
+    "notes": "Same mild Yarnell case as bridge_mild_unsteady_linked with unsteady_structure_coupling_mode=2."
+  },
+  "linked_project": {
+    "directory": "projects/bridge_mild",
+    "validate_files": false,
+    "notes": "Synthetic fixture — no bundled g01."
+  },
+  "stream1d": {
+    "mapper": "bridge_mild_mapper.build_bridge_mild_unsteady_inputs",
+    "case": "yarnell",
+    "coupling_mode": 2,
+    "notes": "Subcritical low-flow implicit rows; high-flow defers to solve_bridge_coupled."
+  },
+  "reference": {
+    "source": "linked_json_peaks",
+    "file": "projects/bridge_mild/reference_wsel_bridge_mild_unsteady.json",
+    "notes": "Mode 0 terminal WSEL baseline — mode 2 must not regress checkpoints."
+  },
+  "compare": {
+    "quantity": "terminal_wsel",
+    "match_by": "reach_station_m",
+    "checkpoints_rm": [52.0, 48.0, 25.0, 0.0]
+  },
+  "tolerance_ft": 0.5,
+  "quantity": "terminal_wsel"
+}

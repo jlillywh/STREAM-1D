@@ -9,12 +9,14 @@ fn test_sluice_gate_cd_increases_with_submergence() {
     assert!(cd_mid > cd_min);
     assert!((cd_min - 0.27).abs() < 0.01);
     assert!((cd_deep - 0.5).abs() < 0.05);
+    assert!((sluice_gate_discharge_coeff(0.4, 0.65) - 0.65).abs() < 1e-6);
 }
 #[test]
 fn test_bradley_submergence_reduces_weir_factor() {
     assert!((bradley_weir_submergence_factor(0.0) - 1.0).abs() < 1e-6);
     assert!(bradley_weir_submergence_factor(0.9) < bradley_weir_submergence_factor(0.5));
     assert!(bradley_weir_submergence_factor(0.95) < 0.3);
+    assert!(bradley_weir_submergence_factor(0.99) <= 0.08);
 }
 #[test]
 fn test_bu_bd_min_opening_weighting_for_pressure_flow() {
@@ -52,6 +54,8 @@ fn test_bu_bd_min_opening_weighting_for_pressure_flow() {
         n_values: vec![0.03],
         unit_system: UnitSystem::Metric,
         is_overbank: None,
+        coeff_contraction: None,
+        coeff_expansion: None,
         blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
@@ -64,6 +68,8 @@ fn test_bu_bd_min_opening_weighting_for_pressure_flow() {
         n_values: vec![0.03],
         unit_system: UnitSystem::Metric,
         is_overbank: None,
+        coeff_contraction: None,
+        coeff_expansion: None,
         blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
@@ -1307,4 +1313,76 @@ fn test_deck_ice_lowers_weir_onset_energy() {
         q_weir_iced > 1e-3,
         "deck ice should lower weir onset energy: iced={q_weir_iced}"
     );
+}
+
+#[test]
+fn internal_bridge_cuts_build_opening_friction_segments() {
+    let bu = CrossSection {
+        station: 100.0,
+        x: vec![0.0, 0.0, 10.0, 10.0],
+        y: vec![5.0, 0.0, 0.0, 5.0],
+        n_stations: vec![0.0],
+        n_values: vec![0.03],
+        unit_system: UnitSystem::Metric,
+        is_overbank: None,
+        coeff_contraction: None,
+        coeff_expansion: None,
+        blocked_obstructions: None,
+        ineffective_flow_areas: None,
+        guide_banks: None,
+    };
+    let internal = CrossSection {
+        station: 50.0,
+        x: vec![0.0, 0.0, 10.0, 10.0],
+        y: vec![4.5, 0.0, 0.0, 4.5],
+        n_stations: vec![0.0],
+        n_values: vec![0.03],
+        unit_system: UnitSystem::Metric,
+        is_overbank: None,
+        coeff_contraction: None,
+        coeff_expansion: None,
+        blocked_obstructions: None,
+        ineffective_flow_areas: None,
+        guide_banks: None,
+    };
+    let bd = CrossSection {
+        station: 0.0,
+        x: vec![0.0, 0.0, 10.0, 10.0],
+        y: vec![4.0, 0.0, 0.0, 4.0],
+        n_stations: vec![0.0],
+        n_values: vec![0.03],
+        unit_system: UnitSystem::Metric,
+        is_overbank: None,
+        coeff_contraction: None,
+        coeff_expansion: None,
+        blocked_obstructions: None,
+        ineffective_flow_areas: None,
+        guide_banks: None,
+    };
+    let sections = BridgeSectionContext {
+        xs_up: Some(bu),
+        internal_xs: vec![internal],
+        xs_down: Some(bd),
+        friction_length_m: 100.0,
+        ..Default::default()
+    };
+    let geom = build_bridge_geometry(
+        4.0,
+        6.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        UnitSystem::Metric,
+        &BridgeCouplingParams::default(),
+        100.0,
+        None,
+        Some(&sections),
+    );
+    assert_eq!(geom.internal_opening_tables.len(), 1);
+    assert_eq!(geom.internal_opening_segment_lengths_m.len(), 2);
+    assert_eq!(geom.internal_opening_z_m.len(), 1);
 }

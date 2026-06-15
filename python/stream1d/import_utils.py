@@ -38,6 +38,8 @@ def cross_section_from_dict(data: Mapping[str, Any]) -> CrossSection:
         n_values=[float(v) for v in data["n_values"]],
         unit_system=data.get("unit_system", "Metric"),
         is_overbank=data.get("is_overbank"),
+        coeff_contraction=data.get("coeff_contraction"),
+        coeff_expansion=data.get("coeff_expansion"),
     )
 
 

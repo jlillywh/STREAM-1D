@@ -85,6 +85,15 @@ fn min_bed(xs: &CrossSection) -> f64 {
     xs.y.iter().cloned().fold(f64::INFINITY, f64::min)
 }
 
+fn interpolate_opt_coeff(up: Option<f64>, down: Option<f64>, t: f64) -> Option<f64> {
+    match (up, down) {
+        (Some(u), Some(d)) => Some((1.0 - t) * u + t * d),
+        (Some(u), None) => Some(u),
+        (None, Some(d)) => Some(d),
+        (None, None) => None,
+    }
+}
+
 /// Linearly interpolate channel polyline and Manning's n between two user cross sections.
 /// Reach modifiers are omitted; use [`apply_reach_modifier_policy`].
 pub fn interpolate_cross_section(
@@ -123,6 +132,10 @@ pub fn interpolate_cross_section(
                 (1.0 - t) * upstream.get_manning_n(st) + t * downstream.get_manning_n(st)
             })
             .collect();
+        let coeff_contraction =
+            interpolate_opt_coeff(upstream.coeff_contraction, downstream.coeff_contraction, t);
+        let coeff_expansion =
+            interpolate_opt_coeff(upstream.coeff_expansion, downstream.coeff_expansion, t);
         return CrossSection {
             station,
             x: upstream.x.clone(),
@@ -134,6 +147,8 @@ pub fn interpolate_cross_section(
             blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
+            coeff_contraction,
+            coeff_expansion,
         };
     }
 
@@ -162,6 +177,11 @@ pub fn interpolate_cross_section(
         })
         .collect();
 
+    let coeff_contraction =
+        interpolate_opt_coeff(upstream.coeff_contraction, downstream.coeff_contraction, t);
+    let coeff_expansion =
+        interpolate_opt_coeff(upstream.coeff_expansion, downstream.coeff_expansion, t);
+
     CrossSection {
         station,
         x,
@@ -173,6 +193,8 @@ pub fn interpolate_cross_section(
         blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+        coeff_contraction,
+        coeff_expansion,
     }
 }
 
@@ -251,6 +273,8 @@ mod tests {
             n_values: vec![0.03],
             unit_system: UnitSystem::Metric,
             is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
             blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
@@ -610,6 +634,8 @@ mod tests {
             n_values: vec![0.03],
             unit_system: UnitSystem::Metric,
             is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
             blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
@@ -622,6 +648,8 @@ mod tests {
             n_values: vec![0.04],
             unit_system: UnitSystem::Metric,
             is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
             blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
@@ -654,5 +682,65 @@ mod tests {
             DensifyReachModifierPolicy::None,
         );
         assert!(xs.is_none());
+    }
+
+    #[test]
+    fn elevation_at_x_edge_cases_and_opt_coeff_branches() {
+        let one_pt = CrossSection {
+            station: 0.0,
+            x: vec![0.0],
+            y: vec![1.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.03],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        assert!(elevation_at_x(&one_pt, 0.0).is_none());
+
+        let flat = CrossSection {
+            station: 0.0,
+            x: vec![0.0, 5.0],
+            y: vec![2.0, 2.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.03],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        assert!((elevation_at_x(&flat, 2.5).unwrap() - 2.0).abs() < 1e-9);
+        assert!((elevation_at_x(&flat, 0.0).unwrap() - 2.0).abs() < 1e-9);
+        assert!((elevation_at_x(&flat, 5.0).unwrap() - 2.0).abs() < 1e-9);
+
+        assert!((interpolate_opt_coeff(Some(0.1), Some(0.3), 0.5).unwrap() - 0.2).abs() < 1e-9);
+        assert_eq!(interpolate_opt_coeff(Some(0.1), None, 0.5), Some(0.1));
+        assert_eq!(interpolate_opt_coeff(None, Some(0.3), 0.5), Some(0.3));
+        assert_eq!(interpolate_opt_coeff(None, None, 0.5), None);
+    }
+
+    #[test]
+    fn apply_reach_modifier_policy_none_is_noop() {
+        let up = rect(100.0, 0.0, 10.0);
+        let down = rect(0.0, 0.0, 10.0);
+        let mut synthetic = rect(50.0, 0.0, 10.0);
+        synthetic.ineffective_flow_areas = Some(
+            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[8.0], &[3.0]).unwrap(),
+        );
+        apply_reach_modifier_policy(
+            &mut synthetic,
+            &up,
+            &down,
+            0.5,
+            DensifyReachModifierPolicy::None,
+        );
+        assert!(synthetic.ineffective_flow_areas.is_some());
     }
 }

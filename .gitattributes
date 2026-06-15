@@ -1,6 +1,11 @@
+# Shell scripts must use LF so WSL/bash does not break on CRLF (set: pipefail errors).
 *.sh text eol=lf
-build_wasm.sh text eol=lf
-postBuild text eol=lf
-apt.txt text eol=lf
-requirements.txt text eol=lf
-runtime.txt text eol=lf
+
+# Other common text files
+*.md text eol=lf
+*.py text eol=lf
+*.rs text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.toml text eol=lf

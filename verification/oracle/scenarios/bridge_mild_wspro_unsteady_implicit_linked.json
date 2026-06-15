@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "id": "bridge_mild_wspro_unsteady_implicit_linked",
+  "title": "Synthetic bridge — WSPRO mild pulse (mode 2 implicit)",
+  "mode": "unsteady",
+  "parity_program": {
+    "chunk": 6,
+    "certification": "candidate",
+    "notes": "WSPRO low-flow method warm-start + mode 2 gate (second low-flow method)."
+  },
+  "scope": {
+    "single_reach": true,
+    "structures": ["bridge"],
+    "notes": "WSPRO narrow opening BU/BD from bridge_bu_bd_hecras.json."
+  },
+  "linked_project": {
+    "directory": "projects/bridge_mild",
+    "validate_files": false
+  },
+  "stream1d": {
+    "mapper": "bridge_mild_mapper.build_bridge_mild_unsteady_inputs",
+    "case": "wspro",
+    "coupling_mode": 2
+  },
+  "reference": {
+    "source": "linked_json_peaks",
+    "file": "projects/bridge_mild/reference_wsel_bridge_mild_wspro_unsteady.json"
+  },
+  "compare": {
+    "quantity": "terminal_wsel",
+    "match_by": "reach_station_m",
+    "checkpoints_rm": [52.0, 48.0, 25.0, 0.0]
+  },
+  "tolerance_ft": 0.5,
+  "quantity": "terminal_wsel"
+}

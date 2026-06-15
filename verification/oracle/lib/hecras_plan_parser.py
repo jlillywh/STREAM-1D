@@ -16,6 +16,7 @@ class ParsedPlan:
     computation_interval_seconds: float
     output_interval_seconds: float
     unsteady_theta: float
+    unsteady_friction_slope_method: int
     run_unet: bool
 
 
@@ -41,6 +42,7 @@ def parse_plan(path: Path) -> ParsedPlan:
     comp_interval = 3600.0
     output_interval = 3600.0
     theta = 1.0
+    unsteady_friction = 2
     run_unet = False
 
     for raw in text.splitlines():
@@ -60,6 +62,11 @@ def parse_plan(path: Path) -> ParsedPlan:
                 theta = float(line.split("=", 1)[1].strip().split()[0])
             except ValueError:
                 pass
+        elif line.startswith("Unsteady Friction Slope Method="):
+            try:
+                unsteady_friction = int(line.split("=", 1)[1].strip().split()[0])
+            except ValueError:
+                pass
         elif line.startswith("Run UNet="):
             run_unet = line.split("=", 1)[1].strip() not in ("0", "")
 
@@ -71,6 +78,7 @@ def parse_plan(path: Path) -> ParsedPlan:
         computation_interval_seconds=comp_interval,
         output_interval_seconds=output_interval,
         unsteady_theta=theta,
+        unsteady_friction_slope_method=unsteady_friction,
         run_unet=run_unet,
     )
 

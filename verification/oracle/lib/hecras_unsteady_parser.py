@@ -62,6 +62,7 @@ def parse_unsteady_flow(path: Path) -> ParsedUnsteadyFlow:
     ds_rating_q: list[float] = []
     ds_rating_wsel: list[float] = []
     initial_q = 500.0
+    saw_initial_flow_loc = False
     interval_seconds = 3600.0
     observed_hwm: dict[float, float] = {}
     upstream_rm: float | None = None
@@ -75,6 +76,7 @@ def parse_unsteady_flow(path: Path) -> ParsedUnsteadyFlow:
             continue
 
         if line.startswith("Initial Flow Loc="):
+            saw_initial_flow_loc = True
             parts = line.split("=")[1].split(",")
             if len(parts) >= 4:
                 initial_q = float(parts[3].strip())
@@ -124,6 +126,9 @@ def parse_unsteady_flow(path: Path) -> ParsedUnsteadyFlow:
         if line.startswith("Observed HWM="):
             _parse_observed_hwm_line(line, observed_hwm)
             continue
+
+    if upstream_q and not saw_initial_flow_loc:
+        initial_q = float(upstream_q[0])
 
     return ParsedUnsteadyFlow(
         upstream_q_cfs=upstream_q,

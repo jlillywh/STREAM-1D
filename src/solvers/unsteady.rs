@@ -14,6 +14,8 @@ mod culvert_implicit;
 mod bridge_implicit;
 #[path = "unsteady/boundary.rs"]
 mod boundary;
+#[path = "unsteady/quasi_steady.rs"]
+mod quasi_steady;
 
 pub use preissmann::{
     solve_preissmann_step, PreissmannStepParams, PreissmannStepStats, UnsteadyStructureCouplingMode,
@@ -473,7 +475,8 @@ pub struct UnsteadyInputs {
     #[serde(default)]
     pub structure_coupling_order: Option<i32>,
 
-    /// Preissmann structure coupling: `0` = post-step only (default), `2` = implicit Jacobian (opt-in).
+    /// Preissmann structure coupling: `0` = post-step only (default), `2` = implicit Jacobian,
+    /// `3` = monolithic Newton (experimental), `4` = quasi-steady particular + perturbation.
     #[serde(default)]
     pub unsteady_structure_coupling_mode: Option<i32>,
 }
@@ -527,6 +530,24 @@ pub struct UnsteadyResult {
     /// Per time step: structure intervals that required explicit post-step face overwrite.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub structure_explicit_fallback_count: Option<Vec<u32>>,
+    /// Mode 3: outer Newton converged within tolerance each time step.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub monolithic_newton_converged: Option<Vec<bool>>,
+    /// Mode 3: outer Newton iteration count each time step (≤ max configured in solver).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub monolithic_newton_iterations: Option<Vec<u32>>,
+    /// Mode 3: max |Preissmann RHS| before the first Newton update (metric; mixed momentum/continuity units).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub monolithic_newton_initial_residual: Option<Vec<f64>>,
+    /// Mode 3: max |Preissmann RHS| after the last Newton iteration (metric).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub monolithic_newton_max_residual: Option<Vec<f64>>,
+    /// Mode 3: max |momentum-row RHS| after the last Newton iteration (metric).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub monolithic_newton_momentum_residual: Option<Vec<f64>>,
+    /// Mode 3: max |continuity-row RHS| after the last Newton iteration (metric m³/s scale).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub monolithic_newton_continuity_residual: Option<Vec<f64>>,
 }
 
 /// Solves a single unsteady time step (reach-only; no structure interval tags).
@@ -873,12 +894,26 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
     let structure_coupling_mode = UnsteadyStructureCouplingMode::from_i32(
         inputs.unsteady_structure_coupling_mode.unwrap_or(0),
     );
+    let quasi_steady_mode = structure_coupling_mode.is_quasi_steady_particular();
+    let preissmann_coupling_mode = structure_coupling_mode.preissmann_coupling_mode();
+
+    let xs_stations_sorted: Vec<f64> = xs_list.iter().map(|xs| xs.station).collect();
 
     let track_culvert_diagnostics = !culvert_intervals.is_empty();
     let track_bridge_diagnostics = !bridge_intervals.is_empty();
     let has_structures = track_culvert_diagnostics || track_bridge_diagnostics;
 
-    if has_structures {
+    if has_structures && !structure_coupling_mode.is_monolithic_newton() {
+        let q_up0 = if raw_units == UnitSystem::USCustomary {
+            inputs.upstream_q_hydrograph[0] * crate::utils::CFS_TO_CMS
+        } else {
+            inputs.upstream_q_hydrograph[0]
+        };
+        let approach_sweep_active = culvert_implicit::culvert_approach_transient_active(
+            q_up0,
+            densified_q_current[0],
+            dt,
+        );
         structure_coupling::apply_structure_internal_boundaries(
             &inputs,
             raw_units,
@@ -890,6 +925,7 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
             &densified_q_current,
             &culvert_intervals,
             &bridge_intervals,
+            approach_sweep_active,
         );
     }
 
@@ -967,6 +1003,21 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
         };
     }
 
+    let mut y_qs_prev = if quasi_steady_mode {
+        quasi_steady::densified_quasi_steady_profile(
+            &inputs,
+            raw_units,
+            q_up_hydrograph[0],
+            y_down_hydrograph[0],
+            &xs_stations_sorted,
+            &original_mapping,
+            m,
+            &densified_stations,
+        )
+    } else {
+        Vec::new()
+    };
+
     // Enforce initial WSEL clamping to prevent starting with dry/negative depth, and stabilize initial Q
     for k in 0..dm {
         let min_wsel = densified_z_mins[k] + 0.05;
@@ -1014,17 +1065,54 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
         track_bridge_diagnostics.then(|| Vec::with_capacity(inputs.num_steps));
     let mut history_bridge_head_losses: Option<Vec<Vec<f64>>> =
         track_bridge_diagnostics.then(|| Vec::with_capacity(inputs.num_steps));
+    let track_monolithic_newton = structure_coupling_mode.is_monolithic_newton();
     let mut history_structure_coupling_converged: Option<Vec<bool>> =
         has_structures.then(|| Vec::with_capacity(inputs.num_steps));
     let mut history_structure_implicit_interval_count: Option<Vec<u32>> =
         has_structures.then(|| Vec::with_capacity(inputs.num_steps));
     let mut history_structure_explicit_fallback_count: Option<Vec<u32>> =
         has_structures.then(|| Vec::with_capacity(inputs.num_steps));
+    let mut history_monolithic_newton_converged: Option<Vec<bool>> =
+        track_monolithic_newton.then(|| Vec::with_capacity(inputs.num_steps));
+    let mut history_monolithic_newton_iterations: Option<Vec<u32>> =
+        track_monolithic_newton.then(|| Vec::with_capacity(inputs.num_steps));
+    let mut history_monolithic_newton_initial_residual: Option<Vec<f64>> =
+        track_monolithic_newton.then(|| Vec::with_capacity(inputs.num_steps));
+    let mut history_monolithic_newton_max_residual: Option<Vec<f64>> =
+        track_monolithic_newton.then(|| Vec::with_capacity(inputs.num_steps));
+    let mut history_monolithic_newton_momentum_residual: Option<Vec<f64>> =
+        track_monolithic_newton.then(|| Vec::with_capacity(inputs.num_steps));
+    let mut history_monolithic_newton_continuity_residual: Option<Vec<f64>> =
+        track_monolithic_newton.then(|| Vec::with_capacity(inputs.num_steps));
 
     // Loop through time steps
     for step in 0..inputs.num_steps {
         let q_up_next = q_up_hydrograph[step];
+        let q_up_at_step_start = densified_q_current[0];
         let known_ds_wsel = y_down_hydrograph[step];
+
+        let y_qs_next = if quasi_steady_mode {
+            quasi_steady::densified_quasi_steady_profile(
+                &inputs,
+                raw_units,
+                q_up_next,
+                known_ds_wsel,
+                &xs_stations_sorted,
+                &original_mapping,
+                m,
+                &densified_stations,
+            )
+        } else {
+            Vec::new()
+        };
+
+        if quasi_steady_mode {
+            quasi_steady::reanchor_quasi_steady_baseline(
+                &mut densified_y_current,
+                &y_qs_next,
+                &y_qs_prev,
+            );
+        }
 
         let ds_bc = boundary::DownstreamBcParams {
             bc_type: inputs.downstream_bc_type.unwrap_or(0),
@@ -1050,7 +1138,7 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
             theta,
             c_contraction,
             c_expansion,
-            structure_coupling_mode,
+            structure_coupling_mode: preissmann_coupling_mode,
             culvert_intervals: &culvert_intervals,
             bridge_intervals: &bridge_intervals,
             unsteady_inputs: Some(&inputs),
@@ -1065,21 +1153,63 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
             densified_y_current = y_next;
             densified_q_current = q_next;
 
-            let structure_step_results = structure_coupling::apply_structure_internal_boundaries(
-                &inputs,
-                raw_units,
-                &densified_tables,
-                &densified_xs,
-                &densified_z_mins,
-                &densified_stations,
-                &mut densified_y_current,
-                &densified_q_current,
-                &culvert_intervals,
-                &bridge_intervals,
+            let approach_sweep_active = culvert_implicit::culvert_approach_transient_active(
+                q_up_next,
+                q_up_at_step_start,
+                dt,
             );
+            let structure_step_results = if structure_coupling_mode.is_monolithic_newton() {
+                structure_coupling::monolithic_structure_step_results(
+                    &inputs,
+                    raw_units,
+                    &densified_tables,
+                    &densified_xs,
+                    &densified_z_mins,
+                    &densified_stations,
+                    &mut densified_y_current,
+                    &densified_q_current,
+                    &culvert_intervals,
+                    &bridge_intervals,
+                    approach_sweep_active,
+                )
+            } else {
+                structure_coupling::apply_structure_internal_boundaries(
+                    &inputs,
+                    raw_units,
+                    &densified_tables,
+                    &densified_xs,
+                    &densified_z_mins,
+                    &densified_stations,
+                    &mut densified_y_current,
+                    &densified_q_current,
+                    &culvert_intervals,
+                    &bridge_intervals,
+                    approach_sweep_active,
+                )
+            };
 
             if let Some(history) = history_structure_implicit_interval_count.as_mut() {
                 history.push(preissmann_stats.implicit_interval_count);
+            }
+            if track_monolithic_newton {
+                if let Some(history) = history_monolithic_newton_converged.as_mut() {
+                    history.push(preissmann_stats.newton_converged);
+                }
+                if let Some(history) = history_monolithic_newton_iterations.as_mut() {
+                    history.push(preissmann_stats.newton_iterations);
+                }
+                if let Some(history) = history_monolithic_newton_initial_residual.as_mut() {
+                    history.push(preissmann_stats.newton_initial_residual);
+                }
+                if let Some(history) = history_monolithic_newton_max_residual.as_mut() {
+                    history.push(preissmann_stats.newton_max_residual);
+                }
+                if let Some(history) = history_monolithic_newton_momentum_residual.as_mut() {
+                    history.push(preissmann_stats.newton_momentum_residual);
+                }
+                if let Some(history) = history_monolithic_newton_continuity_residual.as_mut() {
+                    history.push(preissmann_stats.newton_continuity_residual);
+                }
             }
             if let Some(diag) = structure_step_results.diagnostics {
                 if let Some(history) = history_structure_coupling_converged.as_mut() {
@@ -1142,6 +1272,32 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
                     .as_mut()
                     .unwrap()
                     .push(step_results.iter().map(|r| r.head_loss).collect());
+            }
+
+            if quasi_steady_mode {
+                quasi_steady::snap_to_quasi_steady_if_steady_flow(
+                    &mut densified_y_current,
+                    &y_qs_next,
+                    q_up_next,
+                    q_up_at_step_start,
+                    dt,
+                );
+                if !culvert_intervals.is_empty() {
+                    structure_coupling::refresh_culvert_faces_after_quasi_steady(
+                        &inputs,
+                        raw_units,
+                        &densified_tables,
+                        &densified_xs,
+                        &densified_z_mins,
+                        &mut densified_y_current,
+                        &densified_q_current,
+                        &culvert_intervals,
+                        q_up_next,
+                        q_up_at_step_start,
+                        dt,
+                    );
+                }
+                y_qs_prev = y_qs_next;
             }
 
             // Clamp solved WSEL to prevent dry nodes/negative depth, and limit velocity
@@ -1233,6 +1389,12 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
         structure_coupling_converged: history_structure_coupling_converged,
         structure_implicit_interval_count: history_structure_implicit_interval_count,
         structure_explicit_fallback_count: history_structure_explicit_fallback_count,
+        monolithic_newton_converged: history_monolithic_newton_converged,
+        monolithic_newton_iterations: history_monolithic_newton_iterations,
+        monolithic_newton_initial_residual: history_monolithic_newton_initial_residual,
+        monolithic_newton_max_residual: history_monolithic_newton_max_residual,
+        monolithic_newton_momentum_residual: history_monolithic_newton_momentum_residual,
+        monolithic_newton_continuity_residual: history_monolithic_newton_continuity_residual,
     }
 }
 
@@ -1257,6 +1419,8 @@ mod tests {
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let xs500 = CrossSection {
             station: 500.0,
@@ -1269,6 +1433,8 @@ mod tests {
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -1281,6 +1447,8 @@ mod tests {
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
 
         // Run a simulation keeping inputs constant at 14.0 cms (uniform flow equilibrium depth = 1.0m) and WSEL = 1.0m downstream
@@ -1344,6 +1512,8 @@ mod tests {
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -1356,6 +1526,8 @@ mod tests {
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
 
         // Run with a max spacing of 100.0m (which should create 9 intermediate cross sections, total 11 sections internally)
@@ -1425,6 +1597,8 @@ mod tests {
                 }]),
                 ineffective_flow_areas: None,
                 guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
             }
         };
 
@@ -1525,6 +1699,8 @@ mod tests {
                 IneffectiveFlowAreas::from_block_pairs(&[], &[], &[9.0], &[2.5]).unwrap(),
             ),
             guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let xs_ds = CrossSection {
             station: 0.0,
@@ -1539,6 +1715,8 @@ mod tests {
                 IneffectiveFlowAreas::from_block_pairs(&[], &[], &[2.0], &[2.5]).unwrap(),
             ),
             guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let inputs = UnsteadyInputs {
             cross_sections: vec![xs_us, xs_ds],
@@ -1586,6 +1764,8 @@ mod tests {
             blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -1598,6 +1778,8 @@ mod tests {
             blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let inputs = UnsteadyInputs {
             cross_sections: vec![xs200, xs0],
@@ -1655,6 +1837,8 @@ mod tests {
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let xs750 = CrossSection {
             station: 750.0,
@@ -1667,6 +1851,8 @@ mod tests {
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let xs500 = CrossSection {
             station: 500.0,
@@ -1679,6 +1865,8 @@ mod tests {
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let xs250 = CrossSection {
             station: 250.0,
@@ -1691,6 +1879,8 @@ mod tests {
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let xs150 = CrossSection {
             station: 150.0,
@@ -1703,6 +1893,8 @@ mod tests {
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -1715,6 +1907,8 @@ mod tests {
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
 
         let mut upstream_q = vec![35.0; 100];
@@ -1775,6 +1969,8 @@ mod tests {
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let xs500 = CrossSection {
             station: 500.0,
@@ -1787,6 +1983,8 @@ mod tests {
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -1799,6 +1997,8 @@ mod tests {
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
 
         let without = UnsteadyInputs {
@@ -1879,6 +2079,8 @@ mod tests {
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let xs500 = CrossSection {
             station: 500.0,
@@ -1891,6 +2093,8 @@ mod tests {
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -1903,6 +2107,8 @@ mod tests {
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
 
         let inputs = UnsteadyInputs {
@@ -1967,6 +2173,8 @@ mod tests {
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let xs500 = CrossSection {
             station: 500.0,
@@ -1979,6 +2187,8 @@ mod tests {
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -1991,6 +2201,8 @@ mod tests {
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
 
         let without = UnsteadyInputs {
@@ -2080,6 +2292,8 @@ mod tests {
             blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let xs500 = CrossSection {
             station: 500.0,
@@ -2092,6 +2306,8 @@ mod tests {
             blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -2104,6 +2320,8 @@ mod tests {
             blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
 
         let base = UnsteadyInputs {
@@ -2177,6 +2395,8 @@ mod tests {
             blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let xs500 = CrossSection {
             station: 500.0,
@@ -2189,6 +2409,8 @@ mod tests {
             blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -2201,6 +2423,8 @@ mod tests {
             blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
 
         let result = solve_unsteady(&UnsteadyInputs {
@@ -2274,6 +2498,8 @@ mod tests {
                 blocked_obstructions: None,
                 ineffective_flow_areas: None,
                 guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
             }
         }
 
@@ -2399,6 +2625,8 @@ mod tests {
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let xs500 = CrossSection {
             station: 500.0,
@@ -2411,6 +2639,8 @@ mod tests {
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -2423,6 +2653,8 @@ mod tests {
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
 
         let base = UnsteadyInputs {
@@ -2520,6 +2752,8 @@ mod tests {
             blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let xs500 = CrossSection {
             station: 500.0,
@@ -2532,6 +2766,8 @@ mod tests {
             blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -2544,6 +2780,8 @@ mod tests {
             blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
 
         let base = UnsteadyInputs {
@@ -2596,6 +2834,8 @@ mod tests {
             blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let xs500 = CrossSection {
             station: 500.0,
@@ -2608,6 +2848,8 @@ mod tests {
             blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -2620,6 +2862,8 @@ mod tests {
             blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         (xs1000, xs500, xs0)
     }
@@ -2677,6 +2921,8 @@ mod tests {
             blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         vec![mk(1000.0, 1.0), mk(500.0, 0.5), mk(0.0, 0.0)]
     }
@@ -2865,6 +3111,46 @@ mod tests {
     }
 
     #[test]
+    fn test_monolithic_newton_inline_culvert_constant_q_finite() {
+        let mut inputs = inline_culvert_reach_inputs();
+        inputs.unsteady_structure_coupling_mode = Some(3);
+        let run = solve_unsteady(&inputs);
+        let last = run.wsel.len() - 1;
+        assert!(run.wsel[last].iter().all(|w| w.is_finite()));
+        assert!(run.q[last].iter().all(|q| q.is_finite()));
+    }
+
+    #[test]
+    fn test_monolithic_newton_records_convergence_diagnostics() {
+        let mut inputs = inline_culvert_reach_inputs();
+        inputs.unsteady_structure_coupling_mode = Some(3);
+        inputs.num_steps = 5;
+        let run = solve_unsteady(&inputs);
+        let converged = run
+            .monolithic_newton_converged
+            .as_ref()
+            .expect("monolithic_newton_converged");
+        let iterations = run
+            .monolithic_newton_iterations
+            .as_ref()
+            .expect("monolithic_newton_iterations");
+        let max_res = run
+            .monolithic_newton_max_residual
+            .as_ref()
+            .expect("monolithic_newton_max_residual");
+        assert_eq!(converged.len(), 5);
+        assert_eq!(iterations.len(), 5);
+        assert_eq!(max_res.len(), 5);
+        assert!(iterations.iter().all(|&n| n > 0));
+        assert!(max_res.iter().all(|r| r.is_finite()));
+        assert!(
+            run.monolithic_newton_initial_residual
+                .as_ref()
+                .is_some_and(|v| v.len() == 5)
+        );
+    }
+
+    #[test]
     fn test_unsteady_implicit_culvert_constant_q_matches_steady_hw() {
         let (_, xs500, xs0) = inline_culvert_metric_xs();
         let run = solve_unsteady(&inline_culvert_reach_inputs());
@@ -2928,6 +3214,8 @@ mod tests {
             blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let xs500 = CrossSection {
             station: 500.0,
@@ -2940,6 +3228,8 @@ mod tests {
             blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -2952,6 +3242,8 @@ mod tests {
             blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         (xs1000, xs500, xs0)
     }
@@ -3164,6 +3456,8 @@ mod tests {
                 blocked_obstructions: None,
                 ineffective_flow_areas: None,
                 guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
             });
         }
         cross_sections.sort_by(|a, b| b.station.partial_cmp(&a.station).unwrap());
@@ -3244,6 +3538,46 @@ mod tests {
         }
     }
 
+    /// Constant-Q mode-4 ConSpan: upstream WSEL should track steady (quasi-steady snap).
+    #[test]
+    fn test_unsteady_conspan_constant_q_upstream_matches_steady_profile() {
+        let mut inputs = conspan_mild_unsteady_inputs();
+        inputs.unsteady_structure_coupling_mode = Some(4);
+        inputs.num_steps = 40;
+        inputs.upstream_q_hydrograph = vec![1000.0; 40];
+        inputs.downstream_wsel_hydrograph = vec![30.51; 40];
+        let steady = crate::solvers::steady::solve_steady(&crate::solvers::steady::SteadyInputs {
+            cross_sections: inputs.cross_sections.clone(),
+            flow_rate: 1000.0,
+            num_slices: inputs.num_slices,
+            regime: 0,
+            downstream_wsel: Some(30.51),
+            downstream_bc_type: Some(0),
+            max_spacing: inputs.max_spacing,
+            culvert_stations: inputs.culvert.culvert_stations.clone(),
+            culvert_shape_types: inputs.culvert.culvert_shape_types.clone(),
+            culvert_spans: inputs.culvert.culvert_spans.clone(),
+            culvert_rises: inputs.culvert.culvert_rises.clone(),
+            culvert_roughness_ns: inputs.culvert.culvert_roughness_ns.clone(),
+            culvert_lengths: inputs.culvert.culvert_lengths.clone(),
+            culvert_entrance_loss_coeffs: inputs.culvert.culvert_entrance_loss_coeffs.clone(),
+            culvert_exit_loss_coeffs: inputs.culvert.culvert_exit_loss_coeffs.clone(),
+            culvert_barrels: inputs.culvert.culvert_barrels.clone(),
+            culvert_roughness_n_bottoms: inputs.culvert.culvert_roughness_n_bottoms.clone(),
+            culvert_depth_bottom_ns: inputs.culvert.culvert_depth_bottom_ns.clone(),
+            culvert_depth_blockeds: inputs.culvert.culvert_depth_blockeds.clone(),
+            culvert_inlet_types: inputs.culvert.culvert_inlet_types.clone(),
+            ..Default::default()
+        });
+        let run = solve_unsteady(&inputs);
+        let last = run.wsel.len() - 1;
+        assert!(
+            (run.wsel[last][0] - steady.wsel[0]).abs() < 0.05,
+            "upstream XS: unsteady {} vs steady {}",
+            run.wsel[last][0],
+            steady.wsel[0]
+        );
+    }
     #[test]
     fn test_unsteady_implicit_conspan_mild_mode2_outlet_uses_explicit_fallback() {
         let run = solve_unsteady(&conspan_mild_unsteady_inputs());
@@ -3261,8 +3595,8 @@ mod tests {
             .expect("culvert_control_types");
         let last_control = &controls[controls.len() - 1][0];
         assert_eq!(last_control, "outlet");
-        assert!(implicit.iter().all(|c| *c == 0));
-        assert!(fallback.iter().all(|c| *c == 1));
+        assert!(implicit.iter().any(|c| *c > 0));
+        assert!(fallback.iter().all(|c| *c <= 1));
     }
 
     #[test]

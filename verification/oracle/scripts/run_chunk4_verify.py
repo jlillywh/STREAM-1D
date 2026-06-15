@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Chunk 4 exit gate — ConSpan mild unsteady mode 0 baseline."""
+"""Chunk 4 exit gate — ConSpan unsteady Q-ramp matrix (mode 2)."""
 
 from __future__ import annotations
 
@@ -13,6 +13,8 @@ ROOT = ORACLE.parents[1]
 LOG_DIR = ORACLE / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 LOG_PATH = LOG_DIR / "chunk4_verify_latest.log"
+RAMP_MATRIX = ORACLE / "scenarios" / "conspan_unsteady_ramp_matrix.json"
+RAMP_REF = ORACLE / "projects" / "conspan" / "reference_wsel_timeseries_ramp_full.json"
 
 
 def _run(label: str, cmd: list[str]) -> None:
@@ -23,21 +25,27 @@ def _run(label: str, cmd: list[str]) -> None:
 
 def main() -> int:
     started = datetime.now(timezone.utc).isoformat()
-    print("=== Chunk 4 — ConSpan unsteady mode 0 gate ===")
+    print("=== Chunk 4 — ConSpan unsteady Q-ramp matrix gate ===")
     print(f"Repo: {ROOT}")
     print(f"Date: {started}\n")
+
+    if not RAMP_REF.is_file():
+        print(f"ERROR: missing reference: {RAMP_REF}", file=sys.stderr)
+        return 2
 
     _run(
         "4.1 smoke_conspan_unsteady_parse",
         [sys.executable, str(ORACLE / "scripts" / "smoke_conspan_unsteady_parse.py")],
     )
     _run(
-        "4.2 linked verify conspan_unsteady_mild_linked",
+        "4.2 linked verify conspan_unsteady_ramp_matrix",
         [
             sys.executable,
             str(ORACLE / "run_linked_verify.py"),
             "--scenario",
-            str(ORACLE / "scenarios" / "conspan_unsteady_mild_linked.json"),
+            str(RAMP_MATRIX),
+            "--format",
+            "matrix",
         ],
     )
 

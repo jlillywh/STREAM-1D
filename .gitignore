@@ -51,3 +51,37 @@ __pycache__/
 
 # Local workspace scratch (not part of the engine)
 /local/
+
+# Oracle / agent scratch (do not commit)
+verification/oracle/logs/
+verification/oracle/projects/generated/
+verification/oracle/scenarios/generated/
+verification/oracle/**/*.log
+.commit_msg*.txt
+.pr_body*.txt
+.pr_body*.md
+pr_body.md
+.venv-ci-test/
+phase0_*.log
+cargo_unsteady_tail.txt
+oracle_files.txt
+tmp_*.py
+_agent_*.sh
+verification/oracle/_*.log
+# Agent / local diagnostic scratch (repo root)
+/test_out*.txt
+/test_out_*.log
+/verify_out*.txt
+/blob_*.txt
+/err_files.txt
+/git_status.txt
+/idx_*.txt
+/outer_loop_blobs.txt
+/restore_log.txt
+/shell_out.txt
+/find_unsteady_blob.sh
+/_run_verify_out*.sh
+verification/oracle/omega_sweep_results.tsv
+verification/oracle/omega_sweep_summary.json
+verification/oracle/scripts/_conspan_diag_tmp.py
+verification/oracle/_patch_ras_ref.py

@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "id": "conspan_unsteady_ramp_linked",
+  "title": "ConSpan culvert — mild Q ramp unsteady (mode 0)",
+  "mode": "unsteady",
+  "parity_program": {
+    "chunk": 5,
+    "certification": "candidate",
+    "notes": "Q ramp 600→1000 cfs (u07), DS stage 30.51 ft, plan p08. Post-step culvert coupling (mode 0)."
+  },
+  "scope": {
+    "single_reach": true,
+    "structures": ["culvert"],
+    "notes": "Arch culvert outlet-controlled entire ramp. Compare WSEL(t) vs HEC-RAS p08 HDF."
+  },
+  "linked_project": {
+    "directory": "projects/conspan",
+    "geometry": "ConSpan.g01",
+    "unsteady_flow": "ConSpan.u07",
+    "plan": "ConSpan.p08",
+    "plan_number": "08",
+    "validate_files": false,
+    "notes": "u07/p08 copied from user HEC-RAS 7.01 project when available."
+  },
+  "stream1d": {
+    "mapper": "conspan_mapper.build_conspan_unsteady_inputs",
+    "coupling_mode": 2,
+    "notes": "Implicit culvert residual in Preissmann Jacobian + reach–structure–reach outer loop until converged."
+  },
+  "reference": {
+    "source": "linked_json_timeseries",
+    "file": "projects/conspan/reference_wsel_timeseries_ramp.json",
+    "live_ras_optional": false
+  },
+  "compare": {
+    "quantity": "wsel_timeseries",
+    "match_by": "river_mile",
+    "checkpoints_rm": [20.535, 20.238, 20.227, 20.095],
+    "time_checkpoints_hr": [0, 8, 24, 32, 40, 48]
+  },
+  "tolerance_ft": 0.05,
+  "quantity": "wsel_timeseries"
+}

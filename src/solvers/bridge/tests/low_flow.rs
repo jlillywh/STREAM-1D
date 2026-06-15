@@ -478,3 +478,35 @@ fn test_combined_regime_label_from_solver() {
         result.flow_regime
     );
 }
+
+#[test]
+fn solve_low_flow_class_b_momentum_branch_yarnell() {
+    use crate::solvers::bridge::low_flow::solve_low_flow_class_b;
+
+    let (q, tw, pier_w, num_piers, table_up, table_down) = class_b_energy_case();
+    let coupling = BridgeCouplingParams {
+        low_flow_method: 2,
+        ..Default::default()
+    };
+    let geom = build_bridge_geometry(
+        5.0,
+        7.0,
+        pier_w,
+        num_piers,
+        0,
+        1.44,
+        0.5,
+        0.0,
+        0.0,
+        UnitSystem::Metric,
+        &coupling,
+        15.0,
+        None,
+        None,
+    );
+    let hw = solve_low_flow_class_b(q, tw, &geom, &table_up, &table_down);
+    assert!(
+        hw.is_finite() && hw > tw,
+        "class B momentum branch should raise headwater above tailwater {tw}, got {hw}"
+    );
+}

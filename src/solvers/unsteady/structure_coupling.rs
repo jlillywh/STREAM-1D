@@ -316,6 +316,68 @@ fn converge_culvert_headwater(
     result
 }
 
+/// Mode 4: after quasi-steady η reconcile, partially restore culvert US faces when the HW
+/// residual is violated during Q transients (skipped at constant Q so plateau snap is preserved).
+pub(crate) fn refresh_culvert_faces_after_quasi_steady(
+    inputs: &UnsteadyInputs,
+    raw_units: UnitSystem,
+    densified_tables: &[GeometryTable],
+    densified_xs: &[CrossSection],
+    densified_z_mins: &[f64],
+    y_metric: &mut [f64],
+    q_metric: &[f64],
+    culvert_intervals: &[(usize, usize)],
+    q_up_next: f64,
+    q_up_at_step_start: f64,
+    dt: f64,
+) {
+    use crate::solvers::bridge::unsteady_coupling::{wsel_metric_to_user, wsel_user_to_metric};
+
+    if !super::culvert_implicit::culvert_approach_transient_active(
+        q_up_next,
+        q_up_at_step_start,
+        dt,
+    ) {
+        return;
+    }
+
+    /// Blend toward converged HW during ramps (full overwrite over-corrects vs HEC).
+    const FACE_REFRESH_OMEGA: f64 = 0.25;
+
+    for &(i, c_idx) in culvert_intervals {
+        if super::culvert_implicit::culvert_implicit_post_step_satisfied(
+            inputs,
+            c_idx,
+            i,
+            raw_units,
+            densified_tables,
+            densified_xs,
+            densified_z_mins,
+            y_metric,
+            q_metric,
+        ) {
+            continue;
+        }
+        let tw_wsel_user = wsel_metric_to_user(y_metric[i + 1], raw_units);
+        let prev_hw_user = wsel_metric_to_user(y_metric[i], raw_units);
+        let result = converge_culvert_headwater(
+            inputs,
+            c_idx,
+            i,
+            raw_units,
+            densified_tables,
+            densified_xs,
+            densified_z_mins,
+            y_metric,
+            q_metric,
+            tw_wsel_user,
+            prev_hw_user,
+        );
+        let hw_metric = wsel_user_to_metric(result.wsel, raw_units);
+        y_metric[i] = (1.0 - FACE_REFRESH_OMEGA) * y_metric[i] + FACE_REFRESH_OMEGA * hw_metric;
+    }
+}
+
 fn empty_culvert_step_results(num_culverts: usize) -> Vec<crate::solvers::culvert::CulvertSolveResult> {
     vec![
         crate::solvers::culvert::CulvertSolveResult {
@@ -356,6 +418,7 @@ pub(crate) fn apply_structure_internal_boundaries(
     q_metric: &[f64],
     culvert_intervals: &[(usize, usize)],
     bridge_intervals: &[(usize, usize)],
+    approach_upstream_sweep_active: bool,
 ) -> StructureCouplingStepResults {
     use crate::solvers::bridge::unsteady_coupling::{
         couple_bridge_interval, q_metric_to_user, wsel_metric_to_user, wsel_user_to_metric,
@@ -375,7 +438,12 @@ pub(crate) fn apply_structure_internal_boundaries(
     }
 
     let step_tol = culvert_step_tolerance(raw_units);
-    let implicit_mode = inputs.unsteady_structure_coupling_mode == Some(2);
+    let coupling_mode = inputs.unsteady_structure_coupling_mode.unwrap_or(0);
+    let implicit_mode = super::culvert_implicit::unsteady_coupling_is_implicit(Some(coupling_mode));
+    let monolithic_mode = super::culvert_implicit::unsteady_coupling_is_monolithic(Some(coupling_mode));
+    let c_contraction =
+        inputs.coeff_contraction.unwrap_or(crate::geometry::DEFAULT_COEFF_CONTRACTION);
+    let c_expansion = inputs.coeff_expansion.unwrap_or(crate::geometry::DEFAULT_COEFF_EXPANSION);
     let mut explicit_fallback_count = 0_u32;
     let mut converged = false;
     let dm = densified_tables.len();
@@ -395,11 +463,27 @@ pub(crate) fn apply_structure_internal_boundaries(
 
         for structure in &coupled {
             let i = structure.interval_i;
-            let tw_wsel_user = wsel_metric_to_user(y_metric[i + 1], raw_units);
-            let prev_hw_user = wsel_metric_to_user(y_metric[i], raw_units);
 
             match structure.kind {
                 StructureKind::Culvert => {
+                    if monolithic_mode {
+                        culvert_results[structure.idx] =
+                            super::culvert_implicit::culvert_implicit_diagnostics(
+                                inputs,
+                                structure.idx,
+                                i,
+                                raw_units,
+                                densified_tables,
+                                densified_xs,
+                                densified_z_mins,
+                                y_metric,
+                                q_metric,
+                            );
+                        continue;
+                    }
+                    let tw_wsel_user = wsel_metric_to_user(y_metric[i + 1], raw_units);
+                    let prev_hw_user = wsel_metric_to_user(y_metric[i], raw_units);
+
                     let implicit_satisfied = implicit_mode
                         && super::culvert_implicit::culvert_implicit_post_step_satisfied(
                             inputs,
@@ -425,31 +509,41 @@ pub(crate) fn apply_structure_internal_boundaries(
                                 y_metric,
                                 q_metric,
                             );
-                        continue;
-                    }
-                    if pass == 0 {
-                        explicit_fallback_count += 1;
-                    }
-                    let result = converge_culvert_headwater(
-                        inputs,
-                        structure.idx,
-                        i,
-                        raw_units,
-                        densified_tables,
-                        densified_xs,
-                        densified_z_mins,
-                        y_metric,
-                        q_metric,
-                        tw_wsel_user,
-                        prev_hw_user,
-                    );
-                    max_delta = max_delta.max((result.wsel - prev_hw_user).abs());
-                    y_metric[i] = if raw_units == UnitSystem::USCustomary {
-                        result.wsel * FT_TO_M
                     } else {
-                        result.wsel
-                    };
-                    culvert_results[structure.idx] = result;
+                        if pass == 0 {
+                            explicit_fallback_count += 1;
+                        }
+                        let result = converge_culvert_headwater(
+                            inputs,
+                            structure.idx,
+                            i,
+                            raw_units,
+                            densified_tables,
+                            densified_xs,
+                            densified_z_mins,
+                            y_metric,
+                            q_metric,
+                            tw_wsel_user,
+                            prev_hw_user,
+                        );
+                        max_delta = max_delta.max((result.wsel - prev_hw_user).abs());
+                        y_metric[i] = wsel_user_to_metric(result.wsel, raw_units);
+                        culvert_results[structure.idx] = result;
+                    }
+                    if implicit_mode {
+                        super::culvert_implicit::apply_culvert_approach_immediate_post_step(
+                            i,
+                            densified_stations,
+                            densified_tables,
+                            densified_xs,
+                            densified_z_mins,
+                            y_metric,
+                            q_metric,
+                            c_contraction,
+                            c_expansion,
+                            super::culvert_implicit::CULVERT_APPROACH_POST_STEP_OMEGA,
+                        );
+                    }
                 }
                 StructureKind::Bridge => {
                     let b_idx = structure.idx;
@@ -545,6 +639,23 @@ pub(crate) fn apply_structure_internal_boundaries(
         }
     }
 
+    if implicit_mode && !monolithic_mode && approach_upstream_sweep_active {
+        for &(i, _) in culvert_intervals {
+            super::culvert_implicit::apply_culvert_approach_post_step(
+                i,
+                densified_stations,
+                densified_tables,
+                densified_xs,
+                densified_z_mins,
+                y_metric,
+                q_metric,
+                c_contraction,
+                c_expansion,
+                super::culvert_implicit::CULVERT_APPROACH_POST_STEP_OMEGA,
+            );
+        }
+    }
+
     StructureCouplingStepResults {
         culvert: if num_culverts > 0 && !culvert_intervals.is_empty() {
             Some(culvert_results)
@@ -559,6 +670,82 @@ pub(crate) fn apply_structure_internal_boundaries(
         diagnostics: Some(StructureCouplingStepDiagnostics {
             converged,
             explicit_fallback_count,
+        }),
+    }
+}
+
+/// Mode 3: culvert faces come from converged Preissmann Newton; collect diagnostics, post-step bridges only.
+pub(crate) fn monolithic_structure_step_results(
+    inputs: &UnsteadyInputs,
+    raw_units: UnitSystem,
+    densified_tables: &[GeometryTable],
+    densified_xs: &[CrossSection],
+    densified_z_mins: &[f64],
+    densified_stations: &[f64],
+    y_metric: &mut [f64],
+    q_metric: &[f64],
+    culvert_intervals: &[(usize, usize)],
+    bridge_intervals: &[(usize, usize)],
+    approach_upstream_sweep_active: bool,
+) -> StructureCouplingStepResults {
+    let num_culverts = inputs.culvert.culvert_stations.as_ref().map(|s| s.len()).unwrap_or(0);
+    let mut culvert_results = if num_culverts > 0 {
+        empty_culvert_step_results(num_culverts)
+    } else {
+        Vec::new()
+    };
+    for &(i, c_idx) in culvert_intervals {
+        culvert_results[c_idx] = super::culvert_implicit::culvert_implicit_diagnostics(
+            inputs,
+            c_idx,
+            i,
+            raw_units,
+            densified_tables,
+            densified_xs,
+            densified_z_mins,
+            y_metric,
+            q_metric,
+        );
+    }
+
+    let bridge_step = if bridge_intervals.is_empty() {
+        StructureCouplingStepResults {
+            culvert: None,
+            bridge: None,
+            diagnostics: Some(StructureCouplingStepDiagnostics {
+                converged: true,
+                explicit_fallback_count: 0,
+            }),
+        }
+    } else {
+        apply_structure_internal_boundaries(
+            inputs,
+            raw_units,
+            densified_tables,
+            densified_xs,
+            densified_z_mins,
+            densified_stations,
+            y_metric,
+            q_metric,
+            &[],
+            bridge_intervals,
+            approach_upstream_sweep_active,
+        )
+    };
+
+    StructureCouplingStepResults {
+        culvert: if num_culverts > 0 && !culvert_intervals.is_empty() {
+            Some(culvert_results)
+        } else {
+            None
+        },
+        bridge: bridge_step.bridge,
+        diagnostics: Some(StructureCouplingStepDiagnostics {
+            converged: bridge_step.diagnostics.map(|d| d.converged).unwrap_or(true),
+            explicit_fallback_count: bridge_step
+                .diagnostics
+                .map(|d| d.explicit_fallback_count)
+                .unwrap_or(0),
         }),
     }
 }

@@ -1,0 +1,40 @@
+{
+  "parity_case_version": 1,
+  "id": "reach_mild_stage",
+  "title": "Reach-only mild — constant Q, downstream stage BC",
+  "river": "Spring Creek",
+  "reach": "Culvrt Reach",
+  "tolerance_ft": 0.5,
+  "geometry_ref": {
+    "path": "verification/fixtures/conspan_project_12.json",
+    "cross_section_rms": [20.535, 20.422, 20.308, 20.251, 20.208, 20.189, 20.095, 20.0]
+  },
+  "unsteady": {
+    "initial_flow_cfs": 1000,
+    "upstream_rm": 20.535,
+    "downstream_rm": 20.0,
+    "constant_q_cfs": 1000,
+    "duration_hours": 48,
+    "interval": "1HOUR",
+    "downstream": {
+      "type": "stage",
+      "wsel_ft": 30.51
+    }
+  },
+  "plan": {
+    "computation_interval": "1HOUR",
+    "output_interval": "1HOUR",
+    "theta": 1.0,
+    "unsteady_friction_slope_method": 2
+  },
+  "stream1d": {
+    "coupling_mode": 0,
+    "num_slices": 100,
+    "max_spacing": 100
+  },
+  "compare": {
+    "quantity": "wsel_timeseries",
+    "checkpoints_rm": [20.535, 20.422, 20.308, 20.251, 20.208, 20.189, 20.095, 20.0],
+    "time_checkpoints_hr": [0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48]
+  }
+}

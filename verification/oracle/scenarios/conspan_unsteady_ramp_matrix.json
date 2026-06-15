@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "id": "conspan_unsteady_ramp_matrix",
+  "title": "ConSpan culvert — Q ramp WSEL matrix (all XS, 4 hr)",
+  "mode": "unsteady",
+  "parity_program": {
+    "chunk": 5,
+    "certification": "diagnostic",
+    "notes": "Dense WSEL grid vs p08 HDF. Reports Δ only; typical peak max |Δ| ≈ 0.076 ft at culvert faces."
+  },
+  "scope": {
+    "single_reach": true,
+    "structures": ["culvert"],
+    "notes": "Diagnostic matrix compare — not the certification gate (see conspan_unsteady_ramp_linked)."
+  },
+  "linked_project": {
+    "directory": "projects/conspan",
+    "geometry": "ConSpan.g01",
+    "unsteady_flow": "ConSpan.u07",
+    "plan": "ConSpan.p08",
+    "plan_number": "08",
+    "validate_files": false
+  },
+  "stream1d": {
+    "mapper": "conspan_mapper.build_conspan_unsteady_inputs",
+    "coupling_mode": 2,
+    "notes": "Full culvert + embankment XS modifiers from g01."
+  },
+  "reference": {
+    "source": "linked_json_timeseries",
+    "file": "projects/conspan/reference_wsel_timeseries_ramp_full.json",
+    "live_ras_optional": false
+  },
+  "compare": {
+    "quantity": "wsel_timeseries",
+    "match_by": "river_mile",
+    "enforce_tolerance": false,
+    "notes": "Peak Q-ramp max |Δ| ≈ 0.076 ft at culvert faces (RM 20.238 BU, 20.227 BD). Δ = STREAM − HEC.",
+    "checkpoints_rm": [20.535, 20.422, 20.308, 20.251, 20.238, 20.227, 20.208, 20.189, 20.095, 20.0],
+    "time_checkpoints_hr": [0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48]
+  },
+  "tolerance_ft": 0.05,
+  "quantity": "wsel_timeseries"
+}

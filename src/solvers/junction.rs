@@ -307,6 +307,8 @@ mod tests {
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         }
     }
 
@@ -339,6 +341,8 @@ mod tests {
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         }
     }
 
