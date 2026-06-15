@@ -59,6 +59,10 @@ export interface CrossSection {
   ineffective_areas?: IneffectiveFlowAreas;
   /** Guide banks on approach / departure cuts (reach lateral `x`). */
   guide_banks?: GuideBanks;
+  /** Contraction coefficient at this XS (HEC-RAS Exp/Cntr second value). */
+  coeff_contraction?: number;
+  /** Expansion coefficient at this XS (HEC-RAS Exp/Cntr first value). */
+  coeff_expansion?: number;
 }
 
 /** Culvert shape codes passed in `culvert_shape_types`. */
@@ -191,7 +195,7 @@ export interface BridgeArrays {
   bridge_departure_friction_lengths?: number[];
   /**
    * Net opening area / conveyance multiplier per bridge (0–1]. Omit or `1.0` = no extra blockage.
-   * See `bridge_ice_debris.md` §A.
+   * See `bridge_extensions.md` § Ice / debris.
    */
   bridge_opening_blockage_factors?: number[];
   /** Floating pier debris total width per bridge `[bridge][pier]` (opening coordinates). */
@@ -441,9 +445,9 @@ export interface CulvertRatingCurveResult {
 /**
  * Inputs for `computeBridgeRatingCurve` — `q` is ignored; fields mirror standalone bridge solve params.
  * **Reverse flow (v31):** negative `q_values` supported; `tw_wsel_reverse` for BU TW when `Q < 0`.
- * `Q = 0` samples are skipped. Direction is not inferred from stages. See `bridge_reverse_flow_rating.md`.
+ * `Q = 0` samples are skipped. See `bridge_extensions.md`.
  * **Ice / debris (v32):** `opening_blockage_factor`, `pier_debris_widths`, `pier_debris_heights`,
- * `ice_thickness`, `ice_mode`, `deck_ice_thickness` — see `bridge_ice_debris.md`.
+ * `ice_thickness`, `ice_mode`, `deck_ice_thickness` — see `bridge_extensions.md`.
  */
 export interface BridgeRatingCurveInputs {
   q_values: number[];

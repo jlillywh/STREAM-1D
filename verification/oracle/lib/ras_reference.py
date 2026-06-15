@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .scenario import LinkedScenario
+from .scenario import LinkedScenario, plan_number_from_linked
 
 
 @dataclass(frozen=True)
@@ -82,7 +82,7 @@ def try_live_ras_run(scenario: LinkedScenario) -> tuple[dict[tuple[float, str], 
     if missing:
         return None, f"linked project files missing: {', '.join(missing)}"
 
-    plan_number = str(linked.get("plan_number", "01"))
+    plan_number = plan_number_from_linked(linked)
     try:
         RasPrj(project_dir)
         RasCmdr.compute_plan(plan_number)
@@ -126,6 +126,22 @@ def load_unsteady_peak_reference(
         peaks = peak_wsel_by_rm(profile)
         source_label = f"ConSpan steady profile {profile!r} (fixtures/hecras_conspan_profiles.json)"
 
+    if source_kind == "linked_json_timeseries" and ref.get("file"):
+        json_path = (scenario.oracle_root / ref["file"]).resolve()
+        if json_path.is_file():
+            import json
+
+            data: dict[str, Any] = json.loads(json_path.read_text(encoding="utf-8"))
+            for item in data.get("checkpoints", []):
+                rm = float(item["rm"])
+                if "max_wsel_ft" in item:
+                    peaks[rm] = float(item["max_wsel_ft"])
+                else:
+                    by_hour = item.get("wsel_ft_by_hour") or {}
+                    if by_hour:
+                        peaks[rm] = max(float(v) for v in by_hour.values())
+            source_label = str(data.get("source", json_path.name))
+
     if source_kind == "linked_json_peaks" and ref.get("file"):
         json_path = (scenario.oracle_root / ref["file"]).resolve()
         if json_path.is_file():
@@ -164,6 +180,8 @@ def load_unsteady_peak_reference(
 
 def load_unsteady_timeseries_reference(
     scenario: LinkedScenario,
+    *,
+    reference_file: Path | None = None,
 ) -> tuple[dict[float, dict[float, float]], str]:
     """
     Load {river_mile: {hour: wsel_ft}} from linked JSON reference.
@@ -172,10 +190,12 @@ def load_unsteady_timeseries_reference(
     """
     ref = scenario.raw.get("reference", {})
     json_rel = ref.get("file")
-    if not json_rel:
+    if reference_file is not None:
+        json_path = reference_file.resolve()
+    elif json_rel:
+        json_path = (scenario.oracle_root / json_rel).resolve()
+    else:
         raise ValueError(f"No reference.file for timeseries scenario {scenario.id}")
-
-    json_path = (scenario.oracle_root / json_rel).resolve()
     if not json_path.is_file():
         raise FileNotFoundError(f"Timeseries WSEL reference not found: {json_path}")
 

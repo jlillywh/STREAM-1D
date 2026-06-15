@@ -41,6 +41,8 @@ pub(crate) fn rectangular_channel_cross_section(
         blocked_obstructions: None,
         ineffective_flow_areas: None,
     guide_banks: None,
+        coeff_contraction: None,
+        coeff_expansion: None,
     }
 }
 

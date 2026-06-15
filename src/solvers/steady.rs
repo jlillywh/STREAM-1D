@@ -593,8 +593,8 @@ pub fn solve_step(
     yc2: f64,
     q: f64,
     length: f64,
-    c_contraction: f64,
-    c_expansion: f64,
+    default_contraction: f64,
+    default_expansion: f64,
     is_subcritical: bool,
     use_channel1: bool,
     use_channel2: bool,
@@ -623,7 +623,14 @@ pub fn solve_step(
         let sf = (q / k_avg).powi(2);
         let hf = length * sf;
 
-        let c_ec = if hv2 > hv1 { c_contraction } else { c_expansion };
+        let contracting = hv2 > hv1;
+        let xs_higher_velocity = if hv2 >= hv1 { xs2 } else { xs1 };
+        let c_ec = crate::geometry::ec_loss_coefficient(
+            contracting,
+            xs_higher_velocity,
+            default_contraction,
+            default_expansion,
+        );
         let ho = c_ec * (hv2 - hv1).abs();
 
         if is_subcritical {
@@ -934,8 +941,8 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
     let q_mag = q.abs();
 
     let num_slices = inputs.num_slices.unwrap_or(100);
-    let c_contraction = inputs.coeff_contraction.unwrap_or(0.1);
-    let c_expansion = inputs.coeff_expansion.unwrap_or(0.3);
+    let c_contraction = inputs.coeff_contraction.unwrap_or(crate::geometry::DEFAULT_COEFF_CONTRACTION);
+    let c_expansion = inputs.coeff_expansion.unwrap_or(crate::geometry::DEFAULT_COEFF_EXPANSION);
 
     // Convert all cross sections to metric internally
     let mut xs_list: Vec<CrossSection> = inputs.cross_sections.iter().map(|xs| xs.to_metric()).collect();
@@ -2009,6 +2016,8 @@ mod tests {
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
             is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
@@ -2034,6 +2043,8 @@ mod tests {
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
             is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
@@ -2046,6 +2057,8 @@ mod tests {
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
             is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
@@ -2058,6 +2071,8 @@ mod tests {
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
             is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
@@ -2117,6 +2132,8 @@ mod tests {
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
             is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
@@ -2129,6 +2146,8 @@ mod tests {
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
             is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
@@ -2175,6 +2194,8 @@ mod tests {
             stations: vec![3.0, 7.0],
             elevations: vec![1.5, 1.5],
         }]);
+        xs.coeff_expansion = None;
+        xs.coeff_contraction = None;
         xs
     }
 
@@ -2185,6 +2206,8 @@ mod tests {
         xs.ineffective_flow_areas = Some(
             IneffectiveFlowAreas::from_block_pairs(&[], &[], &[9.0], &[2.5]).unwrap(),
         );
+        xs.coeff_expansion = None;
+        xs.coeff_contraction = None;
         xs
     }
 
@@ -2386,6 +2409,8 @@ mod tests {
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
             is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
             blocked_obstructions: None,
             ineffective_flow_areas: Some(
                 IneffectiveFlowAreas::from_block_pairs(&[], &[], &[8.0], &[3.0]).unwrap(),
@@ -2400,6 +2425,8 @@ mod tests {
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
             is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
             blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
@@ -2441,6 +2468,8 @@ mod tests {
             n_values: vec![0.02],
             unit_system: UnitSystem::USCustomary,
             is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
@@ -2453,6 +2482,8 @@ mod tests {
             n_values: vec![0.02],
             unit_system: UnitSystem::USCustomary,
             is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
@@ -2465,6 +2496,8 @@ mod tests {
             n_values: vec![0.02],
             unit_system: UnitSystem::USCustomary,
             is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
@@ -2527,6 +2560,8 @@ mod tests {
             n_values: vec![0.02],
             unit_system: UnitSystem::USCustomary,
             is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
@@ -2539,6 +2574,8 @@ mod tests {
             n_values: vec![0.02],
             unit_system: UnitSystem::USCustomary,
             is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
@@ -2551,6 +2588,8 @@ mod tests {
             n_values: vec![0.02],
             unit_system: UnitSystem::USCustomary,
             is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
@@ -2602,6 +2641,8 @@ mod tests {
                 n_values: vec![0.02],
                 unit_system: UnitSystem::USCustomary,
                 is_overbank: None,
+                coeff_contraction: None,
+                coeff_expansion: None,
                 blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
@@ -2614,6 +2655,8 @@ mod tests {
                 n_values: vec![0.02],
                 unit_system: UnitSystem::USCustomary,
                 is_overbank: None,
+                coeff_contraction: None,
+                coeff_expansion: None,
                 blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
@@ -2626,6 +2669,8 @@ mod tests {
                 n_values: vec![0.02],
                 unit_system: UnitSystem::USCustomary,
                 is_overbank: None,
+                coeff_contraction: None,
+                coeff_expansion: None,
                 blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
@@ -2753,6 +2798,8 @@ mod tests {
             n_values: vec![0.02],
             unit_system: UnitSystem::USCustomary,
             is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
@@ -2765,6 +2812,8 @@ mod tests {
             n_values: vec![0.02],
             unit_system: UnitSystem::USCustomary,
             is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
@@ -2777,6 +2826,8 @@ mod tests {
             n_values: vec![0.02],
             unit_system: UnitSystem::USCustomary,
             is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
@@ -2841,6 +2892,8 @@ mod tests {
                 n_values: vec![0.02],
                 unit_system: UnitSystem::Metric,
                 is_overbank: None,
+                coeff_contraction: None,
+                coeff_expansion: None,
                 blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
@@ -2853,6 +2906,8 @@ mod tests {
                 n_values: vec![0.02],
                 unit_system: UnitSystem::Metric,
                 is_overbank: None,
+                coeff_contraction: None,
+                coeff_expansion: None,
                 blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
@@ -2865,6 +2920,8 @@ mod tests {
                 n_values: vec![0.02],
                 unit_system: UnitSystem::Metric,
                 is_overbank: None,
+                coeff_contraction: None,
+                coeff_expansion: None,
                 blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
@@ -2952,6 +3009,8 @@ mod tests {
             n_values: vec![0.03],
             unit_system: UnitSystem::Metric,
             is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
@@ -2964,6 +3023,8 @@ mod tests {
             n_values: vec![0.03],
             unit_system: UnitSystem::Metric,
             is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
@@ -2976,6 +3037,8 @@ mod tests {
             n_values: vec![0.03],
             unit_system: UnitSystem::Metric,
             is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
@@ -3025,6 +3088,8 @@ mod tests {
             n_values: vec![0.03],
             unit_system: UnitSystem::Metric,
             is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
             blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
@@ -3116,6 +3181,8 @@ mod tests {
             n_values: vec![0.03],
             unit_system: UnitSystem::Metric,
             is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
@@ -3128,6 +3195,8 @@ mod tests {
             n_values: vec![0.03],
             unit_system: UnitSystem::Metric,
             is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
@@ -3140,6 +3209,8 @@ mod tests {
             n_values: vec![0.03],
             unit_system: UnitSystem::Metric,
             is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
@@ -3178,6 +3249,8 @@ mod tests {
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
             is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
@@ -3190,6 +3263,8 @@ mod tests {
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
             is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
@@ -3221,6 +3296,8 @@ mod tests {
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
             is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
@@ -3233,6 +3310,8 @@ mod tests {
             n_values: vec![0.02],
             unit_system: UnitSystem::Metric,
             is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
@@ -3280,6 +3359,8 @@ mod tests {
                     false, false, false, false, true, true, true, true,
                 ]),
                 blocked_obstructions: None,
+                coeff_contraction: None,
+                coeff_expansion: None,
                 ineffective_flow_areas: None,
                 guide_banks: None,
             }
@@ -3337,6 +3418,8 @@ mod tests {
             n_values: vec![0.03],
             unit_system: UnitSystem::Metric,
             is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
             blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
@@ -3902,6 +3985,95 @@ mod tests {
         let warnings = crate::solvers::validate_steady_inputs(&inputs).warnings;
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].contains("approach"));
+    }
+
+    #[test]
+    fn ec_loss_coefficient_uses_per_xs_value_at_higher_velocity_section() {
+        let mut xs_fast = metric_rect_channel(100.0, 0.0);
+        xs_fast.x = vec![0.0, 0.0, 5.0, 5.0]; // narrow => higher velocity
+        xs_fast.coeff_contraction = Some(0.5);
+        xs_fast.coeff_expansion = Some(0.4);
+        let xs_slow = metric_rect_channel(0.0, 0.0);
+
+        let c_contract = crate::geometry::ec_loss_coefficient(
+            true,
+            Some(&xs_fast),
+            0.1,
+            0.3,
+        );
+        assert!((c_contract - 0.5).abs() < 1e-12);
+
+        let c_expand = crate::geometry::ec_loss_coefficient(
+            false,
+            Some(&xs_slow),
+            0.1,
+            0.3,
+        );
+        assert!((c_expand - 0.3).abs() < 1e-12);
+    }
+
+    #[test]
+    fn per_xs_ec_coefficients_raise_upstream_wsel_vs_reach_default() {
+        let xs_ds = metric_rect_channel(0.0, 0.0);
+        let mut xs_us_high = metric_rect_channel(100.0, 0.0);
+        xs_us_high.x = vec![0.0, 0.0, 5.0, 5.0];
+        xs_us_high.coeff_contraction = Some(0.5);
+
+        let mut xs_us_low = xs_us_high.clone();
+        xs_us_low.coeff_contraction = Some(0.1);
+
+        let table_ds = xs_ds.generate_lookup_table(50);
+        let table_us_high = xs_us_high.generate_lookup_table(50);
+        let table_us_low = xs_us_low.generate_lookup_table(50);
+        let q = 15.0;
+        let y_ds = 2.0;
+        let yc = solve_critical_depth_table(&table_us_high, q);
+        let z_us = 0.0;
+        let length = 100.0;
+        let reach_default = 0.1;
+
+        let wsel_high = solve_step(
+            &table_ds,
+            Some(&xs_ds),
+            None,
+            y_ds,
+            &table_us_high,
+            Some(&xs_us_high),
+            None,
+            z_us,
+            yc,
+            q,
+            length,
+            reach_default,
+            0.3,
+            true,
+            false,
+            false,
+        )
+        .expect("high per-XS contraction");
+        let wsel_low = solve_step(
+            &table_ds,
+            Some(&xs_ds),
+            None,
+            y_ds,
+            &table_us_low,
+            Some(&xs_us_low),
+            None,
+            z_us,
+            yc,
+            q,
+            length,
+            reach_default,
+            0.3,
+            true,
+            false,
+            false,
+        )
+        .expect("low per-XS contraction");
+        assert!(
+            wsel_high > wsel_low,
+            "higher contraction coeff at faster XS should increase upstream backwater: high={wsel_high}, low={wsel_low}"
+        );
     }
 }
 

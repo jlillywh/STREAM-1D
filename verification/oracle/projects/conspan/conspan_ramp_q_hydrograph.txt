@@ -1,0 +1,11 @@
+ConSpan mild Q ramp — upstream Flow Hydrograph (48 x 1HOUR)
+Use with Plan 04 sim window 01Jan2000 00:00 -> 03Jan2000 00:00
+
+Hour 0-11:  600 cfs (hold)
+Hour 12-35: linear ramp 600 -> 1000 cfs
+Hour 36-47: 1000 cfs (hold)
+
+Downstream @ RM 20.000: Stage Hydrograph 48 x 30.51 ft
+
+All 48 upstream Q values (cfs), space-separated for paste/reference:
+600 600 600 600 600 600 600 600 600 600 600 600 617.391 634.783 652.174 669.565 686.957 704.348 721.739 739.13 756.522 773.913 791.304 808.696 826.087 843.478 860.87 878.261 895.652 913.043 930.435 947.826 965.217 982.609 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000

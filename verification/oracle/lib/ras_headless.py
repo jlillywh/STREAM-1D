@@ -215,6 +215,37 @@ def wsl_to_windows_path(path: Path) -> str:
     return str(path).replace("\\", "/")
 
 
+def _windows_ras_exe_candidates() -> list[Path]:
+    """Probe common HEC-RAS install locations on native Windows."""
+    if sys.platform != "win32":
+        return []
+    roots = [
+        Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / "HEC" / "HEC-RAS",
+        Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "HEC" / "HEC-RAS",
+    ]
+    version_hint = os.environ.get("HECRAS_VERSION", "").strip()
+    found: list[tuple[tuple[int, ...], Path]] = []
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for child in root.iterdir():
+            if not child.is_dir():
+                continue
+            exe = child / "Ras.exe"
+            if not exe.is_file():
+                continue
+            parts = tuple(int(p) for p in child.name.split(".") if p.isdigit())
+            found.append((parts, exe))
+    if not found:
+        return []
+    if version_hint:
+        matched = [exe for _, exe in found if exe.parent.name.startswith(version_hint)]
+        if matched:
+            return matched
+    found.sort(key=lambda row: row[0], reverse=True)
+    return [exe for _, exe in found]
+
+
 def _resolve_ras_exe(
     *,
     ras_version: str | None = None,
@@ -223,6 +254,9 @@ def _resolve_ras_exe(
     candidate = ras_exe or os.environ.get("HECRAS_RAS_EXE")
     if candidate and Path(candidate).is_file():
         return Path(candidate)
+    for probe in _windows_ras_exe_candidates():
+        if probe.is_file():
+            return probe
     if ras_version:
         from ras_commander import get_ras_exe  # type: ignore[import-not-found]
 
@@ -579,6 +613,113 @@ def _prepare_hdf_for_read(hdf_path: Path) -> tuple[Path, Any | None]:
     return local, tmp
 
 
+_UNSTEADY_WS_PATH = (
+    "Results/Unsteady/Output/Output Blocks/Base Output/"
+    "Unsteady Time Series/Cross Sections/Water Surface"
+)
+_XSEC_LABEL_PATHS = (
+    "Results/Unsteady/Output/Geometry Info/Cross Section Only",
+    "Results/Post Process/Steady/Output/Geometry Info/Cross Section Only",
+)
+
+
+def _require_h5py():
+    try:
+        import h5py  # type: ignore[import-not-found]
+    except ImportError as exc:
+        raise RasHeadlessError(
+            "h5py is required to read HEC-RAS plan HDF without ras-commander.\n"
+            "Install with: pip install h5py"
+        ) from exc
+    return h5py
+
+
+def _decode_hdf_label(value: Any) -> str:
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace").strip()
+    return str(value).strip()
+
+
+def _station_label_parts(label: str) -> tuple[str, str, str]:
+    """Split ``River Reach Station`` label from HDF geometry info."""
+    tokens = label.split()
+    if len(tokens) >= 3:
+        station = tokens[-1]
+        reach = tokens[-2]
+        river = " ".join(tokens[:-2])
+        return river, reach, station
+    return "", "", label
+
+
+def _xsec_rows_by_rm_h5py(
+    hdf_path: Path,
+    *,
+    river: str | None,
+    reach: str | None,
+    time_index: int,
+) -> list[tuple[float, str, str, str, float]]:
+    """Read cross-section WSEL from plan HDF via h5py (no ras-commander)."""
+    h5py = _require_h5py()
+    if not hdf_path.is_file():
+        raise RasHeadlessError(f"HDF not found: {hdf_path}")
+
+    read_path, cleanup = _prepare_hdf_for_read(hdf_path)
+    try:
+        with h5py.File(read_path, "r") as hdf:
+            if _UNSTEADY_WS_PATH not in hdf:
+                raise RasHeadlessError(
+                    f"No unsteady cross-section Water Surface in {hdf_path.name}"
+                )
+            ws = hdf[_UNSTEADY_WS_PATH][()]
+            n_times = int(ws.shape[0])
+            ti = time_index
+            if ti < 0:
+                ti = n_times + ti
+            if ti < 0 or ti >= n_times:
+                raise RasHeadlessError(
+                    f"time index {time_index} out of range for {hdf_path.name} "
+                    f"(n_times={n_times})"
+                )
+
+            labels: list[str] | None = None
+            for label_path in _XSEC_LABEL_PATHS:
+                if label_path in hdf:
+                    labels = [
+                        _decode_hdf_label(v) for v in hdf[label_path][()]
+                    ]
+                    break
+            if not labels:
+                raise RasHeadlessError(
+                    f"No cross-section station labels in {hdf_path.name}"
+                )
+            if ws.shape[1] != len(labels):
+                raise RasHeadlessError(
+                    f"Water Surface columns ({ws.shape[1]}) != station labels ({len(labels)})"
+                )
+
+            rows: list[tuple[float, str, str, str, float]] = []
+            for col, label in enumerate(labels):
+                riv, rch, sta = _station_label_parts(label)
+                if river and riv != river:
+                    continue
+                if reach and rch != reach:
+                    continue
+                try:
+                    rm = _parse_station_rm(sta)
+                except ValueError:
+                    continue
+                rows.append((rm, riv, rch, sta, float(ws[ti, col])))
+            if not rows:
+                raise RasHeadlessError(
+                    f"No cross-section rows matched in {hdf_path.name} "
+                    f"(river={river!r}, reach={reach!r}, time_index={time_index})"
+                )
+            return rows
+    finally:
+        if cleanup is not None:
+            cleanup.cleanup()
+
+
 def extract_terminal_wsel_at_rms(
     hdf_path: Path,
     checkpoints_rm: list[float],
@@ -644,6 +785,32 @@ def extract_terminal_wsel_at_rms(
 
 
 def _xsec_rows_by_rm(
+    hdf_path: Path,
+    *,
+    river: str | None,
+    reach: str | None,
+    time_index: int,
+) -> list[tuple[float, str, str, str, float]]:
+    try:
+        return _xsec_rows_by_rm_ras_commander(
+            hdf_path,
+            river=river,
+            reach=reach,
+            time_index=time_index,
+        )
+    except RasHeadlessError as exc:
+        msg = str(exc).lower()
+        if "ras-commander" in msg or isinstance(exc.__cause__, ImportError):
+            return _xsec_rows_by_rm_h5py(
+                hdf_path,
+                river=river,
+                reach=reach,
+                time_index=time_index,
+            )
+        raise
+
+
+def _xsec_rows_by_rm_ras_commander(
     hdf_path: Path,
     *,
     river: str | None,
@@ -831,6 +998,9 @@ def hecras_available() -> tuple[bool, str]:
     ras_exe = os.environ.get("HECRAS_RAS_EXE")
     if ras_exe and Path(ras_exe).is_file():
         return True, f"ras-commander ok; HECRAS_RAS_EXE={ras_exe}"
+    for probe in _windows_ras_exe_candidates():
+        if probe.is_file():
+            return True, f"ras-commander ok; Ras.exe={probe}"
     try:
         from ras_commander import get_ras_exe  # type: ignore[import-not-found]
 

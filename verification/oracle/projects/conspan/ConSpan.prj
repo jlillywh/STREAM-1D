@@ -1,12 +1,30 @@
 Proj Title=ConSpan Culvert
-Program Version=5.00
-Current Plan=p02
 Default Exp/Contr=0.3,0.1
-SI Units=0
-English Units=1
+Default Flow Tol=0.01
+Default Matrix Solver= 0 
+Default Flow Regime=Subcritical
+Default Theta= 1 
+Default Z Tol= 0.01 
+Default Max Iter= 20 
+Default Cores= 0 
+Default Sediment= 0 
+Default Water Quality= 0 
+Default RAS Mapper= 0 
+Default HEC-RAS Version= 6.00
+Proj File=c:\dummy\ConSpan.prj
+Current Plan=p01
+Current Geom=g01
+Current Unsteady=u01
+Current Sediment=s01
+Current Water Quality=w01
+Units=English
 Geom File=g01
-Geom Title=ConSpan Culvert Geometry
-Unsteady File=u02
-Unsteady Title=ConSpan mild constant Q unsteady
-Plan File=p02
-Plan Title=ConSpan mild unsteady constant Q
+Plan File=p01
+Flow File=f01
+Unsteady File=u01
+Sediment File=s01
+Water Quality File=w01
+BEGIN DESCRIPTION:
+ConSpan arch culvert example — steady plan 01 (f01) + unsteady plan 02 (u02).
+Oracle bundle: verification/oracle/projects/conspan/
+END DESCRIPTION:

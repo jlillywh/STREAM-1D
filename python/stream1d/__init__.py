@@ -34,6 +34,8 @@ class CrossSection:
         is_overbank: Optional[List[bool]] = None,
         blocked_obstructions: Optional[List[Dict[str, List[float]]]] = None,
         ineffective_flow_areas: Optional[Dict[str, List[Dict[str, float]]]] = None,
+        coeff_contraction: Optional[float] = None,
+        coeff_expansion: Optional[float] = None,
     ):
         self.station = station
         self.x = x
@@ -44,6 +46,8 @@ class CrossSection:
         self.is_overbank = is_overbank
         self.blocked_obstructions = blocked_obstructions
         self.ineffective_flow_areas = ineffective_flow_areas
+        self.coeff_contraction = coeff_contraction
+        self.coeff_expansion = coeff_expansion
 
     def to_dict(self) -> dict:
         res = {
@@ -60,6 +64,10 @@ class CrossSection:
             res['blocked_obstructions'] = self.blocked_obstructions
         if self.ineffective_flow_areas is not None:
             res['ineffective_flow_areas'] = self.ineffective_flow_areas
+        if self.coeff_contraction is not None:
+            res['coeff_contraction'] = self.coeff_contraction
+        if self.coeff_expansion is not None:
+            res['coeff_expansion'] = self.coeff_expansion
         return res
 
 
@@ -497,6 +505,7 @@ class UnsteadyInputs:
         bridge_opening_anchor_reach_stations: Optional[List[float]] = None,
         structure_coupling_order: Optional[int] = None,
         unsteady_structure_coupling_mode: Optional[int] = None,
+        unsteady_friction_slope_method: Optional[int] = None,
     ):
         self.cross_sections = cross_sections
         self.initial_wsel = initial_wsel
@@ -600,6 +609,7 @@ class UnsteadyInputs:
         self.bridge_opening_anchor_reach_stations = bridge_opening_anchor_reach_stations or []
         self.structure_coupling_order = structure_coupling_order
         self.unsteady_structure_coupling_mode = unsteady_structure_coupling_mode
+        self.unsteady_friction_slope_method = unsteady_friction_slope_method
 
     def to_dict(self) -> dict:
         res = {
@@ -699,6 +709,8 @@ class UnsteadyInputs:
             res['structure_coupling_order'] = self.structure_coupling_order
         if self.unsteady_structure_coupling_mode is not None:
             res['unsteady_structure_coupling_mode'] = self.unsteady_structure_coupling_mode
+        if self.unsteady_friction_slope_method is not None:
+            res['unsteady_friction_slope_method'] = self.unsteady_friction_slope_method
         if self.downstream_bc_type is not None:
             res['downstream_bc_type'] = self.downstream_bc_type
         if self.downstream_bc_slope is not None:

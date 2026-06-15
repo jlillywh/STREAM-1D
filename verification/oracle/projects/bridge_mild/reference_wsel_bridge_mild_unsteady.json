@@ -1,0 +1,23 @@
+{
+  "source": "STREAM-1D mode 0 terminal WSEL (yarnell bridge mild pulse)",
+  "case": "yarnell",
+  "coupling_mode": 0,
+  "checkpoints": [
+    {
+      "rm": 52.0,
+      "max_wsel_ft": 9.86472734338694
+    },
+    {
+      "rm": 48.0,
+      "max_wsel_ft": 9.856529694432751
+    },
+    {
+      "rm": 25.0,
+      "max_wsel_ft": 9.849817985171612
+    },
+    {
+      "rm": 0.0,
+      "max_wsel_ft": 9.842519685000001
+    }
+  ]
+}

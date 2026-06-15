@@ -27,6 +27,31 @@ class ParsedCrossSection:
 
 
 @dataclass
+class ParsedCulvert:
+    river: str
+    reach: str
+    rm: float
+    hec_shape: int
+    rise: float
+    span: float
+    length: float
+    roughness_n: float
+    entrance_loss_coeff: float
+    exit_loss_coeff: float
+    chart: int
+    scale: int
+    z_up: float
+    z_down: float
+    num_barrels: int = 1
+    roughness_n_bottom: float | None = None
+    depth_bottom_n: float = 0.0
+    depth_blocked: float = 0.0
+    distance_to_us_xs: float = 0.0
+    crest_elev: float | None = None
+    name: str = ""
+
+
+@dataclass
 class ParsedBridge:
     river: str
     reach: str
@@ -50,11 +75,89 @@ class ParsedBridge:
 class ParsedGeometry:
     cross_sections: list[ParsedCrossSection]
     bridge: ParsedBridge | None
+    culverts: list[ParsedCulvert] = field(default_factory=list)
     unit_system: str = "USCustomary"
 
 
 def _split_floats(line: str) -> list[float]:
     return [float(t) for t in line.split() if t.strip()]
+
+
+def _parse_culvert_numeric_fields(payload: str) -> tuple[list[float], list[str]]:
+    """Split Culvert= payload into leading numeric fields and trailing tokens."""
+    parts = [p.strip() for p in payload.split(",")]
+    nums: list[float] = []
+    rest: list[str] = []
+    for part in parts:
+        if not nums and not part:
+            continue
+        try:
+            nums.append(float(part))
+        except ValueError:
+            rest.append(part)
+            rest.extend(parts[parts.index(part) + 1 :])
+            break
+    return nums, rest
+
+
+def _is_barrel_station_line(line: str) -> bool:
+    stripped = line.strip()
+    if not stripped or stripped[0] not in "0123456789.-":
+        return False
+    try:
+        _split_floats(stripped)
+        return True
+    except ValueError:
+        return False
+
+
+def _parse_culvert_line(line: str, ctx: ParsedBridge) -> ParsedCulvert | None:
+    is_multiple = line.startswith("Multiple Barrel Culv=")
+    keyword = "Multiple Barrel Culv" if is_multiple else "Culvert"
+    payload = line.split("=", 1)[1]
+    nums, rest = _parse_culvert_numeric_fields(payload)
+    min_nums = 12 if is_multiple else 13
+    if len(nums) < min_nums:
+        return None
+    depth_blocked = 0.0
+    distance_to_us = 0.0
+    if len(rest) >= 2:
+        try:
+            depth_blocked = float(rest[-2])
+            distance_to_us = float(rest[-1])
+        except ValueError:
+            pass
+    crest = None
+    if ctx.deck_low_elevations:
+        crest = min(ctx.deck_low_elevations)
+
+    if is_multiple:
+        num_barrels = int(nums[11]) if len(nums) > 11 else 1
+        z_down = nums[10]
+    else:
+        num_barrels = 1
+        z_down = nums[11]
+
+    return ParsedCulvert(
+        river=ctx.river,
+        reach=ctx.reach,
+        rm=ctx.rm,
+        hec_shape=int(nums[0]),
+        rise=nums[1],
+        span=nums[2],
+        length=nums[3],
+        roughness_n=nums[4],
+        entrance_loss_coeff=nums[5],
+        exit_loss_coeff=nums[6],
+        chart=int(nums[7]),
+        scale=int(nums[8]),
+        z_up=nums[9],
+        z_down=z_down,
+        num_barrels=max(1, num_barrels),
+        crest_elev=crest,
+        depth_blocked=depth_blocked,
+        distance_to_us_xs=distance_to_us,
+    )
 
 
 def parse_g01(path: Path) -> ParsedGeometry:
@@ -65,6 +168,7 @@ def parse_g01(path: Path) -> ParsedGeometry:
     current_reach = "Default Reach"
     cross_sections: list[ParsedCrossSection] = []
     bridge: ParsedBridge | None = None
+    culverts: list[ParsedCulvert] = []
 
     current_xs: ParsedCrossSection | None = None
     parse_state: str | None = None
@@ -75,6 +179,7 @@ def parse_g01(path: Path) -> ParsedGeometry:
     description_lines: list[str] = []
 
     current_bridge: ParsedBridge | None = None
+    pending_culvert: ParsedCulvert | None = None
     bridge_section: str | None = None
     pier_block_stations: list[float] = []
     deck_parsed = False
@@ -111,6 +216,13 @@ def parse_g01(path: Path) -> ParsedGeometry:
             if current_xs is not None:
                 cross_sections.append(current_xs)
                 current_xs = None
+            if pending_culvert is not None:
+                culverts.append(pending_culvert)
+                pending_culvert = None
+            if current_bridge is not None:
+                bridge = current_bridge
+                current_bridge = None
+                bridge_section = None
             parse_state = None
             description_lines = []
 
@@ -131,7 +243,7 @@ def parse_g01(path: Path) -> ParsedGeometry:
                     n_stations=[],
                     n_values=[],
                 )
-            elif xs_type == 3:
+            elif xs_type in (2, 3):
                 current_bridge = ParsedBridge(
                     river=current_river,
                     reach=current_reach,
@@ -176,8 +288,22 @@ def parse_g01(path: Path) -> ParsedGeometry:
                 duplicate_deck_remaining = 3
                 continue
             if duplicate_deck_remaining > 0:
-                duplicate_deck_remaining -= 1
-                continue
+                if line.startswith(
+                    (
+                        "Culvert=",
+                        "Multiple Barrel Culv=",
+                        "Culvert Bottom",
+                        "BC ",
+                        "BR Coef=",
+                        "WSPro=",
+                        "Pier Skew",
+                        "Bridge Culvert",
+                    )
+                ):
+                    duplicate_deck_remaining = 0
+                else:
+                    duplicate_deck_remaining -= 1
+                    continue
             if line.startswith("Pier Skew"):
                 m = re.search(r",(\d+(?:\.\d+)?),\s*2\s*,", line)
                 if m:
@@ -204,8 +330,39 @@ def parse_g01(path: Path) -> ParsedGeometry:
                     current_bridge.orifice_coeff = float(nums[1])
                 if pier_block_stations:
                     current_bridge.pier_stations = pier_block_stations
+                if pending_culvert is not None:
+                    culverts.append(pending_culvert)
+                    pending_culvert = None
                 bridge = current_bridge
                 current_bridge = None
+                continue
+            if line.startswith(("Culvert=", "Multiple Barrel Culv=")) and current_bridge is not None:
+                parsed = _parse_culvert_line(line, current_bridge)
+                if parsed is not None:
+                    pending_culvert = parsed
+                continue
+            if pending_culvert is not None and _is_barrel_station_line(line):
+                station_values = _split_floats(line)
+                pair_count = len(station_values) // 2
+                if pair_count > pending_culvert.num_barrels:
+                    pending_culvert.num_barrels = pair_count
+                continue
+            if pending_culvert is not None and line.startswith("Culvert Bottom n="):
+                try:
+                    pending_culvert.roughness_n_bottom = float(line.split("=", 1)[1].strip())
+                except ValueError:
+                    pass
+                continue
+            if pending_culvert is not None and line.startswith("Culvert Bottom Depth="):
+                try:
+                    pending_culvert.depth_bottom_n = float(line.split("=", 1)[1].strip())
+                except ValueError:
+                    pass
+                continue
+            if line.startswith("Type RM") and pending_culvert is not None:
+                culverts.append(pending_culvert)
+                pending_culvert = None
+                i -= 1
                 continue
             if line.startswith("WSPro="):
                 current_bridge.low_flow_method = "wspro"
@@ -284,6 +441,8 @@ def parse_g01(path: Path) -> ParsedGeometry:
 
     if current_xs is not None:
         cross_sections.append(current_xs)
+    if pending_culvert is not None:
+        culverts.append(pending_culvert)
     if current_bridge is not None:
         bridge = current_bridge
 
@@ -291,7 +450,7 @@ def parse_g01(path: Path) -> ParsedGeometry:
         bridge.pier_stations = pier_block_stations
 
     _assign_reach_stations(cross_sections)
-    return ParsedGeometry(cross_sections=cross_sections, bridge=bridge)
+    return ParsedGeometry(cross_sections=cross_sections, bridge=bridge, culverts=culverts)
 
 
 def _assign_reach_stations(cross_sections: list[ParsedCrossSection]) -> None:
@@ -357,4 +516,11 @@ def parsed_xs_to_dict(xs: ParsedCrossSection) -> dict:
     overbank = _is_overbank_flags(xs)
     if overbank is not None:
         out["is_overbank"] = overbank
+    out["coeff_expansion"] = xs.coeff_expansion
+    out["coeff_contraction"] = xs.coeff_contraction
+    from .culvert_mapper import parsed_xs_ineffective_flow_areas
+
+    ineff = parsed_xs_ineffective_flow_areas(xs)
+    if ineff:
+        out["ineffective_flow_areas"] = ineff
     return out

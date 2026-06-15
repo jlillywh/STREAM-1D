@@ -11,31 +11,29 @@
   "scope": {
     "single_reach": true,
     "structures": ["culvert"],
-    "notes": "Arch culvert at RM 20.237; BU/BD embankment XS at 20.238 / 20.227. Low chord not exceeded at 50 yr Q."
+    "notes": "Arch culvert at RM 20.237; BU/BD embankment XS at 20.238 / 20.227."
   },
   "linked_project": {
     "directory": "projects/conspan",
     "geometry": "ConSpan.g01",
-    "unsteady_flow": "conspan.u02",
-    "plan": "conspan.p02",
-    "plan_number": "02",
-    "notes": "Legacy ConSpan bundle + conspan.u02/p02 for unsteady mild case."
+    "unsteady_flow": "ConSpan.u01",
+    "plan": "ConSpan.p03",
+    "plan_number": "03",
+    "validate_files": false,
+    "notes": "Constant-Q reference from user p03/u01 HDF; bundled u01 optional."
   },
   "stream1d": {
     "mapper": "conspan_mapper.build_conspan_unsteady_inputs",
     "coupling_mode": 0,
     "structure_coupling_order": 0,
-    "notes": "Fixture geometry + culvert from conspan_project_12.json; mode 0 post-step; downstream-first structure order (default 0)."
+    "notes": "Fixture geometry from conspan_project_12.json; mode 0 post-step."
   },
   "reference": {
     "source": "linked_json_peaks",
     "file": "projects/conspan/reference_wsel_peaks_unsteady.json",
-    "profile": "50 yr",
-    "fallback_conspan_profile": true,
-    "fallback_u02_observed_hwm": true,
+    "certification_target": "hdf_terminal",
     "live_ras_optional": true,
-    "certification_target": "hdf_timeseries",
-    "notes": "Bootstrap reference from ConSpan 50 yr steady (Q=1000 cfs). Refresh from plan HDF via run_ras_reference.py."
+    "notes": "Terminal WSEL from plan p03/p08 constant-Q terminal (Q=1000)."
   },
   "compare": {
     "quantity": "terminal_wsel",

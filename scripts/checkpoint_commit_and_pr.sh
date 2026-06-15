@@ -46,7 +46,7 @@ else
 
 - **API v32** — Optional bridge ice/debris modifiers (opening blockage, pier debris, ice thickness, deck ice) with WASM metadata and unit tests.
 - **Phase 5.0 (R1–R5)** — Behavior-neutral bridge module refactor: split `bridge.rs` / `bridge_tests.rs` into `src/solvers/bridge/`, extract `reach_coupling`, `unsteady/structure_coupling`, and `bridge/unsteady_coupling` for clearer boundaries before implicit unsteady coupling.
-- **Phase 5.1 design** — `docs/development/unsteady_implicit_bridge_coupling.md` (Jacobian vs explicit iteration, staging through 5.2–5.5).
+- **Phase 5.1+ coupling** — `docs/development/unsteady_structure_coupling.md` (modes 0–4, implicit eligibility, diagnostics).
 
 No physics change in the refactor commits; existing bridge/culvert/unsteady behavior preserved.
 

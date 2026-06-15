@@ -10,7 +10,7 @@ Flow Hydrograph= 48
     1000    1000    1000    1000    1000    1000    1000    1000    1000    1000
     1000    1000    1000    1000    1000    1000    1000    1000    1000    1000
     1000    1000    1000    1000    1000    1000    1000    1000
-Boundary Location=Spring Creek    ,Culvrt Reach    ,20.0    ,        ,                ,                ,                
+Boundary Location=Spring Creek    ,Culvrt Reach    ,20.0  ,        ,                ,                ,                
 Stage Hydrograph= 48 
     30.51    30.51    30.51    30.51    30.51    30.51    30.51    30.51    30.51    30.51
     30.51    30.51    30.51    30.51    30.51    30.51    30.51    30.51    30.51    30.51
@@ -18,7 +18,15 @@ Stage Hydrograph= 48
     30.51    30.51    30.51    30.51    30.51    30.51    30.51    30.51    30.51    30.51
     30.51    30.51    30.51    30.51    30.51    30.51    30.51    30.51
 Observed HWM=Spring Creek    ,Culvrt Reach    ,20.535  ,,33.72
-Observed HWM=Spring Creek    ,Culvrt Reach    ,20.238  ,,32.92
-Observed HWM=Spring Creek    ,Culvrt Reach    ,20.227  ,,31.68
-Observed HWM=Spring Creek    ,Culvrt Reach    ,20.208  ,,31.6
-Observed HWM=Spring Creek    ,Culvrt Reach    ,20.095  ,,31.0
+Observed HWM=Spring Creek    ,Culvrt Reach ,20.2    ,,33.0186
+Observed HWM=Spring Creek    ,Culvrt Reach ,20.2    ,,31.6492
+Observed HWM=Spring Creek    ,Culvrt Reach ,20.2    ,,31.5907
+Observed HWM=Spring Creek    ,Culvrt Reach ,20.1    ,,30.9982
+Observed HWM=Spring Creek    ,Culvrt Reach ,20.2    ,,33.0186
+Observed HWM=Spring Creek    ,Culvrt Reach ,20.2    ,,31.6492
+Observed HWM=Spring Creek    ,Culvrt Reach ,20.2    ,,31.5907
+Observed HWM=Spring Creek    ,Culvrt Reach ,20.1    ,,30.9982
+Observed HWM=Spring Creek    ,Culvrt Reach ,20.2    ,,33.0186
+Observed HWM=Spring Creek    ,Culvrt Reach ,20.2    ,,31.6492
+Observed HWM=Spring Creek    ,Culvrt Reach ,20.2    ,,31.5907
+Observed HWM=Spring Creek    ,Culvrt Reach ,20.1    ,,30.9982

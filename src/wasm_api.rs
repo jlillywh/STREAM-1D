@@ -3,7 +3,7 @@
 use serde::Serialize;
 
 /// API contract version — increment when SteadyInputs / SteadyResult fields change.
-pub const API_VERSION: u32 = 35;
+pub const API_VERSION: u32 = 36;
 
 /// Engine package version (keep in sync with `Cargo.toml`).
 pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -418,11 +418,27 @@ pub fn build_api_metadata() -> WasmApiMetadata {
                 name: "HybridImplicit".to_string(),
                 description: "Hybrid coupling: implicit Preissmann residuals where eligible; explicit post-step fallback elsewhere (production mode)".to_string(),
             },
+            EnumEntry {
+                code: 3,
+                name: "MonolithicNewton".to_string(),
+                description: "Convergent monolithic Newton: culvert HW + approach backwater in Preissmann each step (experimental)".to_string(),
+            },
+            EnumEntry {
+                code: 4,
+                name: "QuasiSteadyParticular".to_string(),
+                description: "Quasi-steady particular + perturbation: steady profile re-anchor each step with hybrid implicit structure coupling".to_string(),
+            },
         ],
         unsteady_structure_coupling_outputs: vec![
             "structure_coupling_converged".to_string(),
             "structure_implicit_interval_count".to_string(),
             "structure_explicit_fallback_count".to_string(),
+            "monolithic_newton_converged".to_string(),
+            "monolithic_newton_iterations".to_string(),
+            "monolithic_newton_initial_residual".to_string(),
+            "monolithic_newton_max_residual".to_string(),
+            "monolithic_newton_momentum_residual".to_string(),
+            "monolithic_newton_continuity_residual".to_string(),
         ],
     }
 }
@@ -436,7 +452,7 @@ mod tests {
     fn test_api_metadata_serializes() {
         let json = serde_json::to_string(&build_api_metadata()).unwrap();
         assert!(json.contains("culvert_inlet_types"));
-        assert!(json.contains("\"api_version\":35"));
+        assert!(json.contains("\"api_version\":36"));
         assert!(json.contains("structure_coupling_orders"));
         assert!(json.contains("unsteady_structure_coupling_modes"));
         assert!(json.contains("unsteady_structure_coupling_outputs"));

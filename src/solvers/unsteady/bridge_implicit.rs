@@ -255,7 +255,7 @@ pub(crate) fn bridge_implicit_post_step_satisfied(
     y_metric: &[f64],
     q_metric: &[f64],
 ) -> bool {
-    if inputs.unsteady_structure_coupling_mode != Some(2) {
+    if !super::culvert_implicit::unsteady_coupling_is_implicit(inputs.unsteady_structure_coupling_mode) {
         return false;
     }
     let ctx = build_bridge_implicit_context(

@@ -1,0 +1,8 @@
+River: "Simple Creek"   Reach: "Trapezoid Reach"   RS:3.0                       
+     - Station data is not in increasing order, stationing needs to maintain (vertical walls) or increase. At point(s): Sta: 3.402823E+38 < 32 pt#: 5-6
+River: "Simple Creek"   Reach: "Trapezoid Reach"   RS:2.0                       
+     - Station data is not in increasing order, stationing needs to maintain (vertical walls) or increase. At point(s): Sta: 3.402823E+38 < 32 pt#: 5-6
+River: "Simple Creek"   Reach: "Trapezoid Reach"   RS:1.0                       
+     - Station data is not in increasing order, stationing needs to maintain (vertical walls) or increase. At point(s): Sta: 3.402823E+38 < 32 pt#: 5-6
+River: "Simple Creek"   Reach: "Trapezoid Reach"   RS:0.0                       
+     - Station data is not in increasing order, stationing needs to maintain (vertical walls) or increase. At point(s): Sta: 3.402823E+38 < 32 pt#: 5-6

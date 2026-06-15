@@ -28,11 +28,14 @@
     "notes": "Hybrid implicit inlet-control culvert (ConSpan arch eligible); explicit fallback for outlet/overtopping."
   },
   "reference": {
-    "source": "linked_conspan_profile",
+    "source": "linked_json_peaks",
+    "file": "projects/conspan/reference_wsel_peaks_unsteady.json",
     "profile": "50 yr",
+    "fallback_conspan_profile": true,
     "fallback_u02_observed_hwm": true,
     "live_ras_optional": true,
-    "notes": "Steady 50 yr proxy until HDF; mode 2 should improve upstream drift vs mode 0 without regressing checkpoints."
+    "certification_target": "hdf_timeseries",
+    "notes": "Same HEC-RAS plan 03 HDF reference as mode 0 (Chunk 4)."
   },
   "compare": {
     "quantity": "terminal_wsel",

@@ -11,6 +11,9 @@ import stream1d as st
 from .scenario import LinkedScenario
 
 
+from .culvert_mapper import culvert_fields_from_fixture_rows
+
+
 def _build_cross_sections(project: dict[str, Any]) -> list[st.CrossSection]:
     rows: list[st.CrossSection] = []
     for xs in project["geometry_data"]:
@@ -29,23 +32,7 @@ def _build_cross_sections(project: dict[str, Any]) -> list[st.CrossSection]:
 
 
 def _build_culvert_fields(project: dict[str, Any]) -> dict[str, Any]:
-    culverts = project.get("culvert_stations", [])
-    return {
-        "culvert_stations": [float(c["station"]) for c in culverts],
-        "culvert_shape_types": [int(c["shape_type"]) for c in culverts],
-        "culvert_spans": [float(c["span"]) for c in culverts],
-        "culvert_rises": [float(c["rise"]) for c in culverts],
-        "culvert_roughness_ns": [float(c["roughness_n"]) for c in culverts],
-        "culvert_lengths": [float(c["length"]) for c in culverts],
-        "culvert_entrance_loss_coeffs": [float(c["entrance_loss_coeff"]) for c in culverts],
-        "culvert_exit_loss_coeffs": [float(c["exit_loss_coeff"]) for c in culverts],
-        "culvert_barrels": [int(c.get("num_barrels", 1)) for c in culverts],
-        "culvert_roughness_n_bottoms": [
-            float(c.get("roughness_n_bottom", c["roughness_n"])) for c in culverts
-        ],
-        "culvert_depth_bottom_ns": [float(c.get("depth_bottom_n", 0.0)) for c in culverts],
-        "culvert_depth_blockeds": [float(c.get("depth_blocked", 0.0)) for c in culverts],
-    }
+    return culvert_fields_from_fixture_rows(project.get("culvert_stations", []))
 
 
 def load_project_bundle(scenario: LinkedScenario) -> tuple[dict[str, Any], dict[str, Any]]:

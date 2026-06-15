@@ -31,6 +31,30 @@ pub struct CrossSection {
     /// Optional guide banks on this cut (approach / departure); reach lateral `x` frame.
     #[serde(default)]
     pub guide_banks: Option<crate::geometry::GuideBanks>,
+    #[serde(default)]
+    pub coeff_contraction: Option<f64>,
+    #[serde(default)]
+    pub coeff_expansion: Option<f64>,
+}
+
+pub const DEFAULT_COEFF_CONTRACTION: f64 = 0.1;
+pub const DEFAULT_COEFF_EXPANSION: f64 = 0.3;
+
+pub fn ec_loss_coefficient(
+    contracting: bool,
+    xs_higher_velocity: Option<&CrossSection>,
+    reach_contraction: f64,
+    reach_expansion: f64,
+) -> f64 {
+    if contracting {
+        xs_higher_velocity
+            .and_then(|section| section.coeff_contraction)
+            .unwrap_or(reach_contraction)
+    } else {
+        xs_higher_velocity
+            .and_then(|section| section.coeff_expansion)
+            .unwrap_or(reach_expansion)
+    }
 }
 
 /// Blocked-obstruction polyline. See `docs/reference/equations.md` §H0.
@@ -305,6 +329,8 @@ impl CrossSection {
                 .guide_banks
                 .as_ref()
                 .map(|g| g.to_metric(self.unit_system)),
+            coeff_contraction: self.coeff_contraction,
+            coeff_expansion: self.coeff_expansion,
         }
     }
 
@@ -1060,6 +1086,8 @@ mod tests {
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let table1 = xs1.generate_lookup_table(10);
 
@@ -1075,6 +1103,8 @@ mod tests {
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let table2 = xs2.generate_lookup_table(10);
 
@@ -1107,6 +1137,8 @@ mod tests {
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
 
         // Generating a table
@@ -1166,6 +1198,8 @@ mod tests {
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         // Single block inactive at WSEL 2.5 (activation 2.0); multi blocks left of 20 and 30.
         let single = IneffectiveFlowAreas::from_block_pairs(&[30.0], &[2.0], &[], &[]).unwrap();
@@ -1202,6 +1236,8 @@ mod tests {
                 IneffectiveFlowAreas::from_block_pairs(&[30.0], &[3.0], &[], &[]).unwrap(),
             ),
             guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let table = xs.generate_lookup_table(50);
         let row = super::row_at_elevation(&table, &xs, 2.0, None, None);
@@ -1226,6 +1262,8 @@ mod tests {
                 IneffectiveFlowAreas::from_block_pairs(&[30.0], &[3.0], &[], &[]).unwrap(),
             ),
             guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let table = xs.generate_lookup_table(50);
         let wsel = 2.0;
@@ -1264,6 +1302,8 @@ mod tests {
                 IneffectiveFlowAreas::from_block_pairs(&[30.0], &[3.0], &[], &[]).unwrap(),
             ),
             guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let table = xs.generate_lookup_table(50);
         let wsel = 2.0;
@@ -1299,6 +1339,8 @@ mod tests {
             blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let row_a = xs.compute_properties_at_elevation_with_ineffective(2.5, Some(&a));
         let row_merged = xs.compute_properties_at_elevation_with_ineffective(2.5, Some(&merged));
@@ -1319,6 +1361,8 @@ mod tests {
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let ineffective =
             IneffectiveFlowAreas::from_block_pairs(&[30.0], &[3.0], &[], &[]).unwrap();
@@ -1346,6 +1390,8 @@ mod tests {
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let blocked = CrossSection {
             blocked_obstructions: Some(vec![BlockedObstruction {
@@ -1380,6 +1426,8 @@ mod tests {
             }]),
             ineffective_flow_areas: None,
         guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let row_low = xs.compute_properties_at_elevation(2.5);
         let row_high = xs.compute_properties_at_elevation(3.5);
@@ -1401,6 +1449,8 @@ mod tests {
             blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let blocked = CrossSection {
             blocked_obstructions: Some(vec![BlockedObstruction {
@@ -1454,6 +1504,8 @@ mod tests {
             blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
         let guide_banks = GuideBanks {
             left_toe: Some(GuideBankToe {
@@ -1500,6 +1552,8 @@ mod tests {
             blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
         };
 
         let table = xs.generate_lookup_table(50);

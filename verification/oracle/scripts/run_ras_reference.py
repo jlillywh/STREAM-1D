@@ -218,7 +218,7 @@ def main() -> int:
         return 0 if ok else 2
 
     linked = scenario.raw["linked_project"]
-    plan_key = (args.plan or str(linked.get("plan_number", "01"))).zfill(2)
+    plan_key = (args.plan or scenario.plan_number()).zfill(2)
     project_dir = scenario.linked_project_dir()
     ref_path = _reference_json_path(scenario)
     compare = scenario.raw.get("compare", {})

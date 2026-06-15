@@ -23,9 +23,11 @@ fn approach_xs(station: f64) -> CrossSection {
         n_values: vec![0.03],
         unit_system: UnitSystem::Metric,
         is_overbank: None,
+        coeff_contraction: None,
+        coeff_expansion: None,
         blocked_obstructions: None,
         ineffective_flow_areas: None,
-    guide_banks: None,
+        guide_banks: None,
     }
 }
 
@@ -38,9 +40,11 @@ fn bu_face(station: f64, bed: f64) -> CrossSection {
         n_values: vec![0.03],
         unit_system: UnitSystem::Metric,
         is_overbank: None,
+        coeff_contraction: None,
+        coeff_expansion: None,
         blocked_obstructions: None,
         ineffective_flow_areas: None,
-    guide_banks: None,
+        guide_banks: None,
     }
 }
 

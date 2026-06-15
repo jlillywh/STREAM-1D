@@ -771,7 +771,11 @@
       "num_barrels": 1,
       "roughness_n_bottom": 0.03,
       "depth_bottom_n": 0.5,
-      "depth_blocked": 0.0
+      "depth_blocked": 0.0,
+      "z_up": 25.1,
+      "z_down": 25.0,
+      "inlet_type": 20,
+      "crest_elev": 33.7
     }
   ],
   "bridge_data": [],
