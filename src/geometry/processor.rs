@@ -1646,5 +1646,99 @@ mod tests {
         assert!((row.perimeter - expected_perimeter_m).abs() < 1e-4, "Perimeter: expected {}, got {}", expected_perimeter_m, row.perimeter);
         assert!((row.top_width - expected_top_width_m).abs() < 1e-4, "Top width: expected {}, got {}", expected_top_width_m, row.top_width);
     }
+
+    #[test]
+    fn survey_edge_walls_increase_perimeter_above_berm() {
+        let xs = CrossSection {
+            station: 0.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![8.0, 0.0, 0.0, 8.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.03],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+        };
+        let table = xs.generate_lookup_table(30);
+        let below = table.interpolate(3.0);
+        let above = table.interpolate(9.0);
+        assert!(above.perimeter > below.perimeter + 1.5);
+        assert!((above.top_width - below.top_width).abs() < 1e-3);
+    }
+
+    #[test]
+    fn survey_edge_walls_subdivided_assign_to_channel_and_overbanks() {
+        let xs = CrossSection {
+            station: 0.0,
+            x: vec![0.0, 0.0, 10.0, 10.0, 30.0, 30.0, 40.0, 40.0],
+            y: vec![8.0, 0.0, 0.0, 8.0, 0.0, 8.0, 0.0, 8.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.03],
+            unit_system: UnitSystem::Metric,
+            is_overbank: Some(vec![
+                false, false, false, false, true, true, true, true,
+            ]),
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+        };
+        let table = xs.generate_lookup_table(40);
+        let below = table.interpolate(3.0);
+        let above = table.interpolate(9.0);
+        assert!(above.perimeter > below.perimeter);
+        assert!(above.area > below.area);
+    }
+
+    #[test]
+    fn geometry_table_extrapolation_scales_conveyance_above_survey() {
+        let xs = CrossSection {
+            station: 0.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![5.0, 0.0, 0.0, 5.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+        };
+        let table = xs.generate_lookup_table(20);
+        let last = table.rows.last().expect("lookup table");
+        let above = table.interpolate(last.elevation + 2.0);
+        assert!(above.area > last.area);
+        assert!(above.perimeter > last.perimeter + 3.5);
+        assert!(
+            above.conveyance > last.conveyance,
+            "conveyance should grow above survey top, not freeze"
+        );
+    }
+
+    #[test]
+    fn geometry_table_extrapolation_handles_degenerate_last_row() {
+        let table = GeometryTable {
+            rows: vec![GeometryRow {
+                elevation: 1.0,
+                area: 0.0,
+                perimeter: 0.0,
+                top_width: 5.0,
+                conveyance: 12.0,
+                channel_area: 0.0,
+                active_area: 0.0,
+                active_channel_area: 0.0,
+            }],
+        };
+        let above = table.interpolate(3.0);
+        assert!((above.conveyance - 12.0).abs() < 1e-9);
+        assert!((above.area - 10.0).abs() < 1e-9);
+    }
 }
 
