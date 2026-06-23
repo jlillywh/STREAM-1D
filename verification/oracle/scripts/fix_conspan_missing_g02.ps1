@@ -7,7 +7,7 @@
 #   .\fix_conspan_missing_g02.ps1
 # Or from repo:
 #   powershell -File verification/oracle/scripts/fix_conspan_missing_g02.ps1 `
-#     -ProjectDir "C:\Users\jason\Documents\hecras_testing\ConSpan"
+#     -ProjectDir "$env:USERPROFILE\Documents\hecras_testing\ConSpan"
 
 param(
     [string]$ProjectDir = (Split-Path -Parent $MyInvocation.MyCommand.Path)

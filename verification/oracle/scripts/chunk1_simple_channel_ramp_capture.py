@@ -3,11 +3,9 @@
 Extract WSEL timeseries reference from HEC-RAS Plan 04/05 HDF for ramp scenarios.
 
 Usage:
-  py -3 verification/oracle/scripts/chunk1_simple_channel_ramp_capture.py --plan 04 \\
-    --hdf C:\\Users\\jason\\Documents\\hecras_testing\\simple_channel\\simple_channel.p04.hdf
+  py -3 verification/oracle/scripts/chunk1_simple_channel_ramp_capture.py --plan 04
 
-  py -3 verification/oracle/scripts/chunk1_simple_channel_ramp_capture.py --plan 05 \\
-    --hdf ...\\simple_channel.p05.hdf --verify
+  py -3 verification/oracle/scripts/chunk1_simple_channel_ramp_capture.py --plan 05 --verify
 """
 
 from __future__ import annotations

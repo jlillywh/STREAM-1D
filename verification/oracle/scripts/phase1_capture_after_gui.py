@@ -14,6 +14,7 @@ from pathlib import Path
 ORACLE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ORACLE))
 
+from lib.repo_paths import repo_root_for_wsl  # noqa: E402
 from lib.stage_paths import hecras_stage_dir  # noqa: E402
 
 ROOT = ORACLE.parents[1]
@@ -37,25 +38,6 @@ def _stream1d_available() -> bool:
         return False
 
 
-def _repo_root_for_wsl(root: Path) -> str:
-    text = str(root.resolve()).replace("/", "\\")
-    marker = "\\wsl.localhost\\"
-    lower = text.lower()
-    if marker in lower:
-        rest = text[lower.index(marker) + len(marker) :]
-        _distro, *parts = rest.split("\\")
-        return "/" + "/".join(p for p in parts if p)
-    result = subprocess.run(
-        ["wsl", "wslpath", "-u", text],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode == 0 and result.stdout.strip():
-        return result.stdout.strip()
-    return "/home/jason/Lillywhite_Consulting/lillywhite_engine/STREAM-1D"
-
-
 def _run_verify(scenario: Path) -> int:
     script = ORACLE / "scripts" / "run_ras_reference.py"
     if _stream1d_available():
@@ -70,7 +52,7 @@ def _run_verify(scenario: Path) -> int:
             ]
         )
 
-    wsl_root = _repo_root_for_wsl(ROOT)
+    wsl_root = repo_root_for_wsl(ROOT)
     rel_scenario = scenario.relative_to(ORACLE).as_posix()
     wsl_cmd = (
         f"cd {shlex.quote(wsl_root)} && "

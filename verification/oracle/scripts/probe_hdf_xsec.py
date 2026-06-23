@@ -13,7 +13,9 @@ except ImportError:
     subprocess.check_call([sys.executable, "-m", "pip", "install", "h5py", "-q", "--break-system-packages"])
     import h5py
 
-hdf = Path(sys.argv[1] if len(sys.argv) > 1 else "/mnt/c/Users/jason/Documents/hecras_testing/ConSpan/ConSpan.p08.hdf")
+ORACLE = Path(__file__).resolve().parents[1]
+DEFAULT_HDF = ORACLE / "projects" / "conspan" / "ConSpan.p08.hdf"
+hdf = Path(sys.argv[1] if len(sys.argv) > 1 else DEFAULT_HDF)
 with h5py.File(hdf, "r") as f:
     hits = []
     def visit(name, obj):

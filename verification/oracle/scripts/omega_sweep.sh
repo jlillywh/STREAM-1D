@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-ROOT=/home/jason/Lillywhite_Consulting/lillywhite_engine/STREAM-1D
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 FILE="$ROOT/src/solvers/unsteady/culvert_implicit.rs"
 SCENARIO="$ROOT/verification/oracle/scenarios/conspan_unsteady_ramp_matrix.json"
 OUT="$ROOT/verification/oracle/omega_sweep_results.tsv"

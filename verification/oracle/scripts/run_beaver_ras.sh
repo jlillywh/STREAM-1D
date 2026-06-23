@@ -46,7 +46,7 @@ fi
 # Kill stale HEC-RAS before re-run (WSL — note .exe suffix):
 #   taskkill.exe /F /IM Ras.exe /IM RasPlotDriver.exe /IM PipeServer.exe
 # Reset polluted stage folder if a prior GUI run corrupted beaver.prj:
-#   rm -rf "/mnt/c/Users/jason/Documents/hecras_testing/beaver"
+#   rm -rf "$USERPROFILE/Documents/hecras_testing/beaver"
 # WSL now uses Windows ras-commander by default (not Ras.exe -c).
 # Legacy batch path: HECRAS_USE_RAS_EXE_BATCH=1 bash verification/oracle/scripts/run_beaver_ras.sh
 export HECRAS_RUN_TIMEOUT_SEC="${HECRAS_RUN_TIMEOUT_SEC:-3600}"

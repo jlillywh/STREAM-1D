@@ -1,9 +1,7 @@
 # Run simple channel HEC-RAS parity from Windows Python (recommended if WSL automation fails).
 #
-# Usage (PowerShell):
-#   cd \\wsl.localhost\Ubuntu\home\jason\Lillywhite_Consulting\lillywhite_engine\STREAM-1D
-#   .\.venv\Scripts\Activate.ps1
-#   pip install ras-commander
+# Usage (PowerShell, from repository root):
+#   $env:HECRAS_RAS_EXE = "C:\Program Files (x86)\HEC\HEC-RAS\7.0.1\Ras.exe"
 #   .\verification\oracle\scripts\run_simple_channel_hecras_parity.ps1
 
 param(

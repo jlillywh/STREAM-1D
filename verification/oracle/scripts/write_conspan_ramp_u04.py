@@ -9,7 +9,7 @@ Examples:
   python3 verification/oracle/scripts/write_conspan_ramp_u04.py
 
   python3 verification/oracle/scripts/write_conspan_ramp_u04.py \\
-    --output-dir /mnt/c/Users/jason/Documents/hecras_testing/ConSpan \\
+    --output-dir "$HOME/Documents/hecras_testing/ConSpan" \\
     --flow-name ConSpan.u04 --write-plan
 """
 
@@ -24,6 +24,7 @@ ROOT = ORACLE.parents[1]
 sys.path.insert(0, str(ORACLE))
 
 from lib.hecras_geom_parser import parse_g01  # noqa: E402
+from lib.stage_paths import hecras_stage_dir  # noqa: E402
 from lib.write_hecras_unsteady_flow import (  # noqa: E402
     mild_ramp_hydrograph,
     write_q_stage_ras701_from_template,
@@ -123,8 +124,8 @@ def main() -> int:
     else:
         template = args.template
         if template is None:
-            win_u01 = Path("C:/Users/jason/Documents/hecras_testing/ConSpan/ConSpan.u01")
-            template = win_u01 if win_u01.is_file() else DEFAULT_TEMPLATE
+            staged_u01 = hecras_stage_dir("ConSpan") / "ConSpan.u01"
+            template = staged_u01 if staged_u01.is_file() else DEFAULT_TEMPLATE
         template = template.resolve()
         if not template.is_file():
             raise SystemExit(

@@ -7,7 +7,7 @@ cd "$ENGINE"
 
 SCENARIO="verification/oracle/scenarios/conspan_unsteady_ramp_matrix.json"
 REF="verification/oracle/projects/conspan/reference_wsel_timeseries_ramp_full.json"
-HDF="${CONSPAN_HDF:-/mnt/c/Users/jason/Documents/hecras_testing/ConSpan/ConSpan.p08.hdf}"
+HDF="${CONSPAN_HDF:-$ENGINE/verification/oracle/projects/conspan/ConSpan.p08.hdf}"
 
 ALL_RMS="20.535,20.422,20.308,20.251,20.238,20.227,20.208,20.189,20.095,20.0"
 TIMES="0,4,8,12,16,20,24,28,32,36,40,44,48"

@@ -10,9 +10,9 @@ Examples:
   # Oracle bundle (default)
   python3 verification/oracle/scripts/write_conspan_u02.py
 
-  # Your Windows test project
+  # Windows GUI staging folder (override with STREAM1D_HECRAS_STAGE)
   python3 verification/oracle/scripts/write_conspan_u02.py \\
-    --output-dir /mnt/c/Users/jason/Documents/hecras_testing/ConSpan
+    --output-dir "$HOME/Documents/hecras_testing/ConSpan"
 
   # Also emit plan 02 stub next to the flow file
   python3 verification/oracle/scripts/write_conspan_u02.py --write-plan

@@ -2,7 +2,7 @@
 
 1D open-channel hydraulics solver (Rust). Steady gradually varied flow (Standard Step) and unsteady Saint-Venant routing on single reaches. Optional culverts, bridges, and one steady tributary junction.
 
-Primary interface: Python extension (`stream1d`). Also compiles to WebAssembly. Stateless API: geometry and boundary inputs in, profile arrays out.
+Primary interface: **Python** (`pip install stream1d` or `maturin develop` from source). Stateless API: geometry and boundary inputs in, profile arrays out.
 
 This repository is the solver only. It does not include a GUI, project database, or HEC-RAS file importer. [stream1d.com](https://stream1d.com) is a separate hosted application built on this engine (see [License](#license)).
 
@@ -104,37 +104,23 @@ See [Unsteady flow and water surface elevation](#unsteady-flow-and-water-surface
 
 ### JSON fixtures
 
-Load geometry from JSON with `stream1d.import_utils.cross_section_from_dict`. Example fixtures: [`tests/fixtures/wasm_steady_culvert_tier1.json`](tests/fixtures/wasm_steady_culvert_tier1.json), [`tests/fixtures/wasm_steady_bridge_bu_bd_v22.json`](tests/fixtures/wasm_steady_bridge_bu_bd_v22.json).
+Load geometry from JSON with `stream1d.import_utils.cross_section_from_dict`. Example payloads: [`tests/fixtures/`](tests/fixtures/) (culvert, bridge, steady/unsteady). Culvert, bridge, junction, and rating-curve walkthroughs: [`docs/python/getting_started.md`](docs/python/getting_started.md).
 
-Culvert, bridge, junction, and rating-curve examples: [`docs/python/getting_started.md`](docs/python/getting_started.md).
-
-### Interactive notebook
+### Verification notebook
 
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/STREAM-1D/main?filepath=python%2Fstream1d_verification.ipynb)
 
-[`python/stream1d_verification.ipynb`](python/stream1d_verification.ipynb) — ConSpan culvert and **Issaquah01 bridge** steady profiles; **§6** open-channel unsteady Q ramp (no structures) with STREAM vs HEC-RAS table at river miles and time checkpoints. First Binder build may take several minutes.
+[`python/stream1d_verification.ipynb`](python/stream1d_verification.ipynb) compares STREAM-1D to HEC-RAS on ConSpan culvert, Issaquah01 bridge, and **§6** open-channel unsteady Q ramp (no structures). **Binder** runs it in the browser with no local setup (first build may take a few minutes).
 
-**Local run:** run from the **repository root** (not `python/`). `.venv`, `requirements.txt`, and `Cargo.toml` all live there.
-
-```bash
-cd ~/Lillywhite_Consulting/lillywhite_engine/STREAM-1D   # repo root
-python3 scripts/run_verification_notebook.py             # headless (matches CI)
-python3 scripts/run_verification_notebook.py --serve     # Jupyter UI (--no-browser on WSL)
-```
-
-On **WSL**, `jupyter notebook` keeps the terminal busy (that is normal). Copy the `http://127.0.0.1:8888/...` URL into your **Windows** browser. Stop the server with **Ctrl+C** (twice). Prefer opening [`python/stream1d_verification.ipynb`](python/stream1d_verification.ipynb) in **Cursor/VS Code** with the `.venv` Python kernel instead.
-
-Manual equivalent:
+From a clone, run the same notebook headlessly (matches CI):
 
 ```bash
-cd ~/Lillywhite_Consulting/lillywhite_engine/STREAM-1D   # must be repo root
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-maturin develop --features python --release
-cd python && jupyter notebook --no-browser stream1d_verification.ipynb
+git clone https://github.com/jlillywh/STREAM-1D.git
+cd STREAM-1D
+python3 scripts/run_verification_notebook.py
 ```
 
-If your shell is already in `python/`, run `cd ..` first. CI executes this notebook headlessly on every PR (`verification-notebook` job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
+More verification scenarios: [`verification/README.md`](verification/README.md).
 
 ## Inputs and outputs
 
@@ -146,7 +132,7 @@ If your shell is already in `python/`, run `cd ..` first. CI executes this noteb
 
 **Results** — `wsel`, `q`, `velocity` as `[time_step][cross_section_index]`. With culverts: control type, inlet/outlet HW, barrel and weir discharge. With bridges: flow regime, head loss. Structure diagnostics are `[time_step][structure_index]`. Optional Courant / recommended-`dt` hints.
 
-Field reference: [`python/stream1d/__init__.py`](python/stream1d/__init__.py), [`docs/wasm_api.types.ts`](docs/wasm_api.types.ts). Equations: [`docs/reference/equations.md`](docs/reference/equations.md).
+Field reference: [`python/stream1d/__init__.py`](python/stream1d/__init__.py), [`docs/reference/api_changelog.md`](docs/reference/api_changelog.md). Equations: [`docs/reference/equations.md`](docs/reference/equations.md).
 
 ## Unsteady flow and water surface elevation
 
@@ -303,14 +289,15 @@ Diagnostic (no pass/fail): `conspan_unsteady_ramp_matrix.json` (mode 2). Details
 
 Test commands: [`docs/development/testing.md`](docs/development/testing.md).
 
-## Build targets
+## Building from source
 
-| Target | Command | Notes |
-|--------|---------|-------|
-| Python | `maturin develop --features python` | Default for research and scripting |
-| WebAssembly | `bash build_wasm.sh` | Browser (`pkg/`) and Node (`pkg-node/`) |
+Researchers extending the solver need Rust and [maturin](https://www.maturin.rs/):
 
-WASM API: [`docs/web/wasm_integration.md`](docs/web/wasm_integration.md).
+```bash
+maturin develop --features python --release
+```
+
+Browser/WebAssembly builds are maintained separately — see [`docs/web/wasm_integration.md`](docs/web/wasm_integration.md).
 
 ## Documentation
 
@@ -325,21 +312,17 @@ WASM API: [`docs/web/wasm_integration.md`](docs/web/wasm_integration.md).
 | [`docs/development/unsteady_structure_coupling.md`](docs/development/unsteady_structure_coupling.md) | Unsteady coupling modes 0–4 |
 | [`docs/development/pressure_weir_combined_flow_audit.md`](docs/development/pressure_weir_combined_flow_audit.md) | High-flow intentional deltas vs HEC |
 | [`docs/BRIDGE_INTERIOR_SECTIONS_API.md`](docs/BRIDGE_INTERIOR_SECTIONS_API.md) | BU/BD, opening alignment |
-| [`docs/web/wasm_integration.md`](docs/web/wasm_integration.md) | WASM build and JavaScript |
 | [`docs/development/testing.md`](docs/development/testing.md) | Test suites and CI |
-| [`docs/development/publishing.md`](docs/development/publishing.md) | PyPI releases |
-| [`docs/development/tech_spec.md`](docs/development/tech_spec.md) | Host-app architecture |
 | [`verification/`](verification/) | Golden fixtures + linked oracle |
 
 ## Repository layout
 
 ```
 src/solvers/     steady, unsteady, culvert, bridge, junction
-python/          stream1d bindings, notebook
-verification/    golden fixtures vs HEC-RAS / hand references (see README)
-docs/            reference manuals and WASM types
-tests/           Rust integration tests and JSON fixtures
-examples/wasm/   Node smoke tests and sample payloads
+python/          stream1d package and verification notebook
+verification/    HEC-RAS parity benchmarks (see README)
+docs/            reference manuals
+tests/           Rust tests and JSON example payloads
 ```
 
 ## License

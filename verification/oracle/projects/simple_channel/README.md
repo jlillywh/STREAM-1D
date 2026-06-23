@@ -20,33 +20,34 @@ At terminal time, WSEL should match a steady normal-depth profile (Chunk 1 type-
 
 ## Windows staging
 
-`C:\Users\jason\Documents\hecras_testing\simple_channel\`
+GUI-friendly copies are staged under **`%USERPROFILE%\Documents\hecras_testing\<project>`** by default, or set **`STREAM1D_HECRAS_STAGE`** to override the root folder (see `lib/stage_paths.py`).
+
+For this project: `%USERPROFILE%\Documents\hecras_testing\simple_channel\`
 
 ## Chunk 1 workflow
 
-### 1. Prep (PowerShell)
+### 1. Prep (PowerShell, from repository root)
 
 ```powershell
-cd \\wsl.localhost\Ubuntu\home\jason\Lillywhite_Consulting\lillywhite_engine\STREAM-1D
 $env:HECRAS_RAS_EXE = "C:\Program Files (x86)\HEC\HEC-RAS\7.0.1\Ras.exe"
 py -3 verification\oracle\scripts\chunk1_simple_channel_prep.py --open-ras
 ```
 
 ### 2. HEC-RAS GUI
 
-1. Open `Documents\hecras_testing\simple_channel\simple_channel.prj`
+1. Open the staged `simple_channel.prj` under your `hecras_testing` folder
 2. **Unsteady Flow Data** → confirm RM **3.0** flow 150 cfs, RM **0.0** **Friction Slope 0.001**
 3. **Run Plan 01** → expect `simple_channel.p01.hdf`
 
 ### 3. Capture (PowerShell)
 
-Use native Windows HDF path:
-
 ```powershell
-py -3 verification\oracle\scripts\chunk1_simple_channel_capture.py --hdf "C:\Users\jason\Documents\hecras_testing\simple_channel\simple_channel.p01.hdf"
+py -3 verification\oracle\scripts\chunk1_simple_channel_capture.py
+# Or pass an explicit HDF path:
+# py -3 verification\oracle\scripts\chunk1_simple_channel_capture.py --hdf path\to\simple_channel.p01.hdf
 ```
 
-### 4. Verify (WSL)
+### 4. Verify (Linux / macOS)
 
 ```bash
 python3 verification/oracle/scripts/run_chunk1_simple_channel.py
@@ -62,7 +63,7 @@ python3 verification/oracle/scripts/write_simple_channel_u02.py
 
 **u02 layout:** compact `reach_mild` pattern; downstream must be `Friction Slope=0.001,0` (HEC-RAS 7 1D Normal Depth flag). Prep runs `ras-commander` `set_normal_depth_boundary` when available to strip any stray Stage Hydrograph.
 
-**If GUI still shows empty Stage Hydrograph:** the staged copy under `Documents\hecras_testing\simple_channel` is stale. Run prep (it wipes that folder), reopen the project, or set RM 0.0 → **Normal Depth** / friction slope **0.001** manually, save, then:
+**If GUI still shows empty Stage Hydrograph:** the staged copy is stale. Run prep (it wipes that folder), reopen the project, or set RM 0.0 → **Normal Depth** / friction slope **0.001** manually, save, then:
 
 ```powershell
 py -3 verification\oracle\scripts\chunk1_import_gui_u02.py
@@ -98,11 +99,10 @@ Warm-start: flat Q=100 run → Prior WS from that HDF → restore ramp hydrograp
 ### Capture (Windows)
 
 ```powershell
-py -3 verification\oracle\scripts\chunk1_simple_channel_ramp_capture.py --plan 04 `
-  --hdf C:\Users\jason\Documents\hecras_testing\simple_channel\simple_channel.p04.hdf
+py -3 verification\oracle\scripts\chunk1_simple_channel_ramp_capture.py --plan 04
 ```
 
-### Verify friction ramp (WSL)
+### Verify friction ramp (Linux / macOS)
 
 ```bash
 bash verification/oracle/scripts/run_simple_channel_ramp_verify.sh
