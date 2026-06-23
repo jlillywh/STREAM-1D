@@ -1,0 +1,85 @@
+{
+  "source": "Issaquah01 vs HEC-RAS steady — computational STA from RAS profile table (deck vents removed)",
+  "station_key": "computational",
+  "tolerance_wsel_ft": 0.05,
+  "tolerance_egl_ft": 0.05,
+  "tolerance_crit_wsel_ft": 0.05,
+  "geometry_fixture": "Issaquah01_stream1d.json",
+  "strip_deck_vents": true,
+  "profiles": [
+    {
+      "name": "Q2196 normal depth DS",
+      "flow_rate_cfs": 2196,
+      "downstream_bc_type": 2,
+      "downstream_bc_slope": 0.005,
+      "num_slices": 100,
+      "regime": 0,
+      "max_spacing": 100,
+      "upstream_bc_type": 0,
+      "expected_wsel_ft": {
+        "923.0": 78.69,
+        "792.4": 78.52,
+        "633.8": 78.43,
+        "504.7": 75.17,
+        "359.1": 74.4,
+        "195.9": 73.35,
+        "12.9": 72.59
+      },
+      "expected_crit_wsel_ft": {
+        "923.0": 76.46,
+        "792.4": 75.51,
+        "633.8": 73.81,
+        "504.7": 71.99,
+        "359.1": 72.08,
+        "195.9": 72.04,
+        "12.9": 71.35
+      },
+      "expected_egl_ft": {
+        "923.0": 78.97,
+        "792.4": 78.75,
+        "633.8": 78.6,
+        "504.7": 75.46,
+        "359.1": 74.86,
+        "195.9": 74.15,
+        "12.9": 73.19
+      }
+    },
+    {
+      "name": "Q3000 normal depth DS",
+      "flow_rate_cfs": 3000,
+      "downstream_bc_type": 2,
+      "downstream_bc_slope": 0.005,
+      "num_slices": 100,
+      "regime": 0,
+      "max_spacing": 100,
+      "upstream_bc_type": 0,
+      "expected_wsel_ft": {
+        "923.0": 81.02,
+        "792.4": 80.93,
+        "633.8": 80.86,
+        "504.7": 78.78,
+        "359.1": 75.31,
+        "195.9": 74.15,
+        "12.9": 73.41
+      },
+      "expected_crit_wsel_ft": {
+        "923.0": 77.01,
+        "792.4": 76.11,
+        "633.8": 74.47,
+        "504.7": 72.65,
+        "359.1": 72.8,
+        "195.9": 72.81,
+        "12.9": 71.98
+      },
+      "expected_egl_ft": {
+        "923.0": 81.23,
+        "792.4": 81.12,
+        "633.8": 81.03,
+        "504.7": 78.85,
+        "359.1": 75.92,
+        "195.9": 75.17,
+        "12.9": 74.16
+      }
+    }
+  ]
+}
