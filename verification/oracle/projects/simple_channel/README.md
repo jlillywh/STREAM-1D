@@ -47,7 +47,7 @@ py -3 verification\oracle\scripts\chunk1_simple_channel_capture.py
 # py -3 verification\oracle\scripts\chunk1_simple_channel_capture.py --hdf path\to\simple_channel.p01.hdf
 ```
 
-### 4. Verify (Linux / WSL)
+### 4. Verify (Linux / macOS)
 
 ```bash
 python3 verification/oracle/scripts/run_chunk1_simple_channel.py
@@ -102,7 +102,7 @@ Warm-start: flat Q=100 run → Prior WS from that HDF → restore ramp hydrograp
 py -3 verification\oracle\scripts\chunk1_simple_channel_ramp_capture.py --plan 04
 ```
 
-### Verify friction ramp (Linux / WSL)
+### Verify friction ramp (Linux / macOS)
 
 ```bash
 bash verification/oracle/scripts/run_simple_channel_ramp_verify.sh
