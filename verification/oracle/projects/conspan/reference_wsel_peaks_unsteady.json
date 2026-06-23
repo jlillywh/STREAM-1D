@@ -7,5 +7,5 @@
     {"rm": 20.208, "max_wsel_ft": 31.59070587158203},
     {"rm": 20.095, "max_wsel_ft": 30.998247146606445}
   ],
-  "hdf_path": "/mnt/c/Users/jason/Documents/hecras_testing/ConSpan/ConSpan.p03.hdf"
+  "hdf_path": "verification/oracle/projects/conspan/ConSpan.p03.hdf"
 }

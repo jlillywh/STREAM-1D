@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-# Override with STREAM1D_HECRAS_STAGE (e.g. C:\Users\jason\Documents\hecras_testing)
+# Override with STREAM1D_HECRAS_STAGE (e.g. C:\Users\<you>\Documents\hecras_testing)
 _DEFAULT_REL = Path("Documents") / "hecras_testing"
 
 

@@ -35,3 +35,12 @@ bash build_wasm.sh && node examples/wasm/bridge_smoke_test.mjs
 Intentional HEC deltas: [`reference/hecras_parity.md`](../reference/hecras_parity.md).
 
 Interactive notebook: [`python/stream1d_verification.ipynb`](../../python/stream1d_verification.ipynb) — run from repo root via `python3 scripts/run_verification_notebook.py` (CI executes it headlessly).
+
+### Verification notebook (contributors)
+
+```bash
+python3 scripts/run_verification_notebook.py          # headless
+python3 scripts/run_verification_notebook.py --serve  # Jupyter UI
+```
+
+On **WSL**, Jupyter may not open a browser; copy the `http://127.0.0.1:8888/...` URL into your host browser. The terminal stays attached to the server until you stop it (Ctrl+C). You can also open the `.ipynb` in VS Code/Cursor with the repo `.venv` kernel after `maturin develop --features python`.

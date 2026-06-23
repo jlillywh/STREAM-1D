@@ -59,6 +59,6 @@
       }
     }
   ],
-  "hdf_path": "/mnt/c/Users/jason/Documents/hecras_testing/ConSpan/ConSpan.p08.hdf",
+  "hdf_path": "verification/oracle/projects/conspan/ConSpan.p08.hdf",
   "dt_seconds": 900.0
 }

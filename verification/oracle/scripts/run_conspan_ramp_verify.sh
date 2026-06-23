@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENGINE="$(cd "$ROOT/../.." && pwd)"
 cd "$ENGINE"
 
-HDF="${CONSPAN_HDF:-/mnt/c/Users/jason/Documents/hecras_testing/ConSpan/ConSpan.p08.hdf}"
+HDF="${CONSPAN_HDF:-$ENGINE/verification/oracle/projects/conspan/ConSpan.p08.hdf}"
 
 echo "=== Extract WSEL timeseries from HDF (if available) ==="
 if [[ -f "$HDF" ]]; then

@@ -15,5 +15,5 @@
       "max_wsel_ft": 30.998245239257812
     }
   ],
-  "hdf_path": "C:\\Users\\jason\\Documents\\hecras_testing\\reach_mild\\reach_mild.p02.hdf"
+  "hdf_path": "verification/oracle/projects/reach_mild/reach_mild.p02.hdf"
 }

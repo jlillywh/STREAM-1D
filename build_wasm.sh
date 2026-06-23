@@ -1,6 +1,6 @@
 #!/bin/bash
 # Enable cargo and wasm-pack in the PATH
-export PATH="/home/jason/.cargo/bin:$PATH"
+export PATH="${HOME}/.cargo/bin:${PATH}"
 
 echo "=== Environment Info ==="
 echo "PATH: $PATH"

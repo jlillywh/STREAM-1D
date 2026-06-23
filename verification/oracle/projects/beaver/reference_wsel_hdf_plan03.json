@@ -43,5 +43,5 @@
       "max_wsel_ft": 210.21823120117188
     }
   ],
-  "hdf_path": "\\\\wsl.localhost\\Ubuntu\\home\\jason\\Lillywhite_Consulting\\lillywhite_engine\\STREAM-1D\\verification\\oracle\\projects\\beaver\\beaver.p03.hdf"
+  "hdf_path": "verification/oracle/projects/beaver/beaver.p03.hdf"
 }

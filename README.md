@@ -112,29 +112,20 @@ Culvert, bridge, junction, and rating-curve examples: [`docs/python/getting_star
 
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/STREAM-1D/main?filepath=python%2Fstream1d_verification.ipynb)
 
-[`python/stream1d_verification.ipynb`](python/stream1d_verification.ipynb) — ConSpan culvert and **Issaquah01 bridge** steady profiles; **§6** open-channel unsteady Q ramp (no structures) with STREAM vs HEC-RAS table at river miles and time checkpoints. First Binder build may take several minutes.
+[`python/stream1d_verification.ipynb`](python/stream1d_verification.ipynb) — ConSpan culvert and **Issaquah01 bridge** steady profiles; **§6** open-channel unsteady Q ramp (no structures) with STREAM vs HEC-RAS table at river miles and time checkpoints. **Binder** is the easiest way to run it (first build may take several minutes).
 
-**Local run:** run from the **repository root** (not `python/`). `.venv`, `requirements.txt`, and `Cargo.toml` all live there.
+**Local run** (from a clone of this repository):
 
 ```bash
-cd ~/Lillywhite_Consulting/lillywhite_engine/STREAM-1D   # repo root
+git clone https://github.com/jlillywh/STREAM-1D.git
+cd STREAM-1D
 python3 scripts/run_verification_notebook.py             # headless (matches CI)
-python3 scripts/run_verification_notebook.py --serve     # Jupyter UI (--no-browser on WSL)
+python3 scripts/run_verification_notebook.py --serve     # optional Jupyter UI
 ```
 
-On **WSL**, `jupyter notebook` keeps the terminal busy (that is normal). Copy the `http://127.0.0.1:8888/...` URL into your **Windows** browser. Stop the server with **Ctrl+C** (twice). Prefer opening [`python/stream1d_verification.ipynb`](python/stream1d_verification.ipynb) in **Cursor/VS Code** with the `.venv` Python kernel instead.
+The script creates `.venv`, installs dependencies, builds the Python extension with maturin, and runs the notebook. Use `--serve` only if you want the Jupyter interface; open the URL printed in the terminal if your browser does not launch automatically.
 
-Manual equivalent:
-
-```bash
-cd ~/Lillywhite_Consulting/lillywhite_engine/STREAM-1D   # must be repo root
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-maturin develop --features python --release
-cd python && jupyter notebook --no-browser stream1d_verification.ipynb
-```
-
-If your shell is already in `python/`, run `cd ..` first. CI executes this notebook headlessly on every PR (`verification-notebook` job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
+CI executes the notebook headlessly on every PR (`verification-notebook` job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml)). Contributor notes (WSL, manual steps): [`docs/development/testing.md`](docs/development/testing.md).
 
 ## Inputs and outputs
 
