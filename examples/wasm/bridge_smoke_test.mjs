@@ -14,6 +14,8 @@ const require = createRequire(import.meta.url);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const fixturePath = join(__dirname, 'steady_bridge_bu_bd_v22.json');
 
+import { wasmResult } from './wasm_result.js';
+
 const {
   getEngineVersion,
   getWasmApiMetadata,
@@ -28,7 +30,7 @@ if (meta.api_version < 22) {
 
 const inputs = JSON.parse(readFileSync(fixturePath, 'utf8'));
 validateSteadyInputs(inputs);
-const result = solveSteady(inputs);
+const result = wasmResult(solveSteady(inputs));
 
 if (result.wsel.length !== inputs.cross_sections.length) {
   throw new Error(`wsel length ${result.wsel.length} != cross_sections ${inputs.cross_sections.length}`);

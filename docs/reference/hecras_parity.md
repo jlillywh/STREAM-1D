@@ -59,7 +59,7 @@ Intentional remaining differences vs HEC: [`development/pressure_weir_combined_f
 | `reach_mild_unsteady_linked` | Open channel vs committed reference |
 | `conspan_steady_linked` | ±0.04 ft |
 | `conspan_unsteady_ramp_matrix_mode4` | Overall max \|Δ\| ≤ 0.12 ft vs HEC |
-| `beaver_unsteady_linked` | Development — not certified |
+| `beaver_unsteady_linked` | Diagnostic restart — layered mapping/steady/unsteady; HDF required for certification |
 
 See [`verification/oracle/README.md`](../verification/oracle/README.md).
 

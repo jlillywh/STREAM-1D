@@ -132,6 +132,10 @@ export interface CulvertArrays {
   culvert_barrel_spans?: number[][];
   /** Per-barrel rise — `culvert_barrel_rises[i][j]` for culvert i, barrel j */
   culvert_barrel_rises?: number[][];
+  /** Upstream bounding cross-section station per culvert (computational reach station). */
+  culvert_approach_reach_stations?: number[];
+  /** Downstream bounding cross-section station per culvert. */
+  culvert_departure_reach_stations?: number[];
 }
 
 export interface BridgeArrays {
@@ -594,6 +598,8 @@ export type UnsteadyCulvertInputs = Partial<
     | 'culvert_active_barrels'
     | 'culvert_barrel_spans'
     | 'culvert_barrel_rises'
+    | 'culvert_approach_reach_stations'
+    | 'culvert_departure_reach_stations'
   >
 >;
 

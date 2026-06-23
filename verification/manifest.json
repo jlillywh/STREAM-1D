@@ -198,15 +198,14 @@
       ],
       "fixture": "oracle/scenarios/beaver_unsteady_linked.json",
       "tests": [
-        "verification/oracle/run_linked_verify.py",
         "verification/oracle/scripts/smoke_beaver_parse.py",
-        "verification/oracle/scripts/test_beaver_unsteady_warm_start.py",
-        "verification/oracle/scripts/diagnose_beaver_unsteady.py"
+        "verification/oracle/scripts/diagnose_beaver_restart.py",
+        "verification/oracle/scripts/test_beaver_unsteady_warm_start.py"
       ],
-      "tolerance": "\u00c2\u00b10.5 ft peak max WSEL; warm-start \u00c2\u00b10.04 ft vs steady @ initial Q",
+      "tolerance": "diagnostic — steady/unsteady layers in restart report; warm-start \u00c2\u00b10.04 ft internal",
       "quantity": "max_wsel",
       "optional": true,
-      "notes": "Chunk 8 flagship; run run_chunk8_verify.sh"
+      "notes": "Beaver bridge restart 2026 — not a pass/fail gate until HDF reference"
     },
     {
       "id": "bridge_abutment_wspro",

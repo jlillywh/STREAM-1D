@@ -1,4 +1,4 @@
-use crate::utils::{G_METRIC, UnitSystem, FT_TO_M, structure_in_reach_interval};
+use crate::utils::{G_METRIC, UnitSystem, FT_TO_M};
 use crate::geometry::{
     flow_area_for_row, geometry_row_at_elevation, section_needs_dynamic_geometry,
     specific_force_at_elevation, CrossSection, DensifyReachModifierPolicy, GeometryRow,
@@ -95,6 +95,12 @@ pub struct SteadyInputs {
     /// Per-barrel rise per culvert (length = open barrels). Omit entries to use `culvert_rises`.
     #[serde(default)]
     pub culvert_barrel_rises: Option<Vec<Vec<f64>>>,
+    /// Upstream bounding cross-section river station per culvert (HEC-RAS inline structure reach).
+    #[serde(default)]
+    pub culvert_approach_reach_stations: Option<Vec<f64>>,
+    /// Downstream bounding cross-section river station per culvert.
+    #[serde(default)]
+    pub culvert_departure_reach_stations: Option<Vec<f64>>,
 
     /// Stations where bridges are located (in user units, e.g. feet or meters)
     #[serde(default)]
@@ -437,12 +443,15 @@ pub fn solve_critical_depth_table(table: &GeometryTable, q: f64) -> f64 {
     }
     let y_min = table.rows[0].elevation;
     let y_max = table.rows[table.rows.len() - 1].elevation;
+    let survey_depth = (y_max - y_min).max(1.0);
 
     let mut low = 0.0;
-    let mut high = (y_max - y_min).max(10.0);
+    // Allow searching up to 3× the survey depth above the survey top so that
+    // critical depth can be found even when Q exceeds the surveyed section limits.
+    let mut high = (survey_depth * 4.0).max(10.0);
     let mut best_yc = 0.0;
 
-    for _ in 0..50 {
+    for _ in 0..60 {
         let mid = 0.5 * (low + high);
         let elev = y_min + mid;
         let row = table.interpolate(elev);
@@ -489,12 +498,17 @@ pub fn solve_normal_depth_table(table: &GeometryTable, q: f64, slope: f64) -> f6
 
     let y_min = table.rows[0].elevation;
     let y_max = table.rows[table.rows.len() - 1].elevation;
+    let survey_depth = (y_max - y_min).max(1.0);
 
     let mut low = y_min;
-    let mut high = y_max;
+    // Allow the bisection to search above the top of the survey table.
+    // Previously clamped to y_max, which caused a snap when Q required normal
+    // depth above the surveyed section (the extrapolated conveyance now grows
+    // correctly, so we need to search there too).
+    let mut high = y_max + 3.0 * survey_depth;
     let mut best_y = y_min;
 
-    for _ in 0..50 {
+    for _ in 0..60 {
         let mid = 0.5 * (low + high);
         let row = table.interpolate(mid);
         if row.conveyance < target_k {
@@ -1020,6 +1034,15 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
         &mut densified_z_mins,
         &mut densified_xs,
     );
+    let culvert_face_intervals = crate::solvers::culvert_reach_layout::apply_culvert_reach_layout_steady(
+        inputs,
+        raw_units,
+        num_slices,
+        &mut densified_stations,
+        &mut densified_tables,
+        &mut densified_z_mins,
+        &mut densified_xs,
+    );
     let original_stations: Vec<f64> = xs_list.iter().map(|xs| xs.station).collect();
     crate::solvers::bridge_interior::refresh_original_to_densified(
         &original_stations,
@@ -1031,6 +1054,10 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
         .enumerate()
         .filter_map(|(b_idx, interval)| interval.map(|i| (i, b_idx)))
         .collect();
+    let culvert_at_interval: std::collections::HashMap<usize, usize> =
+        crate::solvers::culvert_reach_layout::culvert_intervals_from_faces(&culvert_face_intervals)
+            .into_iter()
+            .collect();
 
     let dm = densified_tables.len();
 
@@ -1097,20 +1124,10 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
     let mut structure_adjacent_indices = std::collections::HashSet::new();
     let mut structure_ineffective: std::collections::HashMap<usize, IneffectiveFlowAreas> =
         std::collections::HashMap::new();
-    if let Some(ref c_stations) = inputs.culvert_stations {
-        for &c_st in c_stations {
-            let c_st_metric = if raw_units == UnitSystem::USCustomary {
-                c_st * FT_TO_M
-            } else {
-                c_st
-            };
-            for j in 0..dm - 1 {
-                if structure_in_reach_interval(c_st_metric, &densified_stations, j) {
-                    structure_adjacent_indices.insert(j);
-                    structure_adjacent_indices.insert(j + 1);
-                    break;
-                }
-            }
+    if let Some(ref _c_stations) = inputs.culvert_stations {
+        for (&i, _) in culvert_at_interval.iter() {
+            structure_adjacent_indices.insert(i);
+            structure_adjacent_indices.insert(i + 1);
         }
     }
     for (b_idx, interval) in bridge_face_intervals.iter().enumerate() {
@@ -1175,21 +1192,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
 
             let bridge_idx = bridge_at_interval.get(&i).copied();
 
-            // Check if there is a culvert in this reach interval
-            let mut culvert_idx = None;
-            if let Some(ref c_stations) = inputs.culvert_stations {
-                for (c_idx, &c_st) in c_stations.iter().enumerate() {
-                    let c_st_metric = if raw_units == UnitSystem::USCustomary {
-                        c_st * FT_TO_M
-                    } else {
-                        c_st
-                    };
-                    if structure_in_reach_interval(c_st_metric, &densified_stations, i) {
-                        culvert_idx = Some(c_idx);
-                        break;
-                    }
-                }
-            }
+            let culvert_idx = culvert_at_interval.get(&i).copied();
 
             if let Some(b_idx) = bridge_idx {
                 let low_chord = inputs.bridge_low_chords.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0.0);
@@ -1440,7 +1443,39 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                     true,
                     structure_adjacent_indices.contains(&(i + 1)),
                     structure_adjacent_indices.contains(&i),
-                ).unwrap_or(critical_wsels[i]);
+                ).unwrap_or_else(|| {
+                    // solve_step failed — typically because the upstream XS needs a WSE
+                    // above its geometry table maximum (e.g. survey is too short for the flow).
+                    // Fallback: extrapolate the upstream WSE from the downstream EGL using
+                    // the average friction slope rather than snapping to critical depth.
+                    //
+                    // EGL_ds = y_ds + Q²/(2g·A_ds²)
+                    // EGL_us ≈ EGL_ds + S_f · L   (subcritical: us energy > ds energy)
+                    // y_us   = EGL_us − Q²/(2g·A_us²)
+                    //
+                    // We seed A_us from the downstream area as a first approximation
+                    // (iterate once to improve), which is conservative but smooth.
+                    let ds_row = densified_tables[i + 1].interpolate(sub_wsel[i + 1]);
+                    let ds_area = ds_row.area.max(1e-6);
+                    let hv_ds   = (q_mag * q_mag) / (2.0 * G_METRIC * ds_area * ds_area);
+                    let egl_ds  = sub_wsel[i + 1] + hv_ds;
+
+                    // Estimate friction slope from downstream conveyance
+                    let k_ds  = ds_row.conveyance.max(1e-9);
+                    let sf    = (q_mag / k_ds).powi(2);
+                    let egl_us = egl_ds + sf * length;
+
+                    // First-pass upstream WSE (assume same velocity head as DS)
+                    let y_us_guess = (egl_us - hv_ds).max(densified_z_mins[i] + ycs[i]);
+
+                    // One refinement: use upstream area at y_us_guess
+                    let us_row  = densified_tables[i].interpolate(y_us_guess);
+                    let us_area = us_row.area.max(1e-6);
+                    let hv_us   = (q_mag * q_mag) / (2.0 * G_METRIC * us_area * us_area);
+                    let y_us    = (egl_us - hv_us).max(densified_z_mins[i] + ycs[i]);
+
+                    y_us
+                });
             }
         }
         }
@@ -1547,21 +1582,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
 
             let bridge_idx = bridge_at_interval.get(&i).copied();
 
-            // Check if there is a culvert in this reach interval
-            let mut culvert_idx = None;
-            if let Some(ref c_stations) = inputs.culvert_stations {
-                for (c_idx, &c_st) in c_stations.iter().enumerate() {
-                    let c_st_metric = if raw_units == UnitSystem::USCustomary {
-                        c_st * FT_TO_M
-                    } else {
-                        c_st
-                    };
-                    if structure_in_reach_interval(c_st_metric, &densified_stations, i) {
-                        culvert_idx = Some(c_idx);
-                        break;
-                    }
-                }
-            }
+            let culvert_idx = culvert_at_interval.get(&i).copied();
 
             if let Some(c_idx) = culvert_idx {
                 let shape_type = inputs.culvert_shape_types.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0);

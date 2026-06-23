@@ -19,8 +19,8 @@ Full catalog: [`verification/README.md`](../verification/README.md), [`verificat
 | JSON golden fixtures | ConSpan steady ±0.04 ft; bridge abutment/BU/BD/high-flow ±2 mm |
 | Linked oracle | `reach_mild` open channel; ConSpan mode 4 ramp ≤0.12 ft overall max \|Δ\| vs HEC |
 | WASM contract | `tests/wasm_json_contract.rs` — schema version, deserialize samples |
-| Python | `python/test_stream1d.py`, `python/test_hecras_culvert_verification.py` |
-| Verification notebook | CI executes `python/stream1d_verification.ipynb` headlessly (requires `maturin develop`) |
+| Python | `python/test_stream1d.py`, `python/test_hecras_culvert_verification.py`, `python/test_issaquah01_bridge_parity.py` |
+| Verification notebook | CI executes `python/stream1d_verification.ipynb` headlessly — ConSpan culvert and Issaquah01 bridge WSE/EGL vs HEC-RAS (requires `maturin develop`) |
 
 ## Common commands
 

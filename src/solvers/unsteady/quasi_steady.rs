@@ -55,6 +55,8 @@ pub(crate) fn steady_inputs_for_quasi_steady(
         culvert_active_barrels: inputs.culvert.culvert_active_barrels.clone(),
         culvert_barrel_spans: inputs.culvert.culvert_barrel_spans.clone(),
         culvert_barrel_rises: inputs.culvert.culvert_barrel_rises.clone(),
+        culvert_approach_reach_stations: inputs.culvert.culvert_approach_reach_stations.clone(),
+        culvert_departure_reach_stations: inputs.culvert.culvert_departure_reach_stations.clone(),
         bridge_stations: inputs.bridge.bridge_stations.clone(),
         bridge_low_chords: inputs.bridge.bridge_low_chords.clone(),
         bridge_high_chords: inputs.bridge.bridge_high_chords.clone(),

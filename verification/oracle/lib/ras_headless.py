@@ -12,7 +12,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .stage_paths import hecras_stage_dir
+from .stage_paths import _windows_userprofile, hecras_stage_dir
+
+_ORACLE_SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
 
 
 class RasHeadlessError(RuntimeError):
@@ -112,11 +114,70 @@ def _copy_ras_project_file(src: Path, dest: Path) -> None:
     shutil.copy2(src, dest)
 
 
+def _source_stage_file_names(source_dir: Path) -> set[str]:
+    ignore = _stage_ignore_fn()
+    ignored = set(ignore(str(source_dir), [p.name for p in source_dir.iterdir()]))
+    return {
+        p.name
+        for p in source_dir.iterdir()
+        if p.is_file() and p.name not in ignored
+    }
+
+
+def _purge_stale_stage_files(stage: Path, source_dir: Path) -> None:
+    """Remove HEC-RAS-generated files in the stage dir that are not in the oracle bundle."""
+    allowed = _source_stage_file_names(source_dir)
+    for path in list(stage.iterdir()):
+        if not path.is_file():
+            continue
+        if path.name in allowed:
+            continue
+        if path.suffix.lower() in {".hdf", ".log", ".bat"}:
+            continue
+        if path.name.endswith(".data_errors.txt") or path.name.endswith(".computeMsgs.txt"):
+            try:
+                path.unlink()
+                print(f"Removed stale staged file: {path.name}", flush=True)
+            except OSError:
+                pass
+            continue
+        # Drop extra g01/p01/f01 variants HEC-RAS creates when opening a polluted .prj.
+        stem = source_dir.name
+        suffix = path.suffix.lower()
+        if suffix in {".g01", ".g02", ".g03", ".g04", ".g05", ".p01", ".p02", ".p03", ".p04", ".p05", ".f01", ".f02", ".f03", ".prj"}:
+            if path.name not in allowed:
+                try:
+                    path.unlink()
+                    print(f"Removed stale staged file: {path.name}", flush=True)
+                except OSError:
+                    pass
+
+
+def _validate_staged_prj(prj_path: Path) -> None:
+    """Fail fast when HEC-RAS has appended GUI state to a staged .prj."""
+    if not prj_path.is_file():
+        raise RasHeadlessError(f"Missing staged project file: {prj_path}")
+    text = prj_path.read_text(encoding="utf-8", errors="replace")
+    if text.count("Current Plan=") > 1:
+        raise RasHeadlessError(
+            f"Staged {prj_path.name} is corrupted (multiple Current Plan= entries).\n"
+            "Kill Ras.exe, delete the staged folder, and re-run:\n"
+            f"  taskkill.exe /F /IM Ras.exe /IM RasPlotDriver.exe\n"
+            f"  rm -rf {prj_path.parent}"
+        )
+    if re.search(r"^Geom File=g0[2-9]", text, flags=re.MULTILINE):
+        raise RasHeadlessError(
+            f"Staged {prj_path.name} references Geom File=g04 (or similar) instead of g01.\n"
+            "Delete the staged folder and re-run after killing Ras.exe."
+        )
+
+
 def _refresh_stage_from_source(source_dir: Path, stage: Path) -> None:
     """Copy project inputs into an existing stage dir, skipping locked files."""
     ignore = _stage_ignore_fn()
     ignored = set(ignore(str(source_dir), [p.name for p in source_dir.iterdir()]))
     stage.mkdir(parents=True, exist_ok=True)
+    _purge_stale_stage_files(stage, source_dir)
     for stale in stage.glob("*.hdf"):
         try:
             stale.unlink()
@@ -246,6 +307,37 @@ def _windows_ras_exe_candidates() -> list[Path]:
     return [exe for _, exe in found]
 
 
+def _wsl_ras_exe_candidates() -> list[Path]:
+    """Probe HEC-RAS installs on the Windows host from WSL (/mnt/c/...)."""
+    if not is_wsl():
+        return []
+    roots = [
+        Path("/mnt/c/Program Files (x86)/HEC/HEC-RAS"),
+        Path("/mnt/c/Program Files/HEC/HEC-RAS"),
+    ]
+    version_hint = os.environ.get("HECRAS_VERSION", "").strip()
+    found: list[tuple[tuple[int, ...], Path]] = []
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for child in root.iterdir():
+            if not child.is_dir():
+                continue
+            exe = child / "Ras.exe"
+            if not exe.is_file():
+                continue
+            parts = tuple(int(p) for p in child.name.split(".") if p.isdigit())
+            found.append((parts, exe))
+    if not found:
+        return []
+    if version_hint:
+        matched = [exe for _, exe in found if exe.parent.name.startswith(version_hint)]
+        if matched:
+            return matched
+    found.sort(key=lambda row: row[0], reverse=True)
+    return [exe for _, exe in found]
+
+
 def _resolve_ras_exe(
     *,
     ras_version: str | None = None,
@@ -254,6 +346,9 @@ def _resolve_ras_exe(
     candidate = ras_exe or os.environ.get("HECRAS_RAS_EXE")
     if candidate and Path(candidate).is_file():
         return Path(candidate)
+    for probe in _wsl_ras_exe_candidates():
+        if probe.is_file():
+            return probe
     for probe in _windows_ras_exe_candidates():
         if probe.is_file():
             return probe
@@ -275,6 +370,113 @@ def _resolve_ras_exe(
         "HEC-RAS Ras.exe not found. Set HECRAS_RAS_EXE to the full path "
         "(WSL example: /mnt/c/Program Files (x86)/HEC/HEC-RAS/7.0.1/Ras.exe)."
     )
+
+
+def _resolve_windows_python() -> Path:
+    """Windows Python with ras-commander for WSL → Windows compute delegation."""
+    override = os.environ.get("HECRAS_WINDOWS_PYTHON", "").strip()
+    if override:
+        return Path(override)
+    profile = _windows_userprofile()
+    if profile is not None:
+        for ver in ("Python314", "Python313", "Python312", "Python311", "Python310"):
+            candidate = profile / "AppData/Local/Programs/Python" / ver / "python.exe"
+            if candidate.is_file():
+                return candidate
+    fallback = Path("/mnt/c/Windows/py.exe")
+    if fallback.is_file():
+        return fallback
+    raise RasHeadlessError(
+        "Windows Python not found for ras-commander (WSL).\n"
+        "Install Python on Windows + pip install ras-commander, or set HECRAS_WINDOWS_PYTHON."
+    )
+
+
+def _prefer_ras_exe_batch_on_wsl() -> bool:
+    return os.environ.get("HECRAS_USE_RAS_EXE_BATCH", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+
+def _run_plan_via_windows_ras_commander(
+    run_dir: Path,
+    plan_key: str,
+    *,
+    ras_version: str | None = None,
+    ras_exe: Path | None = None,
+    clear_geompre: bool = False,
+) -> None:
+    """Run ras-commander on Windows from WSL (reliable headless compute + dialog watchdog)."""
+    stem = run_dir.name
+    prj = run_dir / f"{stem}.prj"
+    plan = run_dir / f"{stem}.p{plan_key}"
+    if not prj.is_file():
+        raise RasHeadlessError(f"Missing project file: {prj}")
+    if not plan.is_file():
+        raise RasHeadlessError(f"Missing plan file: {plan}")
+
+    win_py = wsl_to_windows_path(_resolve_windows_python())
+    win_dir = wsl_to_windows_path(run_dir)
+    helper = run_dir / "_ras_commander_compute.py"
+    shutil.copy2(_ORACLE_SCRIPTS / "ras_commander_compute.py", helper)
+    win_script = wsl_to_windows_path(helper)
+    win_ras_exe = wsl_to_windows_path(ras_exe) if ras_exe else ""
+    log_path = run_dir / f"_compute_p{plan_key}.log"
+    bat_path = run_dir / f"_run_p{plan_key}.bat"
+    version = _resolve_ras_version_string(ras_version=ras_version, ras_exe=ras_exe)
+    geom_flag = " --clear-geompre" if clear_geompre else ""
+    ras_env = f'set "HECRAS_RAS_EXE={win_ras_exe}"\r\n' if win_ras_exe else ""
+    bat_path.write_text(
+        "@echo off\r\n"
+        f'cd /d "{win_dir}"\r\n'
+        f'set "HECRAS_VERSION={version}"\r\n'
+        f"{ras_env}"
+        f'"{win_py}" "{win_script}" "{win_dir}" {plan_key} --ras-version {version}{geom_flag}\r\n'
+        "exit /b %ERRORLEVEL%\r\n",
+        encoding="utf-8",
+    )
+    print(
+        "WSL: running via Windows ras-commander:\n"
+        f"  {win_py}\n"
+        f"  project -> {win_dir}\n"
+        f"  plan {plan_key}",
+        flush=True,
+    )
+    win_bat = wsl_to_windows_path(bat_path)
+    wait_start = time.monotonic()
+    with log_path.open("w", encoding="utf-8", errors="replace") as logfh:
+        proc = subprocess.Popen(
+            ["cmd.exe", "/c", win_bat],
+            cwd=str(run_dir),
+            stdout=logfh,
+            stderr=subprocess.STDOUT,
+        )
+        last_status = wait_start
+        timeout_sec = float(os.environ.get("HECRAS_RUN_TIMEOUT_SEC", "900"))
+        while proc.poll() is None:
+            elapsed = time.monotonic() - wait_start
+            if elapsed > timeout_sec:
+                proc.kill()
+                raise RasHeadlessError(
+                    f"ras-commander run timed out after {timeout_sec:.0f}s. "
+                    "Check the Windows desktop for a blocking RAS dialog."
+                )
+            if time.monotonic() - last_status >= 30:
+                print(f"  ... ras-commander still running ({elapsed:.0f}s)", flush=True)
+                last_status = time.monotonic()
+            time.sleep(2)
+    if log_path.is_file():
+        tail = log_path.read_text(encoding="utf-8", errors="replace").strip().splitlines()[-20:]
+        if tail:
+            print("ras-commander log (last lines):", flush=True)
+            for line in tail:
+                print(f"  {line}", flush=True)
+    if proc.returncode != 0:
+        raise RasHeadlessError(
+            f"ras-commander exited with code {proc.returncode}. See {log_path.name}"
+        )
 
 
 def _prefer_ras_commander_on_windows() -> bool:
@@ -339,13 +541,15 @@ def _run_plan_via_windows_cmd(
             stderr=subprocess.STDOUT,
         )
         last_status = wait_start
+        timeout_sec = float(os.environ.get("HECRAS_RUN_TIMEOUT_SEC", "900"))
         while proc.poll() is None:
             elapsed = time.monotonic() - wait_start
-            if elapsed > 900:
+            if elapsed > timeout_sec:
                 proc.kill()
                 raise RasHeadlessError(
-                    "HEC-RAS batch run timed out after 15 min. "
-                    "Check the Windows desktop for a blocking RAS dialog."
+                    f"HEC-RAS batch run timed out after {timeout_sec:.0f}s. "
+                    "Check the Windows desktop for a blocking RAS dialog, or set "
+                    "HECRAS_RUN_TIMEOUT_SEC for longer unsteady runs (e.g. 3600 for Beaver)."
                 )
             if time.monotonic() - last_status >= 30:
                 print(f"  ... HEC-RAS still running ({elapsed:.0f}s)", flush=True)
@@ -488,6 +692,7 @@ def run_plan_headless(
     source_dir = project_dir.resolve()
     run_dir, sync_back = stage_project_for_hecras(source_dir)
     plan_key = plan_number.zfill(2)
+    _validate_staged_prj(_find_prj(run_dir))
     exe = _resolve_ras_exe(ras_version=ras_version, ras_exe=ras_exe)
 
     print(
@@ -497,14 +702,25 @@ def run_plan_headless(
     t0 = time.monotonic()
 
     if is_wsl():
-        print(
-            "WSL: running HEC-RAS via Windows cmd.exe + Ras.exe (ras-commander cannot "
-            "invoke Ras.exe from Linux).\n"
-            "Unsteady runs often take 1–15 min. If nothing happens after ~60 s, check the "
-            "Windows desktop for a HEC-RAS dialog and dismiss it.",
-            flush=True,
-        )
-        _run_plan_via_windows_cmd(run_dir, plan_key, exe, num_cores=num_cores)
+        if _prefer_ras_exe_batch_on_wsl():
+            print(
+                "WSL: HECRAS_USE_RAS_EXE_BATCH=1 — using Ras.exe -c batch (may hang on dialogs).",
+                flush=True,
+            )
+            _run_plan_via_windows_cmd(run_dir, plan_key, exe, num_cores=num_cores)
+        else:
+            print(
+                "WSL: using Windows ras-commander (Ras.exe -c often opens GUI and hangs).\n"
+                "Set HECRAS_USE_RAS_EXE_BATCH=1 to force the legacy Ras.exe batch path.",
+                flush=True,
+            )
+            _run_plan_via_windows_ras_commander(
+                run_dir,
+                plan_key,
+                ras_version=ras_version,
+                ras_exe=exe,
+                clear_geompre=clear_geompre,
+            )
         ras = None
     elif sys.platform == "win32" and not _prefer_ras_commander_on_windows():
         print(
@@ -987,7 +1203,9 @@ def update_u02_observed_hwm(
             lines.append(
                 f"Observed HWM={river}    ,{reach} ,{c.rm:.1f}    ,,{c.wsel_ft:.4f}"
             )
-    u02_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    from .hecras_text_io import write_ras_lines
+
+    write_ras_lines(u02_path, lines)
 
 
 def hecras_available() -> tuple[bool, str]:

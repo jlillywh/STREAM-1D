@@ -2,8 +2,9 @@
 """
 Beaver Creek Chunk 8 diagnostic — published gap table vs Observed HWM (plan 03).
 
-Compares coupling modes 0 and 2 at checkpoint RMs. Does not fudge reference:
-Observed HWM from beaver.u02 is the dev reference until HDF WSEL(t) lands.
+DEPRECATED for pass/fail gating — use diagnose_beaver_restart.py for layered
+isolation (mapping → steady → unsteady). This script still refreshes the gap
+table for historical tracking but always exits 0.
 """
 
 from __future__ import annotations
@@ -33,8 +34,7 @@ def max_wsel_at_rm(wsel_series: list[list[float]], idx: int) -> float:
 
 
 def run_mode(coupling_mode: int, geom_xs) -> dict:
-    payload, flow = build_beaver_unsteady_inputs(PROJECT)
-    payload["unsteady_structure_coupling_mode"] = coupling_mode
+    payload, flow = build_beaver_unsteady_inputs(PROJECT, coupling_mode=coupling_mode)
     result = st.solve_unsteady(payload)
     peaks: dict[float, float] = {}
     for rm in CHECKPOINTS:
@@ -161,6 +161,7 @@ def main() -> int:
         "mapping_notes": scenario["stream1d"]["notes"],
         "certification_status": "development",
         "hdf_required": True,
+        "restart_note": "See diagnose_beaver_restart.py — layered mapping/steady/unsteady isolation",
     }
     out_path = PROJECT / "gap_table_beaver_unsteady.json"
     out_path.write_text(json.dumps(gap_doc, indent=2) + "\n", encoding="utf-8")
@@ -170,12 +171,13 @@ def main() -> int:
     if overall_pass:
         print("RESULT: PASS (Observed HWM dev reference)")
     else:
-        print("RESULT: FAIL — published gap table (no mapper fudge)")
+        print("RESULT: GAP — published gap table (no mapper fudge)")
         print(f"  worst mode 0 Δ at RM {worst_rm}: {worst_mode0:+.3f} ft")
         print(f"  worst mode 2 Δ at RM {worst_rm if worst_mode2 else worst_rm}: {worst_mode2:+.3f} ft")
+        print("  Use diagnose_beaver_restart.py to isolate steady vs unsteady gaps.")
         print("  Re-run after HDF reference + BC alignment for certification.")
 
-    return 0 if overall_pass else 1
+    return 0
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@ from pathlib import Path
 ORACLE = Path(__file__).resolve().parents[1]
 ROOT = ORACLE.parents[1]
 sys.path.insert(0, str(ORACLE))
+sys.path.insert(0, str(ORACLE / "scripts"))
 sys.path.insert(0, str(ROOT / "python"))
 
 from lib.beaver_mapper import build_beaver_unsteady_inputs  # noqa: E402
@@ -25,7 +26,9 @@ from lib.hecras_geom_parser import (  # noqa: E402
     cross_section_by_description,
     parse_g01,
     parsed_xs_to_dict,
+    parsed_xs_to_reach_dict,
 )
+from test_beaver_g01_parser import test_beaver_br_coef_and_deck_chords  # noqa: E402
 
 BEAVER = ORACLE / "projects" / "beaver"
 CONSPAN = ORACLE / "projects" / "conspan"
@@ -67,15 +70,32 @@ def test_beaver_deck_piers_bu_bd_ineffective() -> None:
     _assert(payload.get("bridge_pier_stations"), "mapper must emit bridge_pier_stations")
     _assert(payload.get("bridge_upstream_cross_sections"), "mapper must emit BU face")
     _assert(payload.get("bridge_downstream_cross_sections"), "mapper must emit BD face")
+    emb = payload.get("bridge_roadway_embankments")
+    _assert(emb and len(emb) == 1, "mapper must emit bridge_roadway_embankments")
+    faces = emb[0].get("ineffective_faces") or {}
     _assert(
-        payload.get("bridge_ineffective_left_stations_upstream")
-        or payload.get("bridge_ineffective_right_stations_upstream"),
-        "BU ineffective must map to bridge_ineffective_*_upstream",
+        faces.get("upstream") and faces.get("downstream"),
+        "roadway embankment must carry BU/BD ineffective_faces overrides",
     )
     _assert(
-        payload.get("bridge_ineffective_left_stations_downstream")
-        or payload.get("bridge_ineffective_right_stations_downstream"),
-        "BD ineffective must map to bridge_ineffective_*_downstream",
+        payload.get("bridge_approach_cross_sections"),
+        "mapper must emit bridge_approach_cross_sections",
+    )
+    _assert(
+        payload.get("bridge_departure_cross_sections"),
+        "mapper must emit bridge_departure_cross_sections",
+    )
+    _assert(
+        len(payload["bridge_approach_cross_sections"]) == 1,
+        "beaver has 1 bridge → 1 bridge_approach_cross_sections element",
+    )
+    _assert(
+        len(payload["bridge_departure_cross_sections"]) == 1,
+        "beaver has 1 bridge → 1 bridge_departure_cross_sections element",
+    )
+    _assert(
+        not payload.get("bridge_ineffective_left_stations_upstream"),
+        "flat BU ineffective must not duplicate roadway compose",
     )
     print("  beaver deck/piers/BU/BD/ineffective: OK")
 
@@ -92,7 +112,7 @@ def test_beaver_no_duplicate_obstruction() -> None:
     payload, _ = build_beaver_unsteady_inputs(BEAVER)
 
     for xs in geom.cross_sections:
-        d = parsed_xs_to_dict(xs)
+        d = parsed_xs_to_reach_dict(xs)
         _assert(
             "ineffective_flow_areas" not in d and "blocked_obstructions" not in d,
             f"reach XS RM {xs.rm} must not export ineffective/blocked on parent dict",
@@ -154,6 +174,7 @@ def test_conspan_g01_reach_and_fixture_culvert() -> None:
 def main() -> int:
     print("=== Chunk 3.3 g01 mapping tests ===")
     test_beaver_deck_piers_bu_bd_ineffective()
+    test_beaver_br_coef_and_deck_chords()
     test_beaver_no_duplicate_obstruction()
     test_conspan_g01_reach_and_fixture_culvert()
     print("test_chunk3_g01_mapping: PASS")

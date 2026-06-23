@@ -1,9 +1,10 @@
 # API changelog
 
-JSON/Python input schema version (`api_version` in WASM metadata). Current version: **36**.
+JSON/Python input schema version (`api_version` in WASM metadata). Current version: **37**.
 
 | Version | Change |
 |---------|--------|
+| 37 | Culvert HEC-RAS inline structure reach: `culvert_approach_reach_stations`, `culvert_departure_reach_stations` — inserts US/DS bounding nodes on the densified grid and couples culverts on that interval (mirrors bridge approach/departure reach) |
 | 36 | Unsteady structure coupling modes **`3`** (`MonolithicNewton`, experimental) and **`4`** (`QuasiSteadyParticular`, quasi-steady re-anchor + mode-2 physics — recommended for culvert approach backwater on Q ramps); WASM metadata entries for both modes |
 | 35 | Unsteady downstream BC types mirror steady: `downstream_bc_type` (`0` WSEL hydrograph default, `1` critical depth, `2` dynamic friction slope, `3` rating curve), `downstream_bc_slope`, `downstream_bc_rating_*`; reserved upstream stage fields; `theta` default **0.6** (clamp $[0.55,1.0]$) — see [`equations.md` §4](equations.md) |
 | 34 | Hybrid structure coupling diagnostics on `solve_unsteady` when inline structures are present: `structure_coupling_converged`, `structure_implicit_interval_count`, `structure_explicit_fallback_count` (per time step); WASM metadata `unsteady_structure_coupling_outputs`. Mode `2` enum renamed `HybridImplicit` (description: implicit where eligible + explicit fallback). |

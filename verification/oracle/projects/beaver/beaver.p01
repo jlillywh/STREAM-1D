@@ -1,0 +1,41 @@
+Plan Title=Beaver Creek steady bridge profiles
+Program Version=5.00
+Short Identifier=Steady Brdg
+Simulation Date=,,,
+Geom File=g01
+Flow File=f01
+Subcritical Flow
+K Sum by GR= 0 
+Std Step Tol= 0.01 
+Critical Tol= 0.01 
+Num of Std Step Trials= 20 
+Max Error Tol= 0.33 
+Flow Tol Ratio= 0.001 
+Split Flow NTrial= 30 
+Split Flow Tol= 0.02 
+Split Flow Ratio= 0.02 
+Log Output Level= 0 
+Friction Slope Method= 1 
+Unsteady Friction Slope Method= 2 
+Unsteady Bridges Friction Slope Method= 1 
+Calc Critical at every XS
+Parabolic Critical Depth
+Global Vel Dist= 1 , 1 , 1 
+Global Log Level= 0 
+CheckData=True
+Encroach Param=-1 ,0,0, 0 
+Run HTab= 1 
+Run UNet= 0 
+Run Sediment= 0 
+Run PostProcess= 1 
+Run WQNet= 0 
+Run RASMapper= 0 
+Write HDF5 File= 1 
+HDF Compression= 1 
+HDF Chunk Size= 1 
+HDF Spatial Parts= 1 
+HDF Fixed Rows= 1 
+Echo Input=False
+Echo Parameters=False
+Echo Output=False
+Write Detailed= 1 
