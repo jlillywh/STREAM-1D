@@ -1,0 +1,1049 @@
+{
+    "format": "streams1d_geometry",
+    "version": 1,
+    "geometry_data": [
+        {
+            "station": 922.9831060729458,
+            "river_station": 792,
+            "x": [
+                -141.39,
+                -58.36791503162798,
+                -46.694332025302394,
+                -12.05,
+                4.12,
+                58.387721952020506,
+                72.98465244002563,
+                191.25
+            ],
+            "y": [
+                82.39,
+                80.46,
+                75.46,
+                73.77,
+                72.49,
+                75.46,
+                80.46,
+                82.62
+            ],
+            "channel_n": 0.04,
+            "overbank_n": 0.1,
+            "left_overbank_n": 0.1,
+            "right_overbank_n": 0.1,
+            "is_overbank": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                true
+            ],
+            "n_stations": [
+                -141.39,
+                -58.36791503162798,
+                -46.694332025302394,
+                -12.05,
+                4.12,
+                58.387721952020506,
+                72.98465244002563,
+                191.25
+            ],
+            "n_values": [
+                0.1,
+                0.04,
+                0.04,
+                0.04,
+                0.04,
+                0.04,
+                0.04,
+                0.1
+            ],
+            "unit_system": "USCustomary",
+            "cutline_skew_deg": 8,
+            "lat": 47.54338737655047,
+            "lng": -122.0449636169821,
+            "ds_reach_lob": 158.33755893516016,
+            "ds_reach_channel": 130.58678803583652,
+            "ds_reach_rob": 130.70949256735474,
+            "base_y": [
+                82.39,
+                80.46,
+                75.46,
+                73.77,
+                72.49,
+                75.46,
+                80.46,
+                82.62
+            ]
+        },
+        {
+            "station": 792.3963180370928,
+            "river_station": 661,
+            "x": [
+                -102.33,
+                -60.73844172268745,
+                -48.59075337814997,
+                -9.2,
+                16.91,
+                39.11,
+                49.02067720368093,
+                61.27584650460116,
+                108.49
+            ],
+            "y": [
+                88.31,
+                80.41,
+                75.41,
+                72.31,
+                72.18,
+                71.95,
+                75.41,
+                80.41,
+                83.16
+            ],
+            "channel_n": 0.04,
+            "overbank_n": 0.1,
+            "left_overbank_n": 0.1,
+            "right_overbank_n": 0.1,
+            "is_overbank": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                true
+            ],
+            "n_stations": [
+                -102.33,
+                -60.73844172268745,
+                -48.59075337814997,
+                -9.2,
+                16.91,
+                39.11,
+                49.02067720368093,
+                61.27584650460116,
+                108.49
+            ],
+            "n_values": [
+                0.1,
+                0.04,
+                0.04,
+                0.04,
+                0.04,
+                0.04,
+                0.04,
+                0.04,
+                0.1
+            ],
+            "unit_system": "USCustomary",
+            "cutline_skew_deg": 1,
+            "lat": 47.54374013405074,
+            "lng": -122.04487357425144,
+            "ds_reach_lob": 165.85038491503727,
+            "ds_reach_channel": 158.56547316077175,
+            "ds_reach_rob": 150.00648605935953,
+            "base_y": [
+                88.31,
+                80.41,
+                75.41,
+                72.31,
+                72.18,
+                71.95,
+                75.41,
+                80.41,
+                83.16
+            ]
+        },
+        {
+            "station": 633.8308448762756,
+            "river_station": 526,
+            "x": [
+                -136.76,
+                -119.29,
+                -49.810551331226186,
+                -39.84844106498096,
+                -8.17,
+                8,
+                21.48,
+                40.761378762851905,
+                50.95172345356488,
+                102.43,
+                114.61
+            ],
+            "y": [
+                81.54,
+                79.03,
+                77.9,
+                72.9,
+                69.78,
+                70.67,
+                69.82,
+                72.9,
+                77.9,
+                79.07,
+                81.69
+            ],
+            "channel_n": 0.04,
+            "overbank_n": 0.1,
+            "left_overbank_n": 0.1,
+            "right_overbank_n": 0.1,
+            "is_overbank": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                true,
+                true
+            ],
+            "n_stations": [
+                -136.76,
+                -119.29,
+                -49.810551331226186,
+                -39.84844106498096,
+                -8.17,
+                8,
+                21.48,
+                40.761378762851905,
+                50.95172345356488,
+                102.43,
+                114.61
+            ],
+            "n_values": [
+                0.1,
+                0.1,
+                0.04,
+                0.04,
+                0.04,
+                0.04,
+                0.04,
+                0.04,
+                0.04,
+                0.1,
+                0.1
+            ],
+            "unit_system": "USCustomary",
+            "cutline_skew_deg": -3.68,
+            "lat": 47.544168471195704,
+            "lng": -122.04476423952106,
+            "ds_reach_lob": 136.11283056808338,
+            "ds_reach_channel": 129.12821125401308,
+            "ds_reach_rob": 151.2486497535889,
+            "base_y": [
+                81.54,
+                79.03,
+                77.9,
+                72.9,
+                69.78,
+                70.67,
+                69.82,
+                72.9,
+                77.9,
+                79.07,
+                81.69
+            ]
+        },
+        {
+            "station": 504.70263362224887,
+            "river_station": 416,
+            "x": [
+                -213.44,
+                -165.56,
+                -51.223636369151286,
+                -41.09,
+                1,
+                31.93,
+                43.55112578349407,
+                142.1,
+                182.19
+            ],
+            "y": [
+                81.19,
+                77.28,
+                75.9,
+                69.02,
+                69.16,
+                68.71,
+                75.9,
+                77.21,
+                81.69
+            ],
+            "channel_n": 0.04,
+            "overbank_n": 0.1,
+            "left_overbank_n": 0.1,
+            "right_overbank_n": 0.1,
+            "is_overbank": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                true,
+                true
+            ],
+            "n_stations": [
+                -213.44,
+                -165.56,
+                -51.223636369151286,
+                -41.09,
+                1,
+                31.93,
+                43.55112578349407,
+                142.1,
+                182.19
+            ],
+            "n_values": [
+                0.1,
+                0.1,
+                0.04,
+                0.04,
+                0.04,
+                0.04,
+                0.04,
+                0.1,
+                0.1
+            ],
+            "unit_system": "USCustomary",
+            "cutline_skew_deg": -2.43,
+            "lat": 47.54451728875391,
+            "lng": -122.044675202476,
+            "ds_reach_lob": 139.4462886361167,
+            "ds_reach_channel": 145.63767158171905,
+            "ds_reach_rob": 143.5491794243708,
+            "base_y": [
+                81.19,
+                77.28,
+                75.9,
+                69.02,
+                69.16,
+                68.71,
+                75.9,
+                77.21,
+                81.69
+            ]
+        },
+        {
+            "station": 359.06496204052075,
+            "river_station": 291,
+            "x": [
+                -96.7,
+                -37.60406762105442,
+                -30.083254096843543,
+                -5.36,
+                11.28,
+                34.21,
+                46.4212485440209,
+                158.85
+            ],
+            "y": [
+                76.44,
+                74.9,
+                69.9,
+                68.91,
+                67.98,
+                68.94,
+                74.9,
+                76.44
+            ],
+            "channel_n": 0.04,
+            "overbank_n": 0.1,
+            "left_overbank_n": 0.1,
+            "right_overbank_n": 0.1,
+            "is_overbank": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                true
+            ],
+            "n_stations": [
+                -96.7,
+                -37.60406762105442,
+                -30.083254096843543,
+                -5.36,
+                11.28,
+                34.21,
+                46.4212485440209,
+                158.85
+            ],
+            "n_values": [
+                0.1,
+                0.04,
+                0.04,
+                0.04,
+                0.04,
+                0.04,
+                0.04,
+                0.1
+            ],
+            "unit_system": "USCustomary",
+            "cutline_skew_deg": 0,
+            "lat": 47.54491070384779,
+            "lng": -122.04457478173566,
+            "ds_reach_lob": 116.82631313044367,
+            "ds_reach_channel": 158.56785306177434,
+            "ds_reach_rob": 193.80652927706222,
+            "base_y": [
+                76.44,
+                74.9,
+                69.9,
+                68.91,
+                67.98,
+                68.94,
+                74.9,
+                76.44
+            ]
+        },
+        {
+            "station": 195.88573994363264,
+            "river_station": 152,
+            "x": [
+                -98.56,
+                -33.36964360581577,
+                -26.695714884652617,
+                -4.44,
+                0,
+                30.74954916212369,
+                38.43693645265461,
+                83.62
+            ],
+            "y": [
+                75.16,
+                73.74,
+                68.74,
+                67.95,
+                68.74,
+                68.74,
+                73.74,
+                75.26
+            ],
+            "channel_n": 0.04,
+            "overbank_n": 0.1,
+            "left_overbank_n": 0.1,
+            "right_overbank_n": 0.1,
+            "is_overbank": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                true
+            ],
+            "n_stations": [
+                -98.56,
+                -33.36964360581577,
+                -26.695714884652617,
+                -4.44,
+                0,
+                30.74954916212369,
+                38.43693645265461,
+                83.62
+            ],
+            "n_values": [
+                0.1,
+                0.04,
+                0.04,
+                0.04,
+                0.04,
+                0.04,
+                0.04,
+                0.1
+            ],
+            "unit_system": "USCustomary",
+            "cutline_skew_deg": -26,
+            "lat": 47.545267279314736,
+            "lng": -122.04494300513338,
+            "base_y": [
+                75.16,
+                73.74,
+                68.74,
+                67.95,
+                68.74,
+                68.74,
+                73.74,
+                75.26
+            ],
+            "ds_reach_lob": 187.83146299079687,
+            "ds_reach_channel": 182.16390020254278,
+            "ds_reach_rob": 174.0917867443717
+        },
+        {
+            "station": 12.895892069508893,
+            "river_station": 0,
+            "x": [
+                -167.34,
+                -53.51663829173954,
+                -42.813310633391644,
+                -10.95,
+                0,
+                15.42,
+                37.64193119873438,
+                47.052413998417975,
+                160.22
+            ],
+            "y": [
+                75.68,
+                73.9,
+                68.9,
+                67.93,
+                68.9,
+                68.47,
+                68.9,
+                73.9,
+                75.3
+            ],
+            "channel_n": 0.04,
+            "overbank_n": 0.1,
+            "left_overbank_n": 0.1,
+            "right_overbank_n": 0.1,
+            "is_overbank": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                true
+            ],
+            "n_stations": [
+                -167.34,
+                -53.51663829173954,
+                -42.813310633391644,
+                -10.95,
+                0,
+                15.42,
+                37.64193119873438,
+                47.052413998417975,
+                160.22
+            ],
+            "n_values": [
+                0.1,
+                0.04,
+                0.04,
+                0.04,
+                0.04,
+                0.04,
+                0.04,
+                0.04,
+                0.1
+            ],
+            "unit_system": "USCustomary",
+            "cutline_skew_deg": -20,
+            "lat": 47.54568247550961,
+            "lng": -122.04535395748808,
+            "base_y": [
+                75.68,
+                73.9,
+                68.9,
+                67.93,
+                68.9,
+                68.47,
+                68.9,
+                73.9,
+                75.3
+            ]
+        }
+    ],
+    "culvert_stations": [],
+    "bridge_data": [
+        {
+            "station": 500,
+            "low_chord": 75,
+            "high_chord": 80,
+            "focus_chord": 12,
+            "pier_width": 4,
+            "num_piers": 2,
+            "pier_shape": 2,
+            "orifice_coeff": 0.5,
+            "weir_coeff": 2.6,
+            "deck_points_us": [
+                {
+                    "x": -213.4,
+                    "high_chord": 80,
+                    "low_chord": 75
+                },
+                {
+                    "x": 182.2,
+                    "high_chord": 80,
+                    "low_chord": 75
+                }
+            ],
+            "deck_points_ds": [
+                {
+                    "x": -213.4,
+                    "high_chord": 80,
+                    "low_chord": 75
+                },
+                {
+                    "x": 182.2,
+                    "high_chord": 80,
+                    "low_chord": 75
+                }
+            ],
+            "deck_distance": 46,
+            "deck_width": 48,
+            "deck_weir_coef": 2.6,
+            "deck_us_embankment_ss": 2,
+            "deck_ds_embankment_ss": 2,
+            "deck_max_submergence": 0.95,
+            "deck_min_weir_flow_el": "",
+            "pier_stations": null,
+            "abutment_left_enabled": true,
+            "abutment_left_width": 25,
+            "abutment_left_station": -60,
+            "abutment_left_top_elevation": null,
+            "abutment_left_use_profile": false,
+            "abutment_left_profile_stations": [],
+            "abutment_left_profile_elevations": [],
+            "abutment_right_enabled": true,
+            "abutment_right_width": 10,
+            "abutment_right_station": 45,
+            "abutment_right_top_elevation": null,
+            "abutment_right_use_profile": false,
+            "abutment_right_profile_stations": [],
+            "abutment_right_profile_elevations": [],
+            "use_explicit_cuts": false,
+            "opening_reach_station_origin": null,
+            "xs_up": null,
+            "xs_down": null,
+            "xs_internal": [],
+            "anchor_mode": 0,
+            "anchor_reach_station": null,
+            "approach_reach_station": null,
+            "departure_reach_station": null,
+            "use_explicit_approach": false,
+            "use_explicit_departure": false,
+            "deck_vents": [
+                {
+                    "left": -30.4,
+                    "right": -28.4,
+                    "invert": 75,
+                    "soffit": 80,
+                    "cd": 0.8,
+                    "type": 0
+                },
+                {
+                    "left": -24.4,
+                    "right": -22.4,
+                    "invert": 75,
+                    "soffit": 80,
+                    "cd": 0.8,
+                    "type": 0
+                },
+                {
+                    "left": -18.4,
+                    "right": -16.4,
+                    "invert": 75,
+                    "soffit": 80,
+                    "cd": 0.8,
+                    "type": 0
+                },
+                {
+                    "left": -12.399999999999999,
+                    "right": -10.399999999999999,
+                    "invert": 75,
+                    "soffit": 80,
+                    "cd": 0.8,
+                    "type": 0
+                },
+                {
+                    "left": -6.399999999999999,
+                    "right": -4.399999999999999,
+                    "invert": 75,
+                    "soffit": 80,
+                    "cd": 0.8,
+                    "type": 0
+                },
+                {
+                    "left": -0.3999999999999986,
+                    "right": 1.6000000000000014,
+                    "invert": 75,
+                    "soffit": 80,
+                    "cd": 0.8,
+                    "type": 0
+                },
+                {
+                    "left": 5.600000000000001,
+                    "right": 7.600000000000001,
+                    "invert": 75,
+                    "soffit": 80,
+                    "cd": 0.8,
+                    "type": 0
+                },
+                {
+                    "left": 11.600000000000001,
+                    "right": 13.600000000000001,
+                    "invert": 75,
+                    "soffit": 80,
+                    "cd": 0.8,
+                    "type": 0
+                },
+                {
+                    "left": 17.6,
+                    "right": 19.6,
+                    "invert": 75,
+                    "soffit": 80,
+                    "cd": 0.8,
+                    "type": 0
+                },
+                {
+                    "left": 23.6,
+                    "right": 25.6,
+                    "invert": 75,
+                    "soffit": 80,
+                    "cd": 0.8,
+                    "type": 0
+                }
+            ],
+            "deck_vents_mode": "pattern",
+            "deck_vent_pattern": {
+                "start_x": -30.4,
+                "end_x": 29.5,
+                "width": 2,
+                "sep": 4,
+                "invert": 75,
+                "soffit": 80,
+                "cd": 0.8,
+                "type": 0
+            },
+            "approach_guide_banks": {
+                "left_toe": null,
+                "right_toe": null
+            },
+            "departure_guide_banks": {
+                "left_toe": null,
+                "right_toe": null
+            },
+            "low_flow_method": 0,
+            "wspro_coeff": 0.8
+        },
+        {
+            "station": 350,
+            "low_chord": 75,
+            "high_chord": 80,
+            "focus_chord": 12,
+            "pier_width": 4,
+            "num_piers": 2,
+            "pier_shape": 2,
+            "orifice_coeff": 0.5,
+            "weir_coeff": 2.6,
+            "deck_points_us": [
+                {
+                    "x": -96.7,
+                    "high_chord": 80,
+                    "low_chord": 75
+                },
+                {
+                    "x": 158.8,
+                    "high_chord": 80,
+                    "low_chord": 75
+                }
+            ],
+            "deck_points_ds": [
+                {
+                    "x": -96.7,
+                    "high_chord": 80,
+                    "low_chord": 75
+                },
+                {
+                    "x": 158.8,
+                    "high_chord": 80,
+                    "low_chord": 75
+                }
+            ],
+            "deck_distance": 20,
+            "deck_width": 48,
+            "deck_weir_coef": 2.6,
+            "deck_us_embankment_ss": 2,
+            "deck_ds_embankment_ss": 2,
+            "deck_max_submergence": 0.95,
+            "deck_min_weir_flow_el": "",
+            "pier_stations": null,
+            "abutment_left_enabled": true,
+            "abutment_left_width": 22,
+            "abutment_left_station": -55,
+            "abutment_left_top_elevation": null,
+            "abutment_left_use_profile": false,
+            "abutment_left_profile_stations": [],
+            "abutment_left_profile_elevations": [],
+            "abutment_right_enabled": true,
+            "abutment_right_width": 10,
+            "abutment_right_station": 45,
+            "abutment_right_top_elevation": null,
+            "abutment_right_use_profile": false,
+            "abutment_right_profile_stations": [],
+            "abutment_right_profile_elevations": [],
+            "use_explicit_cuts": false,
+            "opening_reach_station_origin": null,
+            "xs_up": null,
+            "xs_down": null,
+            "xs_internal": [],
+            "anchor_mode": 0,
+            "anchor_reach_station": null,
+            "approach_reach_station": null,
+            "departure_reach_station": null,
+            "use_explicit_approach": false,
+            "use_explicit_departure": false,
+            "deck_vents": [
+                {
+                    "left": -29.6,
+                    "right": -27.6,
+                    "invert": 75,
+                    "soffit": 80,
+                    "cd": 0.8,
+                    "type": 0
+                },
+                {
+                    "left": -23.6,
+                    "right": -21.6,
+                    "invert": 75,
+                    "soffit": 80,
+                    "cd": 0.8,
+                    "type": 0
+                },
+                {
+                    "left": -17.6,
+                    "right": -15.600000000000001,
+                    "invert": 75,
+                    "soffit": 80,
+                    "cd": 0.8,
+                    "type": 0
+                },
+                {
+                    "left": -11.600000000000001,
+                    "right": -9.600000000000001,
+                    "invert": 75,
+                    "soffit": 80,
+                    "cd": 0.8,
+                    "type": 0
+                },
+                {
+                    "left": -5.600000000000001,
+                    "right": -3.6000000000000014,
+                    "invert": 75,
+                    "soffit": 80,
+                    "cd": 0.8,
+                    "type": 0
+                },
+                {
+                    "left": 0.3999999999999986,
+                    "right": 2.3999999999999986,
+                    "invert": 75,
+                    "soffit": 80,
+                    "cd": 0.8,
+                    "type": 0
+                },
+                {
+                    "left": 6.399999999999999,
+                    "right": 8.399999999999999,
+                    "invert": 75,
+                    "soffit": 80,
+                    "cd": 0.8,
+                    "type": 0
+                },
+                {
+                    "left": 12.399999999999999,
+                    "right": 14.399999999999999,
+                    "invert": 75,
+                    "soffit": 80,
+                    "cd": 0.8,
+                    "type": 0
+                },
+                {
+                    "left": 18.4,
+                    "right": 20.4,
+                    "invert": 75,
+                    "soffit": 80,
+                    "cd": 0.8,
+                    "type": 0
+                },
+                {
+                    "left": 24.4,
+                    "right": 26.4,
+                    "invert": 75,
+                    "soffit": 80,
+                    "cd": 0.8,
+                    "type": 0
+                }
+            ],
+            "deck_vents_mode": "pattern",
+            "deck_vent_pattern": {
+                "start_x": -29.6,
+                "end_x": 27.7,
+                "width": 2,
+                "sep": 4,
+                "invert": 75,
+                "soffit": 80,
+                "cd": 0.8,
+                "type": 0
+            },
+            "approach_guide_banks": {
+                "left_toe": null,
+                "right_toe": null
+            },
+            "departure_guide_banks": {
+                "left_toe": null,
+                "right_toe": null
+            },
+            "low_flow_method": 0,
+            "wspro_coeff": 0.8
+        }
+    ],
+    "parameters": {
+        "calibration_points": [],
+        "max_flow_rate": 3000,
+        "background_geojson": null,
+        "background_map_source": "esri",
+        "reach_centerline_coords": [
+            [
+                47.543330227767946,
+                -122.0449782044322
+            ],
+            [
+                47.54338737655047,
+                -122.0449636169821
+            ],
+            [
+                47.54346290360775,
+                -122.04494433840554
+            ],
+            [
+                47.54347905633056,
+                -122.04494021535992
+            ],
+            [
+                47.54374013405074,
+                -122.04487357425144
+            ],
+            [
+                47.543805858577095,
+                -122.0448567978092
+            ],
+            [
+                47.54398389671009,
+                -122.0448113528799
+            ],
+            [
+                47.544118953510186,
+                -122.04477687910382
+            ],
+            [
+                47.54414401986217,
+                -122.04477048081951
+            ],
+            [
+                47.544168471195704,
+                -122.04476423952106
+            ],
+            [
+                47.54424181083948,
+                -122.04474551929034
+            ],
+            [
+                47.54451728875391,
+                -122.044675202476
+            ],
+            [
+                47.544518075354006,
+                -122.04467500169325
+            ],
+            [
+                47.544519134976895,
+                -122.04467473122037
+            ],
+            [
+                47.54488001033872,
+                -122.04458261637382
+            ],
+            [
+                47.54491070384779,
+                -122.04457478173566
+            ],
+            [
+                47.54494885960716,
+                -122.04456504232895
+            ],
+            [
+                47.54497863150323,
+                -122.04459795481223
+            ],
+            [
+                47.54513960607971,
+                -122.04477591032584
+            ],
+            [
+                47.54517698490832,
+                -122.04481723218417
+            ],
+            [
+                47.545267279314736,
+                -122.04494300513338
+            ],
+            [
+                47.54526765403816,
+                -122.04494352709341
+            ],
+            [
+                47.54535545936307,
+                -122.04506583294942
+            ],
+            [
+                47.54535803602801,
+                -122.04506942203939
+            ],
+            [
+                47.545669586682784,
+                -122.04534265390657
+            ],
+            [
+                47.54568247550961,
+                -122.04535395748808
+            ],
+            [
+                47.54568538962225,
+                -122.04535651318304
+            ],
+            [
+                47.545712894408624,
+                -122.04538063505221
+            ],
+            [
+                47.545712894408624,
+                -122.04538063505221
+            ]
+        ],
+        "tributary_centerline_coords": [],
+        "map_center": [
+            47.54452157462581,
+            -122.04517722129823
+        ],
+        "map_zoom": 17,
+        "plan_view_legend_corner": "bottomleft",
+        "profile_view_station_card_corner": "topright",
+        "tributary_cross_sections": null,
+        "tributary_culverts": [],
+        "tributary_bridges": [],
+        "enable_junction": false,
+        "junction_main_station": null,
+        "junction_tributary_station": 0,
+        "tributary_flow_rate": 10,
+        "tributary_reach_metadata": "none"
+    }
+}
