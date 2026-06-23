@@ -20,7 +20,7 @@ Full catalog: [`verification/README.md`](../verification/README.md), [`verificat
 | Linked oracle | `reach_mild` + `simple_channel` open channel (constant Q and Q ramp); ConSpan mode 4 ramp ≤0.12 ft overall max \|Δ\| vs HEC |
 | WASM contract | `tests/wasm_json_contract.rs` — schema version, deserialize samples |
 | Python | `python/test_stream1d.py`, `python/test_hecras_culvert_verification.py`, `python/test_issaquah01_bridge_parity.py` |
-| Verification notebook | CI executes `python/stream1d_verification.ipynb` headlessly — ConSpan culvert and Issaquah01 bridge WSE/EGL vs HEC-RAS (requires `maturin develop`) |
+| Verification notebook | CI executes `python/stream1d_verification.ipynb` headlessly — ConSpan culvert, Issaquah01 bridge, **§6 simple_channel Q-ramp unsteady** (open channel, no structures) vs HEC-RAS |
 
 ## Common commands
 
