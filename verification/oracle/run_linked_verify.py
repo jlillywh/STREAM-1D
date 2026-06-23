@@ -98,7 +98,15 @@ def _build_unsteady_payload(
     mapper = str(scenario.raw.get("stream1d", {}).get("mapper", ""))
 
     if mapper == "beaver_mapper.build_beaver_unsteady_inputs":
-        payload, flow = build_beaver_unsteady_inputs(project_dir)
+        coupling = int(scenario.raw.get("stream1d", {}).get("coupling_mode", 2))
+        friction_override = scenario.raw.get("stream1d", {}).get("unsteady_friction_slope_method")
+        payload, flow = build_beaver_unsteady_inputs(
+            project_dir,
+            coupling_mode=coupling,
+            unsteady_friction_slope_method=(
+                int(friction_override) if friction_override is not None else None
+            ),
+        )
         geom = parse_g01(project_dir / linked["geometry"])
         xs_list = geom.cross_sections
         parsed_xs = geom.cross_sections

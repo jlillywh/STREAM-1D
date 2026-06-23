@@ -45,6 +45,7 @@ sys.path.insert(0, str(ORACLE))
 sys.path.insert(0, str(ROOT / "python"))
 
 from lib.hecras_geom_parser import parse_g01  # noqa: E402
+from lib.ras_preflight import validate_linked_unsteady_project  # noqa: E402
 from lib.ras_headless import (  # noqa: E402
     RasHeadlessError,
     TerminalWselCheckpoint,
@@ -63,8 +64,8 @@ from lib.scenario import load_scenario  # noqa: E402
 
 def _reference_json_path(scenario) -> Path:
     ref = scenario.raw.get("reference", {})
-    rel = ref.get("file")
-    if rel:
+    rel = ref.get("hdf_extract") or ref.get("file")
+    if rel and (ref.get("hdf_extract") or not str(rel).endswith(".u02")):
         return (scenario.oracle_root / rel).resolve()
     return scenario.linked_project_dir() / f"reference_wsel_{scenario.id}.json"
 
@@ -214,12 +215,37 @@ def main() -> int:
 
     ok, msg = hecras_available()
     print(f"HEC-RAS preflight: {msg}")
-    if args.preflight_only:
-        return 0 if ok else 2
 
     linked = scenario.raw["linked_project"]
     plan_key = (args.plan or scenario.plan_number()).zfill(2)
     project_dir = scenario.linked_project_dir()
+    files = scenario.linked_files()
+    plan_path = files.get("plan") or (project_dir / f"{project_dir.name}.p{plan_key}")
+    u02_path = files.get("unsteady_flow")
+    if u02_path is None:
+        print("ERROR: scenario linked_project.unsteady_flow is required for preflight", file=sys.stderr)
+        return 2
+    project_errors = validate_linked_unsteady_project(
+        project_dir,
+        plan_path=plan_path,
+        u02_path=u02_path,
+    )
+    if project_errors:
+        print("\nERROR: linked project preflight failed:", file=sys.stderr)
+        for err in project_errors:
+            print(f"  - {err}", file=sys.stderr)
+        return 2
+    print("Linked project preflight: ok (hydrograph ordinates match plan simulation span)")
+
+    if args.preflight_only:
+        if not ok:
+            print(
+                "Warning: HEC-RAS Ras.exe not available — project checks passed but "
+                "headless runs will fail until HECRAS_RAS_EXE is set.",
+                file=sys.stderr,
+            )
+        return 0
+
     ref_path = _reference_json_path(scenario)
     compare = scenario.raw.get("compare", {})
     checkpoints_rm = [float(rm) for rm in compare.get("checkpoints_rm", [])]

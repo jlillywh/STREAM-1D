@@ -14,6 +14,8 @@ const require = createRequire(import.meta.url);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const fixturePath = join(__dirname, '../../tests/fixtures/wasm_steady_culvert_tier1.json');
 
+import { wasmResult } from './wasm_result.js';
+
 const {
   getEngineVersion,
   getWasmApiMetadata,
@@ -28,7 +30,7 @@ if (meta.api_version < 2) {
 
 const inputs = JSON.parse(readFileSync(fixturePath, 'utf8'));
 validateSteadyInputs(inputs);
-const result = solveSteady(inputs);
+const result = wasmResult(solveSteady(inputs));
 
 if (!result.culvert_control_types?.length) {
   throw new Error('culvert_control_types missing from WASM result');

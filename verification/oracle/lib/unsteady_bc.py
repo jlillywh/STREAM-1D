@@ -1,23 +1,17 @@
 """Shared downstream BC and steady warm-start helpers for linked unsteady mappers."""
-
 from __future__ import annotations
-
+import inspect
 from typing import Any
-
 import stream1d as st
-
 from .downstream_bc_mapping import DownstreamBcMapping, downstream_bc_from_flow
 from .hecras_unsteady_parser import ParsedUnsteadyFlow
 from .rating_curve_ops import interpolate_rating_wsel
-
 __all__ = [
     "DownstreamBcMapping",
     "downstream_bc_from_flow",
     "resample_series",
     "steady_initial_wsel",
 ]
-
-
 def resample_series(values: list[float], n_out: int) -> list[float]:
     if not values:
         return [0.0] * n_out
@@ -34,6 +28,32 @@ def resample_series(values: list[float], n_out: int) -> list[float]:
         frac = idx - lo
         out.append(values[lo] + frac * (values[hi] - values[lo]))
     return out
+def _serialize_for_steady_json(kwargs: dict[str, Any], cross_sections: list[st.CrossSection]) -> dict[str, Any]:
+    """Build a JSON-serializable steady payload for solve_steady(dict)."""
+    payload: dict[str, Any] = {
+        "cross_sections": [xs.to_dict() for xs in cross_sections],
+        "flow_rate": kwargs.get("flow_rate"),
+        "regime": kwargs.get("regime", 0),
+        "num_slices": kwargs.get("num_slices"),
+        "max_spacing": kwargs.get("max_spacing"),
+    }
+    for key, val in kwargs.items():
+        if key in payload or val is None:
+            continue
+        if key in (
+            "bridge_upstream_cross_sections",
+            "bridge_downstream_cross_sections",
+            "bridge_approach_cross_sections",
+            "bridge_departure_cross_sections",
+        ):
+            payload[key] = [xs.to_dict() if hasattr(xs, "to_dict") else xs for xs in val]
+        elif key == "bridge_internal_cross_sections":
+            payload[key] = [
+                [xs.to_dict() if hasattr(xs, "to_dict") else xs for xs in group] for group in val
+            ]
+        else:
+            payload[key] = val
+    return payload
 
 
 def steady_initial_wsel(
@@ -71,13 +91,28 @@ def steady_initial_wsel(
         kwargs["coeff_expansion"] = coeff_expansion
     if structure_fields:
         kwargs.update(structure_fields)
+    steady_keys = set(inspect.signature(st.SteadyInputs.__init__).parameters) - {'self'}
+    extra = {k: v for k, v in kwargs.items() if k not in steady_keys}
+    steady_kw = {k: v for k, v in kwargs.items() if k in steady_keys}
+    if extra:
+        payload = _serialize_for_steady_json(
+            {
+                "flow_rate": flow_cfs,
+                "regime": 0,
+                "num_slices": num_slices,
+                "max_spacing": max_spacing,
+                **steady_kw,
+                **extra,
+            },
+            cross_sections,
+        )
+        return list(st.solve_steady(payload)["wsel"])
     steady = st.SteadyInputs(
         cross_sections=cross_sections,
         flow_rate=flow_cfs,
         regime=0,
         num_slices=num_slices,
         max_spacing=max_spacing,
-        **kwargs,
+        **steady_kw,
     )
-    return list(st.solve_steady(steady)["wsel"])
-
+    return list(st.solve_steady(steady)['wsel'])

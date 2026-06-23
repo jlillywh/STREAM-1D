@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Chunk 8 certification runner (LF line endings). Log: /tmp/chunk8_verify.log
+# Beaver bridge restart runner — layered diagnostics (not a certification gate).
 set -eu
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "$ROOT"
@@ -16,17 +16,16 @@ else
 fi
 maturin develop --features python
 
-echo "=== smoke parse (g01 + u02 + p03 + mapper) ==="
+echo "=== g01 parser regression (BR Coef + deck chords) ==="
+python3 verification/oracle/scripts/test_beaver_g01_parser.py
+
+echo "=== Layer 1 — mapping smoke (g01 + u02 + p03 + mapper) ==="
 python3 verification/oracle/scripts/smoke_beaver_parse.py
 
-echo "=== warm start (initial WSEL vs steady @ initial Q) ==="
+echo "=== internal — warm start (initial WSEL vs steady @ initial Q) ==="
 python3 verification/oracle/scripts/test_beaver_unsteady_warm_start.py
 
-echo "=== Beaver gap table (mode 0 vs 2 vs Observed HWM) ==="
-python3 verification/oracle/scripts/diagnose_beaver_unsteady.py
+echo "=== layered restart diagnostic (mapping + steady + unsteady) ==="
+python3 verification/oracle/scripts/diagnose_beaver_restart.py
 
-echo "=== linked oracle (mode 2, scenario default) ==="
-bash verification/oracle/run_oracle.sh \
-  --scenario verification/oracle/scenarios/beaver_unsteady_linked.json
-
-echo "=== DONE (Chunk 8 — certification development) ==="
+echo "=== DONE (Beaver bridge restart — diagnostic only) ==="

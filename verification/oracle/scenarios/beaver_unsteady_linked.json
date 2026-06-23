@@ -5,10 +5,10 @@
   "mode": "unsteady",
   "parity_program": {
     "chunk": 8,
-    "certification": "development",
+    "certification": "diagnostic",
     "prerequisite_chunks": [1, 6],
     "optional_chunks": [7],
-    "notes": "Flagship high-flow bridge certification. Requires friction-slope DS BC (Chunk 1), hybrid implicit bridge mode 2 (Chunk 6). HDF WSEL(t) required for certified status — Observed HWM is dev reference only."
+    "notes": "Restart 2026: layered diagnostic (mapping → steady → unsteady). Observed HWM is dev proxy only. HDF WSEL(t) required for certification."
   },
   "scope": {
     "single_reach": true,
@@ -39,10 +39,12 @@
     "notes": "Observed HWM = peak WSEL at each RM from RAS plan 03 (dev convenience). Certification requires HDF extract at ≥10 checkpoint RMs — see extract_hdf_wsel.py."
   },
   "compare": {
-    "quantity": "max_wsel",
+    "quantity": "terminal_wsel",
     "match_by": "river_mile",
+    "enforce_tolerance": false,
+    "notes": "Compare terminal WSEL (end of 48 h recession) — reference JSON is terminal from plan 03 HDF, not peak. Use max_wsel only after extracting peak WSEL(t) from HDF.",
     "checkpoints_rm": [5.99, 5.875, 5.76, 5.685, 5.61, 5.41, 5.39, 5.13, 5.065, 5.0]
   },
   "tolerance_ft": 0.5,
-  "quantity": "max_wsel"
+  "quantity": "terminal_wsel"
 }

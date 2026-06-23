@@ -4,6 +4,7 @@ pub mod culvert;
 pub mod bridge;
 pub mod bridge_abutment;
 pub mod bridge_interior;
+pub mod culvert_reach_layout;
 pub mod bridge_validation;
 pub mod bridge_roadway_compose;
 pub mod pier_geometry;

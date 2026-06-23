@@ -68,6 +68,12 @@ pub struct UnsteadyCulvertInputs {
     pub culvert_barrel_spans: Option<Vec<Vec<f64>>>,
     #[serde(default)]
     pub culvert_barrel_rises: Option<Vec<Vec<f64>>>,
+    /// Upstream bounding cross-section river station per culvert (HEC-RAS inline structure reach).
+    #[serde(default)]
+    pub culvert_approach_reach_stations: Option<Vec<f64>>,
+    /// Downstream bounding cross-section river station per culvert.
+    #[serde(default)]
+    pub culvert_departure_reach_stations: Option<Vec<f64>>,
 }
 
 /// Bridge model fields for unsteady routing (flattened into JSON; same keys as steady).
@@ -662,6 +668,8 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
             culvert_active_barrels: inputs.culvert.culvert_active_barrels.clone(),
             culvert_barrel_spans: inputs.culvert.culvert_barrel_spans.clone(),
             culvert_barrel_rises: inputs.culvert.culvert_barrel_rises.clone(),
+            culvert_approach_reach_stations: inputs.culvert.culvert_approach_reach_stations.clone(),
+            culvert_departure_reach_stations: inputs.culvert.culvert_departure_reach_stations.clone(),
             bridge_stations: inputs.bridge.bridge_stations.clone(),
             bridge_low_chords: inputs.bridge.bridge_low_chords.clone(),
             bridge_high_chords: inputs.bridge.bridge_high_chords.clone(),
@@ -879,14 +887,22 @@ pub fn solve_unsteady(inputs: &UnsteadyInputs) -> UnsteadyResult {
         &mut densified_q_current,
     );
 
+    let culvert_face_intervals = crate::solvers::culvert_reach_layout::apply_culvert_reach_layout_unsteady(
+        &inputs,
+        raw_units,
+        num_slices,
+        &mut densified_stations,
+        &mut densified_tables,
+        &mut densified_z_mins,
+        &mut densified_xs,
+        &mut densified_y_current,
+        &mut densified_q_current,
+    );
+
     let dm = densified_tables.len();
 
-    let culvert_intervals = inputs
-        .culvert
-        .culvert_stations
-        .as_ref()
-        .map(|stations| structure_coupling::find_structure_intervals(stations, &densified_stations, raw_units))
-        .unwrap_or_default();
+    let culvert_intervals =
+        crate::solvers::culvert_reach_layout::culvert_intervals_from_faces(&culvert_face_intervals);
 
     let bridge_intervals =
         crate::solvers::bridge_interior::bridge_intervals_from_faces(&bridge_face_intervals);

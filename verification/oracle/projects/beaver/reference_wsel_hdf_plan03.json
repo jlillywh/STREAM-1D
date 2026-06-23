@@ -1,0 +1,47 @@
+{
+  "source": "HEC-RAS plan 03 terminal WSEL from beaver.p03.hdf",
+  "coupling_mode": 0,
+  "checkpoints": [
+    {
+      "rm": 5.99,
+      "max_wsel_ft": 217.61502075195312
+    },
+    {
+      "rm": 5.875,
+      "max_wsel_ft": 216.44432067871094
+    },
+    {
+      "rm": 5.76,
+      "max_wsel_ft": 215.4951171875
+    },
+    {
+      "rm": 5.685,
+      "max_wsel_ft": 215.1432647705078
+    },
+    {
+      "rm": 5.61,
+      "max_wsel_ft": 214.8498077392578
+    },
+    {
+      "rm": 5.41,
+      "max_wsel_ft": 213.7135772705078
+    },
+    {
+      "rm": 5.39,
+      "max_wsel_ft": 213.2821502685547
+    },
+    {
+      "rm": 5.13,
+      "max_wsel_ft": 211.41001892089844
+    },
+    {
+      "rm": 5.065,
+      "max_wsel_ft": 210.8602752685547
+    },
+    {
+      "rm": 5.0,
+      "max_wsel_ft": 210.21823120117188
+    }
+  ],
+  "hdf_path": "\\\\wsl.localhost\\Ubuntu\\home\\jason\\Lillywhite_Consulting\\lillywhite_engine\\STREAM-1D\\verification\\oracle\\projects\\beaver\\beaver.p03.hdf"
+}

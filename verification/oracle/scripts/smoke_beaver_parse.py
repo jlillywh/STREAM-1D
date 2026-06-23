@@ -54,7 +54,9 @@ def main() -> int:
 
     payload, _ = build_beaver_unsteady_inputs(PROJECT)
     print("mapped_steps", payload.get("num_steps"), "dt", payload.get("dt"))
-    print("coupling_default_in_payload", payload.get("unsteady_structure_coupling_mode"))
+    print("coupling_mode", payload.get("unsteady_structure_coupling_mode"))
+    print("friction_slope_method", payload.get("unsteady_friction_slope_method"))
+    print("approach_friction_len", payload.get("bridge_approach_friction_lengths"))
     print("bridge_deck_pts", len(payload.get("bridge_deck_stations", [[]])[0]))
     print("has_BU", bool(payload.get("bridge_upstream_cross_sections")))
     print("has_BD", bool(payload.get("bridge_downstream_cross_sections")))
@@ -62,6 +64,8 @@ def main() -> int:
     assert bu is not None and bd is not None
     assert payload.get("bridge_upstream_cross_sections")
     assert payload.get("bridge_downstream_cross_sections")
+    assert payload.get("bridge_approach_friction_lengths")
+    assert payload.get("bridge_roadway_embankments")
     print("smoke_beaver_parse: PASS")
     return 0
 

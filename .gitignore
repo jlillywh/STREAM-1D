@@ -85,3 +85,11 @@ verification/oracle/omega_sweep_results.tsv
 verification/oracle/omega_sweep_summary.json
 verification/oracle/scripts/_conspan_diag_tmp.py
 verification/oracle/_patch_ras_ref.py
+
+# HEC-RAS HDF binaries — extract JSON references instead (see projects/beaver/README.md)
+verification/oracle/projects/**/*.hdf
+
+# Generated / local scratch
+diff_stat_out.txt
+examples/wasm/wasm_result.js
+verification/oracle/projects/beaver/restart_report_beaver.json

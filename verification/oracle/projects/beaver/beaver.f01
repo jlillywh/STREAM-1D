@@ -1,0 +1,26 @@
+Flow Title=Beaver Creek steady bridge profiles
+Program Version=5.00
+Number of Profiles= 3 
+Profile Names=Initial,Peak,Recession
+River Rch & RM=Beaver Creek    ,Kentwood        ,5.99    
+   500.00  14000.0  6181.02
+Boundary for River Rch & Prof#=Beaver Creek    ,Kentwood        , 1 
+Up Type= 0 
+Dn Type= 3 
+Dn Slope=0.002
+Boundary for River Rch & Prof#=Beaver Creek    ,Kentwood        , 2 
+Up Type= 0 
+Dn Type= 3 
+Dn Slope=0.002
+Boundary for River Rch & Prof#=Beaver Creek    ,Kentwood        , 3 
+Up Type= 0 
+Dn Type= 3 
+Dn Slope=0.002
+DSS Import StartDate=
+DSS Import StartTime=
+DSS Import EndDate=
+DSS Import EndTime=
+DSS Import GetInterval= 0 
+DSS Import Interval=
+DSS Import GetPeak= 0 
+DSS Import FillOption= 0 

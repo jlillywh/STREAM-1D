@@ -622,6 +622,69 @@ impl CrossSection {
             }
         }
 
+        // --- Vertical boundary walls at the survey edge points ---
+        // When WSE rises above the leftmost or rightmost survey point, the channel
+        // is bounded by an implicit vertical wall at that station.  These walls
+        // contribute wetted perimeter (which reduces R = A/P and therefore
+        // conveyance) but no additional area or top-width.  Without this term the
+        // conveyance jumped discontinuously as WSE crossed an edge elevation,
+        // causing the solver to snap WSE downward to compensate.
+        {
+            // Left edge wall  (x[0], y[0])
+            let left_edge_y = self.y[0];
+            if elev > left_edge_y {
+                let wall_h = elev - left_edge_y;
+                let n_left = self.get_manning_n(self.x[0]);
+                let wall_pn15 = wall_h * n_left.powf(1.5);
+                if is_subdivided && self.x[0] >= left_bank_x {
+                    // Edge is inside or right of channel bank — assign to ch or rob
+                    if self.x[0] > right_bank_x {
+                        rob.perimeter += wall_h;
+                        rob.sum_pn15  += wall_pn15;
+                        rob_active.perimeter += wall_h;
+                        rob_active.sum_pn15  += wall_pn15;
+                    } else {
+                        ch.perimeter += wall_h;
+                        ch.sum_pn15  += wall_pn15;
+                        ch_active.perimeter += wall_h;
+                        ch_active.sum_pn15  += wall_pn15;
+                    }
+                } else {
+                    lob.perimeter += wall_h;
+                    lob.sum_pn15  += wall_pn15;
+                    lob_active.perimeter += wall_h;
+                    lob_active.sum_pn15  += wall_pn15;
+                }
+            }
+
+            // Right edge wall  (x[n-1], y[n-1])
+            let right_edge_y = self.y[n_pts - 1];
+            if elev > right_edge_y {
+                let wall_h = elev - right_edge_y;
+                let n_right = self.get_manning_n(self.x[n_pts - 1]);
+                let wall_pn15 = wall_h * n_right.powf(1.5);
+                if is_subdivided && self.x[n_pts - 1] <= right_bank_x {
+                    // Edge is inside or left of channel bank — assign to ch or lob
+                    if self.x[n_pts - 1] < left_bank_x {
+                        lob.perimeter += wall_h;
+                        lob.sum_pn15  += wall_pn15;
+                        lob_active.perimeter += wall_h;
+                        lob_active.sum_pn15  += wall_pn15;
+                    } else {
+                        ch.perimeter += wall_h;
+                        ch.sum_pn15  += wall_pn15;
+                        ch_active.perimeter += wall_h;
+                        ch_active.sum_pn15  += wall_pn15;
+                    }
+                } else {
+                    rob.perimeter += wall_h;
+                    rob.sum_pn15  += wall_pn15;
+                    rob_active.perimeter += wall_h;
+                    rob_active.sum_pn15  += wall_pn15;
+                }
+            }
+        }
+
         let area = lob.area + ch.area + rob.area;
         let perimeter = lob.perimeter + ch.perimeter + rob.perimeter;
         let top_width = lob.top_width + ch.top_width + rob.top_width;
@@ -931,18 +994,32 @@ impl GeometryTable {
         let min_elev = self.rows[0].elevation + 0.05;
         let target_elev = elev.max(min_elev);
 
-        // Clamp to highest elevation if above maximum
+        // Extrapolate above the highest survey point using Manning-consistent scaling.
+        // Area grows by last top_width × dy; perimeter grows by two vertical walls.
+        // Conveyance K = (1/n)·A·R^(2/3) scales proportionally: K_new = K_last · (A_new/A_last) · (R_new/R_last)^(2/3).
+        // Freezing K at the last value (the old behaviour) produced a discontinuity — as Q rose above
+        // the survey top, the solver found a lower WSE to satisfy Q = K√S, causing the "snap" seen in
+        // the longitudinal and cross-section plotters.
         if target_elev >= self.rows[n_rows - 1].elevation {
             let last = self.rows[n_rows - 1];
-            // Extrapolate area and top width based on last top width
             let dy = target_elev - last.elevation;
-            let new_area = last.area + last.top_width * dy;
+            let new_area      = last.area + last.top_width * dy;
+            let new_perimeter = last.perimeter + 2.0 * dy; // vertical boundary-wall extension
+            // Scale conveyance using Manning: K ∝ A · R^(2/3)  where R = A/P
+            let new_conveyance = if last.area > 1e-9 && last.perimeter > 1e-9 {
+                let last_r = last.area / last.perimeter;
+                let new_r  = new_area / new_perimeter;
+                let r_ratio = if last_r > 1e-9 { (new_r / last_r).powf(2.0 / 3.0) } else { 1.0 };
+                last.conveyance * (new_area / last.area) * r_ratio
+            } else {
+                last.conveyance
+            };
             return GeometryRow {
                 elevation: target_elev,
                 area: new_area,
-                perimeter: last.perimeter + 2.0 * dy, // Simple boundary wall extension
+                perimeter: new_perimeter,
                 top_width: last.top_width,
-                conveyance: last.conveyance, // conservative approximation
+                conveyance: new_conveyance,
                 channel_area: last.channel_area + last.top_width * dy,
                 active_area: last.active_area + last.top_width * dy,
                 active_channel_area: last.active_channel_area + last.top_width * dy,
@@ -1568,6 +1645,100 @@ mod tests {
         assert!((row.area - expected_area_m2).abs() < 5e-3, "Area: expected {}, got {}", expected_area_m2, row.area);
         assert!((row.perimeter - expected_perimeter_m).abs() < 1e-4, "Perimeter: expected {}, got {}", expected_perimeter_m, row.perimeter);
         assert!((row.top_width - expected_top_width_m).abs() < 1e-4, "Top width: expected {}, got {}", expected_top_width_m, row.top_width);
+    }
+
+    #[test]
+    fn survey_edge_walls_increase_perimeter_above_berm() {
+        let xs = CrossSection {
+            station: 0.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![8.0, 0.0, 0.0, 8.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.03],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+        };
+        let table = xs.generate_lookup_table(30);
+        let below = table.interpolate(3.0);
+        let above = table.interpolate(9.0);
+        assert!(above.perimeter > below.perimeter + 1.5);
+        assert!((above.top_width - below.top_width).abs() < 1e-3);
+    }
+
+    #[test]
+    fn survey_edge_walls_subdivided_assign_to_channel_and_overbanks() {
+        let xs = CrossSection {
+            station: 0.0,
+            x: vec![0.0, 0.0, 10.0, 10.0, 30.0, 30.0, 40.0, 40.0],
+            y: vec![8.0, 0.0, 0.0, 8.0, 0.0, 8.0, 0.0, 8.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.03],
+            unit_system: UnitSystem::Metric,
+            is_overbank: Some(vec![
+                false, false, false, false, true, true, true, true,
+            ]),
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+        };
+        let table = xs.generate_lookup_table(40);
+        let below = table.interpolate(3.0);
+        let above = table.interpolate(9.0);
+        assert!(above.perimeter > below.perimeter);
+        assert!(above.area > below.area);
+    }
+
+    #[test]
+    fn geometry_table_extrapolation_scales_conveyance_above_survey() {
+        let xs = CrossSection {
+            station: 0.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![5.0, 0.0, 0.0, 5.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+        };
+        let table = xs.generate_lookup_table(20);
+        let last = table.rows.last().expect("lookup table");
+        let above = table.interpolate(last.elevation + 2.0);
+        assert!(above.area > last.area);
+        assert!(above.perimeter > last.perimeter + 3.5);
+        assert!(
+            above.conveyance > last.conveyance,
+            "conveyance should grow above survey top, not freeze"
+        );
+    }
+
+    #[test]
+    fn geometry_table_extrapolation_handles_degenerate_last_row() {
+        let table = GeometryTable {
+            rows: vec![GeometryRow {
+                elevation: 1.0,
+                area: 0.0,
+                perimeter: 0.0,
+                top_width: 5.0,
+                conveyance: 12.0,
+                channel_area: 0.0,
+                active_area: 0.0,
+                active_channel_area: 0.0,
+            }],
+        };
+        let above = table.interpolate(3.0);
+        assert!((above.conveyance - 12.0).abs() < 1e-9);
+        assert!((above.area - 10.0).abs() < 1e-9);
     }
 }
 

@@ -61,6 +61,7 @@ class ParsedBridge:
     deck_high_elevations: list[float] = field(default_factory=list)
     weir_coeff: float = 2.6
     orifice_coeff: float = 0.5
+    pressure_coeff_inlet: float = 0.0
     pier_stations: list[float] = field(default_factory=list)
     pier_width: float = 1.25
     pier_base_elevations: list[float] = field(default_factory=list)
@@ -69,6 +70,10 @@ class ParsedBridge:
     bridge_length: float = 30.0
     wspro_coeff: float = 0.8
     max_weir_submergence: float = 0.95
+    high_flow_method: int = 0
+    bc_design_num_piers: int | None = None
+    bc_design_opening_station: float | None = None
+    bc_design_pier_width: float | None = None
 
 
 @dataclass
@@ -81,6 +86,65 @@ class ParsedGeometry:
 
 def _split_floats(line: str) -> list[float]:
     return [float(t) for t in line.split() if t.strip()]
+
+
+def _split_comma_fields(payload: str) -> list[str]:
+    return [part.strip() for part in payload.split(",")]
+
+
+def _comma_field_float(parts: list[str], index: int) -> float | None:
+    if index >= len(parts):
+        return None
+    token = parts[index]
+    if not token:
+        return None
+    try:
+        return float(token)
+    except ValueError:
+        return None
+
+
+def _parse_br_coef_line(line: str, bridge: ParsedBridge) -> None:
+    """
+  Parse BR Coef= comma fields (HEC-RAS bridge modeling approach).
+
+  Beaver plan 03 example:
+    BR Coef=-1 , 0 , 0 ,, 0 ,,0.34,0.7,0,,1,
+  Index 6 → sluice/inlet pressure coeff (bridge_pressure_flow_coeffs_inlet)
+  Index 7 → submerged orifice coeff (bridge_orifice_coeffs)
+  Index 10 → high-flow method (0 pressure/weir, 1 energy)
+    """
+    payload = line.split("=", 1)[1]
+    parts = _split_comma_fields(payload)
+    inlet = _comma_field_float(parts, 6)
+    submerged = _comma_field_float(parts, 7)
+    high_flow = _comma_field_float(parts, 10)
+    if inlet is not None and inlet > 0:
+        bridge.pressure_coeff_inlet = inlet
+    if submerged is not None and submerged > 0:
+        bridge.orifice_coeff = submerged
+    if high_flow is not None:
+        bridge.high_flow_method = int(high_flow)
+
+
+def _parse_bc_design_line(line: str, bridge: ParsedBridge) -> None:
+    """Parse BC Design= (opening/pier design summary — Beaver echoes pier count/width)."""
+    parts = _split_comma_fields(line.split("=", 1)[1])
+    # Beaver: BC Design=,, 0 ,, 0 ,,9,470,470,20,1.25
+    n_piers = _comma_field_float(parts, 6)
+    opening_sta = _comma_field_float(parts, 7)
+    pier_width = _comma_field_float(parts, 10)
+    if n_piers is not None and n_piers > 0:
+        bridge.bc_design_num_piers = int(n_piers)
+    if opening_sta is not None:
+        bridge.bc_design_opening_station = opening_sta
+    if pier_width is not None and pier_width > 0:
+        bridge.bc_design_pier_width = pier_width
+
+
+def _parse_wspro_line(line: str, bridge: ParsedBridge) -> None:
+    """Parse WSPro= — enable WSPRO low-flow method (coefficients stay at defaults unless indexed)."""
+    bridge.low_flow_method = "wspro"
 
 
 def _parse_culvert_numeric_fields(payload: str) -> tuple[list[float], list[str]]:
@@ -277,12 +341,13 @@ def parse_g01(path: Path) -> ParsedGeometry:
                 bridge_section = "deck_low_sta"
                 continue
             if bridge_section == "deck_low_sta":
+                # HEC-RAS g01: stations, then high chord row, then low chord row.
                 current_bridge.deck_low_stations = _split_floats(deck_sta_line)
-                current_bridge.deck_low_elevations = _split_floats(line)
+                current_bridge.deck_high_elevations = _split_floats(line)
                 bridge_section = "deck_high"
                 continue
             if bridge_section == "deck_high":
-                current_bridge.deck_high_elevations = _split_floats(line)
+                current_bridge.deck_low_elevations = _split_floats(line)
                 bridge_section = None
                 deck_parsed = True
                 duplicate_deck_remaining = 3
@@ -325,9 +390,7 @@ def parse_g01(path: Path) -> ParsedGeometry:
                             current_bridge.pier_top_elevations.append(nums[j + 1])
                 continue
             if line.startswith("BR Coef="):
-                nums = re.findall(r"[\d.]+", line.split("BR Coef=")[1])
-                if len(nums) >= 2:
-                    current_bridge.orifice_coeff = float(nums[1])
+                _parse_br_coef_line(line, current_bridge)
                 if pier_block_stations:
                     current_bridge.pier_stations = pier_block_stations
                 if pending_culvert is not None:
@@ -364,10 +427,15 @@ def parse_g01(path: Path) -> ParsedGeometry:
                 pending_culvert = None
                 i -= 1
                 continue
-            if line.startswith("WSPro="):
-                current_bridge.low_flow_method = "wspro"
-                continue
             continue
+
+        if bridge is not None and current_bridge is None and current_xs is None:
+            if line.startswith("WSPro="):
+                _parse_wspro_line(line, bridge)
+                continue
+            if line.startswith("BC Design="):
+                _parse_bc_design_line(line, bridge)
+                continue
 
         if current_xs is None:
             continue
@@ -450,6 +518,14 @@ def parse_g01(path: Path) -> ParsedGeometry:
         bridge.pier_stations = pier_block_stations
 
     _assign_reach_stations(cross_sections)
+    if bridge is not None:
+        for raw in text.splitlines():
+            line = raw.strip()
+            if line.startswith("BC Design="):
+                _parse_bc_design_line(line, bridge)
+            elif line.startswith("WSPro="):
+                _parse_wspro_line(line, bridge)
+
     return ParsedGeometry(cross_sections=cross_sections, bridge=bridge, culverts=culverts)
 
 
@@ -523,4 +599,12 @@ def parsed_xs_to_dict(xs: ParsedCrossSection) -> dict:
     ineff = parsed_xs_ineffective_flow_areas(xs)
     if ineff:
         out["ineffective_flow_areas"] = ineff
+    return out
+
+
+def parsed_xs_to_reach_dict(xs: ParsedCrossSection) -> dict:
+    """Reach-node kwargs — omit ineffective/blocked applied via bridge/culvert fields."""
+    out = parsed_xs_to_dict(xs)
+    out.pop("ineffective_flow_areas", None)
+    out.pop("blocked_obstructions", None)
     return out
