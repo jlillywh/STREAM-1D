@@ -1,0 +1,18 @@
+Flow Title=Simple channel constant Q unsteady
+Program Version=5.00
+Use Restart= 0 
+Initial Flow Loc=Simple Creek    ,Trapezoid Reach ,3.0    ,150
+Boundary Location=Simple Creek    ,Trapezoid Reach ,3.0    ,        ,                ,                ,                
+Interval=1HOUR
+Flow Hydrograph= 49 
+  150.00  150.00  150.00  150.00  150.00  150.00  150.00  150.00  150.00  150.00
+  150.00  150.00  150.00  150.00  150.00  150.00  150.00  150.00  150.00  150.00
+  150.00  150.00  150.00  150.00  150.00  150.00  150.00  150.00  150.00  150.00
+  150.00  150.00  150.00  150.00  150.00  150.00  150.00  150.00  150.00  150.00
+  150.00  150.00  150.00  150.00  150.00  150.00  150.00  150.00  150.00
+Boundary Location=Simple Creek    ,Trapezoid Reach ,0.0    ,        ,                ,                ,                
+Friction Slope=0.001,0
+Observed HWM=Simple Creek    ,Trapezoid Reach ,3.0    ,,102.4702
+Observed HWM=Simple Creek    ,Trapezoid Reach ,2.0    ,,101.9702
+Observed HWM=Simple Creek    ,Trapezoid Reach ,1.0    ,,101.4702
+Observed HWM=Simple Creek    ,Trapezoid Reach ,0.0    ,,100.9702

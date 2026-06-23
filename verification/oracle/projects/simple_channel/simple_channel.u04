@@ -1,0 +1,22 @@
+Flow Title=Simple channel ramp Q unsteady (friction DS)
+Program Version=7.01
+Use Restart= 0 
+Initial Flow Loc=Simple Creek    ,Trapezoid Reach ,3.0    ,100
+Boundary Location=Simple Creek    ,Trapezoid Reach ,3.0    ,        ,                ,                ,                
+Interval=1HOUR
+Use Fixed Start Time=False
+Fixed Start Date/Time=,
+Flow Hydrograph= 49 
+   100.00   108.33   116.67   125.00   133.33   141.67   150.00   158.33   166.67   175.00
+   183.33   191.67   200.00   200.00   200.00   200.00   200.00   200.00   200.00   200.00
+   200.00   200.00   200.00   200.00   200.00   191.67   183.33   175.00   166.67   158.33
+   150.00   141.67   133.33   125.00   116.67   108.33   100.00   100.00   100.00   100.00
+   100.00   100.00   100.00   100.00   100.00   100.00   100.00   100.00   100.00
+Boundary Location=Simple Creek    ,Trapezoid Reach ,0.0    ,        ,                ,                ,                
+Friction Slope=0.001,0
+DSS File=
+Use DSS=False
+Observed HWM=Simple Creek    ,Trapezoid Reach ,3.0    ,,101.9483
+Observed HWM=Simple Creek    ,Trapezoid Reach ,2.0    ,,101.4483
+Observed HWM=Simple Creek    ,Trapezoid Reach ,1.0    ,,100.9483
+Observed HWM=Simple Creek    ,Trapezoid Reach ,0.0    ,,100.4483

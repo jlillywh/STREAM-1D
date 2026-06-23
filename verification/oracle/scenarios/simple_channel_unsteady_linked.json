@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "id": "simple_channel_unsteady_linked",
+  "title": "Simple trapezoidal channel — friction-slope DS (Chunk 1)",
+  "mode": "unsteady",
+  "parity_program": {
+    "chunk": 1,
+    "certification": "certified",
+    "notes": "HEC-RAS Plan 01 HDF captured; STREAM-1D verify PASS at hours 0/12/24/48. Constant Q=150; friction-slope DS type 2 (S0=0.001)."
+  },
+  "scope": {
+    "single_reach": true,
+    "structures": [],
+    "notes": "Four trapezoidal cross sections (RM 3.0–0.0), 500 ft apart, n=0.03, bed slope 0.001 ft/ft."
+  },
+  "linked_project": {
+    "directory": "projects/simple_channel",
+    "geometry": "simple_channel.g01",
+    "unsteady_flow": "simple_channel.u02",
+    "plan": "simple_channel.p01",
+    "plan_number": "01",
+    "validate_files": false,
+    "notes": "DS BC: Friction Slope=0.001 at RM 0.0. Refresh reference after GUI run via chunk1_simple_channel_capture.py."
+  },
+  "stream1d": {
+    "mapper": "simple_channel_mapper.build_simple_channel_unsteady_inputs",
+    "notes": "g01 geometry; u02 Q(t)+friction-slope DS (type 2); steady warm-start IC; theta=1 from plan."
+  },
+  "reference": {
+    "source": "linked_json_peaks",
+    "file": "projects/simple_channel/reference_wsel_simple_channel_unsteady.json",
+    "fallback_u02_observed_hwm": false,
+    "notes": "HEC-RAS Plan 01 HDF; refresh via chunk1_simple_channel_capture.py."
+  },
+  "compare": {
+    "quantity": "wsel_timeseries",
+    "match_by": "river_mile",
+    "checkpoints_rm": [3.0, 2.0, 1.0, 0.0],
+    "time_checkpoints_hr": [0, 12, 24, 48]
+  },
+  "tolerance_ft": 0.05,
+  "quantity": "wsel_timeseries"
+}

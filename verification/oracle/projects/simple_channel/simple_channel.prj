@@ -1,0 +1,11 @@
+Proj Title=Simple trapezoidal channel
+Current Plan=p04
+Default Exp/Contr=0.3,0.1
+SI Units=0
+English Units=1
+Geom File=g01
+Geom Title=Simple trapezoidal channel (reach-only tutorial)
+Unsteady File=u04
+Unsteady Title=Simple channel ramp Q unsteady (friction DS)
+Plan File=p04
+Plan Title=Simple trapezoidal channel unsteady (ramp Q, friction DS)

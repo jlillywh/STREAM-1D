@@ -88,6 +88,40 @@ def main() -> int:
             ],
         )
         log("conspan mode4 ramp matrix: OK")
+
+        run_step(
+            "smoke_simple_channel_parse",
+            [py, str(ORACLE / "scripts" / "smoke_simple_channel_parse.py")],
+        )
+        log("smoke_simple_channel_parse: OK")
+
+        run_step(
+            "simple_channel constant Q (linked verify)",
+            [
+                py,
+                str(ORACLE / "run_linked_verify.py"),
+                "--scenario",
+                str(ORACLE / "scenarios" / "simple_channel_unsteady_linked.json"),
+            ],
+        )
+        log("simple_channel constant Q: OK")
+
+        run_step(
+            "smoke_simple_channel_ramp_parse",
+            [py, str(ORACLE / "scripts" / "smoke_simple_channel_ramp_parse.py")],
+        )
+        log("smoke_simple_channel_ramp_parse: OK")
+
+        run_step(
+            "simple_channel Q ramp (linked verify)",
+            [
+                py,
+                str(ORACLE / "run_linked_verify.py"),
+                "--scenario",
+                str(ORACLE / "scenarios" / "simple_channel_ramp_unsteady_linked.json"),
+            ],
+        )
+        log("simple_channel Q ramp: OK")
     except subprocess.CalledProcessError as exc:
         log(f"\nFAILED: exit code {exc.returncode}")
         LOG.write_text("\n".join(lines) + "\n", encoding="utf-8")

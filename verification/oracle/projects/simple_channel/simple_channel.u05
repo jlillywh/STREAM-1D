@@ -1,0 +1,21 @@
+Flow Title=Simple channel ramp Q unsteady (rating DS)
+Program Version=7.01
+Use Restart= 0 
+Initial Flow Loc=Simple Creek    ,Trapezoid Reach ,3.0    ,100
+Boundary Location=Simple Creek    ,Trapezoid Reach ,3.0    ,        ,                ,                ,                
+Interval=1HOUR
+Use Fixed Start Time=False
+Fixed Start Date/Time=,
+Flow Hydrograph= 49 
+   100.00   108.33   116.67   125.00   133.33   141.67   150.00   158.33   166.67   175.00
+   183.33   191.67   200.00   200.00   200.00   200.00   200.00   200.00   200.00   200.00
+   200.00   200.00   200.00   200.00   200.00   191.67   183.33   175.00   166.67   158.33
+   150.00   141.67   133.33   125.00   116.67   108.33   100.00   100.00   100.00   100.00
+   100.00   100.00   100.00   100.00   100.00   100.00   100.00   100.00   100.00
+DSS File=
+Use DSS=False
+Boundary Location=Simple Creek    ,Trapezoid Reach ,0.0    ,        ,                ,                ,                
+Rating Curve= 11 
+     99.27   25.00     99.81   50.00    100.06   75.00    100.39  100.00    100.69  125.00
+    100.97  150.00    101.24  175.00    101.49  200.00    101.97  250.00    102.75  350.00
+    103.50  500.00

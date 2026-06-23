@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "id": "simple_channel_ramp_rating_unsteady_linked",
+  "title": "Simple trapezoidal channel — ramp Q, rating-curve DS (Chunk 1 transient)",
+  "mode": "unsteady",
+  "parity_program": {
+    "chunk": 1,
+    "certification": "development",
+    "notes": "Q ramp 100→200→100 cfs; DS type 3 rating curve. Reference is STREAM-1D bootstrap until Plan 05 HDF capture."
+  },
+  "scope": {
+    "single_reach": true,
+    "structures": [],
+    "notes": "Same geometry; DS WSEL tracks Q via rating curve during ramp."
+  },
+  "linked_project": {
+    "directory": "projects/simple_channel",
+    "geometry": "simple_channel.g01",
+    "unsteady_flow": "simple_channel.u05",
+    "plan": "simple_channel.p05",
+    "plan_number": "05",
+    "validate_files": false,
+    "notes": "Generate u05/p05 via scripts/write_simple_channel_ramp.py."
+  },
+  "stream1d": {
+    "mapper": "simple_channel_mapper.build_simple_channel_unsteady_inputs",
+    "notes": "g01 geometry; u05 ramp Q(t)+rating-curve DS (type 3); steady warm-start IC @ Q=100; theta=1."
+  },
+  "reference": {
+    "source": "linked_json_peaks",
+    "file": "projects/simple_channel/reference_wsel_simple_channel_ramp_rating_unsteady.json",
+    "fallback_u02_observed_hwm": false,
+    "notes": "Bootstrap placeholder; replace from HEC-RAS Plan 05 HDF via chunk1_simple_channel_ramp_capture.py --plan 05."
+  },
+  "compare": {
+    "quantity": "wsel_timeseries",
+    "match_by": "river_mile",
+    "checkpoints_rm": [3.0, 2.0, 1.0, 0.0],
+    "time_checkpoints_hr": [0, 6, 12, 18, 24, 30, 36, 48]
+  },
+  "tolerance_ft": 0.05,
+  "quantity": "wsel_timeseries"
+}

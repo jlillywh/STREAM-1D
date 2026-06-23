@@ -44,7 +44,7 @@
     },
     {
       "id": "chunk3_culvert_steady_gate",
-      "title": "Chunk 3.1 — steady culvert parity gate",
+      "title": "Chunk 3.1 \u2014 steady culvert parity gate",
       "source_of_truth": "ConSpan HEC-RAS profiles + linked steady oracle",
       "source_artifacts": [
         "fixtures/hecras_conspan_profiles.json",
@@ -57,14 +57,14 @@
         "python/test_hecras_culvert_verification.py",
         "verification/oracle/scripts/run_chunk3_culvert_steady_gate.py"
       ],
-      "tolerance": "±0.04 ft WSEL (profiles); ±0.04 ft linked steady ConSpan",
+      "tolerance": "\u00b10.04 ft WSEL (profiles); \u00b10.04 ft linked steady ConSpan",
       "quantity": "wsel",
       "optional": false,
       "notes": "Chunk 3.1 exit; run run_chunk3_culvert_steady_gate.sh"
     },
     {
       "id": "chunk3_bridge_steady_gate",
-      "title": "Chunk 3.2 — steady bridge parity gate",
+      "title": "Chunk 3.2 \u2014 steady bridge parity gate",
       "source_of_truth": "HEC-RAS golden bridge fixtures",
       "source_artifacts": [
         "fixtures/bridge_abutment_hecras.json",
@@ -86,14 +86,14 @@
         "tests/bridge_opening_alignment_verification.rs",
         "verification/oracle/scripts/run_chunk3_bridge_steady_gate.py"
       ],
-      "tolerance": "±2–5 mm per fixture notes",
+      "tolerance": "\u00b12\u20135 mm per fixture notes",
       "quantity": "wsel",
       "optional": false,
       "notes": "Chunk 3.2 exit"
     },
     {
       "id": "chunk3_g01_mapping_gate",
-      "title": "Chunk 3.3 — g01 bridge mapping smoke",
+      "title": "Chunk 3.3 \u2014 g01 bridge mapping smoke",
       "source_of_truth": "Beaver bundled g01 + beaver_mapper",
       "source_artifacts": [
         "oracle/projects/beaver/beaver.g01",
@@ -114,7 +114,7 @@
     },
     {
       "id": "chunk3_steady_gate",
-      "title": "Chunk 3 — full steady structure parity gate",
+      "title": "Chunk 3 \u2014 full steady structure parity gate",
       "source_of_truth": "Chunks 3.1 + 3.2 + 3.3",
       "fixture": "oracle/docs/CHUNK3_STEADY_CULVERT.md",
       "tests": [
@@ -144,6 +144,90 @@
       "quantity": "terminal_wsel",
       "optional": false,
       "notes": "Chunk 2 certification candidate; Phase 0 CI gate via run_phase0.py (no HEC-RAS)"
+    },
+    {
+      "id": "simple_channel_unsteady_linked_oracle",
+      "title": "Simple trapezoidal channel \u2014 linked HEC-RAS unsteady (friction-slope DS)",
+      "source_of_truth": "HEC-RAS plan 01 WSEL timeseries at hours 0/12/24/48 (friction-slope DS type 2)",
+      "source_artifacts": [
+        "oracle/projects/simple_channel/simple_channel.g01",
+        "oracle/projects/simple_channel/simple_channel.u02",
+        "oracle/projects/simple_channel/simple_channel.p01",
+        "oracle/projects/simple_channel/reference_wsel_simple_channel_unsteady.json"
+      ],
+      "fixture": "oracle/scenarios/simple_channel_unsteady_linked.json",
+      "tests": [
+        "verification/oracle/run_linked_verify.py",
+        "verification/oracle/scripts/test_simple_channel_unsteady.py",
+        "verification/oracle/scripts/smoke_simple_channel_parse.py"
+      ],
+      "tolerance": "\u00b10.05 ft WSEL at 4 RMs \u00d7 hours 0/12/24/48 (constant Q=150 cfs, friction-slope DS)",
+      "quantity": "wsel_timeseries",
+      "optional": false,
+      "notes": "Chunk 1; CI via run_oracle_ci.py"
+    },
+    {
+      "id": "simple_channel_rating_unsteady_linked_oracle",
+      "title": "Simple trapezoidal channel \u2014 rating-curve DS (Chunk 1 type 3)",
+      "source_of_truth": "HEC-RAS plan 03 WSEL timeseries at hours 0/12/24/48 (rating-curve DS)",
+      "source_artifacts": [
+        "oracle/projects/simple_channel/simple_channel.g01",
+        "oracle/projects/simple_channel/simple_channel.u03",
+        "oracle/projects/simple_channel/simple_channel.p03",
+        "oracle/projects/simple_channel/rating_curve_ds.json",
+        "oracle/projects/simple_channel/reference_wsel_simple_channel_rating_unsteady.json"
+      ],
+      "fixture": "oracle/scenarios/simple_channel_rating_unsteady_linked.json",
+      "tests": [
+        "verification/oracle/run_linked_verify.py",
+        "verification/oracle/scripts/test_simple_channel_rating_bc.py"
+      ],
+      "tolerance": "\u00b10.05 ft WSEL at 4 RMs \u00d7 hours 0/12/24/48 (constant Q=150 cfs, rating-curve DS)",
+      "quantity": "wsel_timeseries",
+      "optional": true,
+      "notes": "Chunk 1 certified; requires API v35 downstream BC types."
+    },
+    {
+      "id": "simple_channel_ramp_unsteady_linked_oracle",
+      "title": "Simple trapezoidal channel \u2014 ramp Q, friction-slope DS (Chunk 1 transient)",
+      "source_of_truth": "HEC-RAS plan 04 WSEL timeseries at hours 0/6/12/18/24/30/36/48 (friction-slope DS)",
+      "source_artifacts": [
+        "oracle/projects/simple_channel/simple_channel.g01",
+        "oracle/projects/simple_channel/simple_channel.u04",
+        "oracle/projects/simple_channel/simple_channel.p04",
+        "oracle/projects/simple_channel/reference_wsel_simple_channel_ramp_unsteady.json"
+      ],
+      "fixture": "oracle/scenarios/simple_channel_ramp_unsteady_linked.json",
+      "tests": [
+        "verification/oracle/run_linked_verify.py",
+        "verification/oracle/scripts/smoke_simple_channel_ramp_parse.py",
+        "verification/oracle/scripts/run_simple_channel_ramp_verify.sh"
+      ],
+      "tolerance": "\u00b10.05 ft WSEL at 4 RMs \u00d7 8 hours (Q ramp 100\u2192200\u2192100 cfs, friction-slope DS)",
+      "quantity": "wsel_timeseries",
+      "optional": false,
+      "notes": "Chunk 1 transient; CI via run_oracle_ci.py"
+    },
+    {
+      "id": "simple_channel_ramp_rating_unsteady_linked_oracle",
+      "title": "Simple trapezoidal channel \u2014 ramp Q, rating-curve DS (Chunk 1 transient)",
+      "source_of_truth": "HEC-RAS plan 05 WSEL timeseries (development \u2014 bootstrap ref until HDF capture)",
+      "source_artifacts": [
+        "oracle/projects/simple_channel/simple_channel.g01",
+        "oracle/projects/simple_channel/simple_channel.u05",
+        "oracle/projects/simple_channel/simple_channel.p05",
+        "oracle/projects/simple_channel/rating_curve_ds.json",
+        "oracle/projects/simple_channel/reference_wsel_simple_channel_ramp_rating_unsteady.json"
+      ],
+      "fixture": "oracle/scenarios/simple_channel_ramp_rating_unsteady_linked.json",
+      "tests": [
+        "verification/oracle/run_linked_verify.py",
+        "verification/oracle/scripts/smoke_simple_channel_ramp_parse.py"
+      ],
+      "tolerance": "\u00b10.05 ft WSEL at 4 RMs \u00d7 8 hours (Q ramp, rating-curve DS)",
+      "quantity": "wsel_timeseries",
+      "optional": true,
+      "notes": "Development: replace bootstrap reference after Plan 05 HEC-RAS HDF capture."
     },
     {
       "id": "conspan_unsteady_mild_linked_oracle",
@@ -202,10 +286,10 @@
         "verification/oracle/scripts/diagnose_beaver_restart.py",
         "verification/oracle/scripts/test_beaver_unsteady_warm_start.py"
       ],
-      "tolerance": "diagnostic — steady/unsteady layers in restart report; warm-start \u00c2\u00b10.04 ft internal",
+      "tolerance": "diagnostic \u2014 steady/unsteady layers in restart report; warm-start \u00c2\u00b10.04 ft internal",
       "quantity": "max_wsel",
       "optional": true,
-      "notes": "Beaver bridge restart 2026 — not a pass/fail gate until HDF reference"
+      "notes": "Beaver bridge restart 2026 \u2014 not a pass/fail gate until HDF reference"
     },
     {
       "id": "bridge_abutment_wspro",

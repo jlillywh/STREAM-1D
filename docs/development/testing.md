@@ -17,7 +17,7 @@ Full catalog: [`verification/README.md`](../verification/README.md), [`verificat
 |-------|----------|
 | Rust unit/integration | Geometry modifiers, culvert/barrel hydraulics, bridge Class A/B/C and high flow |
 | JSON golden fixtures | ConSpan steady ±0.04 ft; bridge abutment/BU/BD/high-flow ±2 mm |
-| Linked oracle | `reach_mild` open channel; ConSpan mode 4 ramp ≤0.12 ft overall max \|Δ\| vs HEC |
+| Linked oracle | `reach_mild` + `simple_channel` open channel (constant Q and Q ramp); ConSpan mode 4 ramp ≤0.12 ft overall max \|Δ\| vs HEC |
 | WASM contract | `tests/wasm_json_contract.rs` — schema version, deserialize samples |
 | Python | `python/test_stream1d.py`, `python/test_hecras_culvert_verification.py`, `python/test_issaquah01_bridge_parity.py` |
 | Verification notebook | CI executes `python/stream1d_verification.ipynb` headlessly — ConSpan culvert and Issaquah01 bridge WSE/EGL vs HEC-RAS (requires `maturin develop`) |
