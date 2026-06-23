@@ -2,6 +2,8 @@
 
 Regression benchmarks against external references: **HEC-RAS exports**, **bundled RAS projects**, or **hand-derived goldens**.
 
+**Open-channel unsteady results (STREAM vs HEC-RAS table):** open the verification notebook on Binder — [**Section 6 — Q ramp, no structures**](https://mybinder.org/v2/gh/jlillywh/STREAM-1D/main?filepath=python%2Fstream1d_verification.ipynb) (scroll to *§6 Open-channel unsteady Q ramp*). Local: `python3 scripts/run_verification_notebook.py`.
+
 ```bash
 bash verification/run.sh                              # Rust fixture suites
 bash verification/oracle/run_oracle.sh                # linked HEC-RAS oracle

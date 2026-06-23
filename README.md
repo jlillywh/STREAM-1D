@@ -112,7 +112,7 @@ Culvert, bridge, junction, and rating-curve examples: [`docs/python/getting_star
 
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jlillywh/STREAM-1D/main?filepath=python%2Fstream1d_verification.ipynb)
 
-[`python/stream1d_verification.ipynb`](python/stream1d_verification.ipynb) — ConSpan culvert and **Issaquah01 bridge** steady profiles with HEC-RAS comparison tables and plots. First Binder build may take several minutes.
+[`python/stream1d_verification.ipynb`](python/stream1d_verification.ipynb) — ConSpan culvert and **Issaquah01 bridge** steady profiles; **§6** open-channel unsteady Q ramp (no structures) with STREAM vs HEC-RAS table at river miles and time checkpoints. First Binder build may take several minutes.
 
 **Local run:** run from the **repository root** (not `python/`). `.venv`, `requirements.txt`, and `Cargo.toml` all live there.
 
