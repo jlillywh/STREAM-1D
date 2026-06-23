@@ -32,7 +32,7 @@ jobs:
           fail_ci_if_error: false
 
   reach-mild-oracle:
-    name: linked oracle CI (reach_mild + ConSpan mode 4)
+    name: linked oracle CI (reach_mild + simple_channel + ConSpan mode 4)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

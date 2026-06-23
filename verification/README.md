@@ -25,7 +25,9 @@ STREAM-1D inputs are mapped from the same geometry as a bundled HEC-RAS project.
 
 | Check | Scenario | Notes |
 |-------|----------|-------|
-| Open channel | `reach_mild_unsteady_linked.json` | No structures; CI via `run_oracle_ci.py` |
+| Open channel (known stage DS) | `reach_mild_unsteady_linked.json` | No structures; CI via `run_oracle_ci.py` |
+| Open channel (constant Q) | `simple_channel_unsteady_linked.json` | 4-XS trapezoid; friction-slope DS; CI |
+| Open channel (Q ramp) | `simple_channel_ramp_unsteady_linked.json` | Same geometry; Q ramp transient; CI |
 | Culvert steady | `conspan_steady_linked.json` | ±0.04 ft certification |
 | Culvert unsteady (mode 4) | `conspan_unsteady_ramp_matrix_mode4.json` | **CI gate** — overall max \|Δ\| ≤ 0.12 ft vs HEC |
 | Culvert unsteady (mode 2) | `conspan_unsteady_ramp_matrix.json` | Diagnostic matrix only |

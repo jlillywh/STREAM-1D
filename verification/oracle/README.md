@@ -23,14 +23,17 @@ bash verification/oracle/run_oracle.sh \
 python3 verification/oracle/scripts/run_oracle_ci.py
 ```
 
-Includes **reach_mild** open-channel gate and **ConSpan mode 4** culvert ramp matrix (overall max |Δ| ≤ 0.12 ft vs HEC).
+Includes **reach_mild**, **simple_channel** open-channel gates (constant Q + Q ramp), and **ConSpan mode 4** culvert ramp matrix (overall max |Δ| ≤ 0.12 ft vs HEC).
 
 ## Scenarios
 
 | Scenario | Project | What it checks |
 |----------|---------|----------------|
 | `conspan_unsteady_ramp_matrix.json` | `projects/conspan/` | Arch culvert Q ramp — WSEL Δ matrix vs HDF (diagnostic, ~0.076 ft at faces) |
-| `reach_mild_unsteady_linked.json` | `projects/reach_mild/` | Eight XS, no culvert, constant Q |
+| `reach_mild_unsteady_linked.json` | `projects/reach_mild/` | Eight XS, no culvert, constant Q, known stage DS |
+| `simple_channel_unsteady_linked.json` | `projects/simple_channel/` | Four XS trapezoid, constant Q, friction-slope DS |
+| `simple_channel_ramp_unsteady_linked.json` | `projects/simple_channel/` | Same geometry, Q ramp 100→200→100 cfs |
+| `simple_channel_rating_unsteady_linked.json` | `projects/simple_channel/` | Constant Q, rating-curve DS (optional) |
 | `conspan_steady_linked.json` | `projects/conspan/` | Steady profiles vs CSV export |
 | `beaver_unsteady_linked.json` | `projects/beaver/` | Inline bridge (development) |
 
