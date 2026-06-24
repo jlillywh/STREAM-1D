@@ -1,12 +1,12 @@
 # STREAM-1D
 
-1D open-channel hydraulics solver (Rust). Steady gradually varied flow (Standard Step) and unsteady Saint-Venant routing on single reaches. Optional culverts, bridges, and one steady tributary junction.
+**STREAM-1D** is a 1D open-channel hydraulics engine for research and scripting. It solves **steady gradually varied flow** (standard step) on a single reach with optional **inline culverts**, **bridges** (Class A/B/C, pressure and weir overtopping, roadway decks and piers), and **one tributary junction** (steady, subcritical).
 
-Primary interface: **Python** (`pip install stream1d` or `maturin develop` from source). Stateless API: geometry and boundary inputs in, profile arrays out.
+**Unsteady** Saint-Venant routing (Preissmann scheme) on a **single reach** with the same inline structures is **available in beta** — less mature than steady, with verification and structure-coupling modes still expanding. Steady tributary junctions and multi-reach networks are not supported in unsteady yet. See [Capabilities](#capabilities) and [`docs/reference/hecras_parity.md`](docs/reference/hecras_parity.md).
 
-This repository is the solver only. It does not include a GUI, project database, or HEC-RAS file importer. [stream1d.com](https://stream1d.com) is a separate hosted application built on this engine (see [License](#license)).
+**Python** is the primary interface (`pip install stream1d` or `maturin develop` from source). You pass cross-section geometry and boundary conditions in; you get water-surface, discharge, and structure diagnostics out. There is no GUI, project database, or HEC-RAS file importer in this repository — [stream1d.com](https://stream1d.com) is a separate hosted product built on this solver ([License](#license)).
 
-**Verification** — Golden benchmarks vs HEC-RAS exports and hand-calibrated references live in [`verification/`](verification/) ([README](verification/README.md), [`fixtures/`](verification/fixtures/)). Run: `bash verification/run.sh`.
+**Verification** — Benchmarks against HEC-RAS and hand-calibrated references: [`verification/`](verification/) ([README](verification/README.md)). Try the comparison notebook on [Binder](https://mybinder.org/v2/gh/jlillywh/STREAM-1D/main?filepath=python%2Fstream1d_verification.ipynb) or run `python3 scripts/run_verification_notebook.py` from a clone.
 
 ## Capabilities
 
