@@ -5015,10 +5015,12 @@ mod tests {
         assert!(q_barrels[0] > q_barrels[1], "circular q ({}) should be greater than box q ({})", q_barrels[0], q_barrels[1]);
         assert!(q_barrels[1] > 0.0, "box culvert should carry some flow");
 
-        // Solved upstream WSEL (result.wsel[1]) should be equal for both inlet calculations (to minor numeric tolerance).
+        // Solved upstream WSEL (result.wsel[1]) should be equal to the controlling HW calculations (to minor numeric tolerance).
         let wsel_inlets = result.culvert_wsel_inlet.expect("inlets");
         let wsel_outlets = result.culvert_wsel_outlet.expect("outlets");
-        assert!((wsel_inlets[0] - wsel_inlets[1]).abs() < 0.05, "inlets WSEL mismatched: {} vs {}", wsel_inlets[0], wsel_inlets[1]);
+        let hw0 = wsel_inlets[0].max(wsel_outlets[0]);
+        let hw1 = wsel_inlets[1].max(wsel_outlets[1]);
+        assert!((hw0 - hw1).abs() < 0.05, "controlling HW WSEL mismatched: {} vs {}", hw0, hw1);
         assert!((wsel_outlets[0] - 3.0).abs() < 0.05, "outlet WSEL for circular should be near TW");
     }
 
