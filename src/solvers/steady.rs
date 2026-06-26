@@ -5285,5 +5285,282 @@ mod tests {
         assert!(res_profile.wsel[1] < res_flat.wsel[1]);
         assert!(res_profile.wsel[1] > 5.0); // should be above minimum profile elevation
     }
+
+    #[test]
+    fn test_supercritical_compound_culverts_unit() {
+        let xs200 = CrossSection {
+            station: 200.0,
+            x: vec![-50.0, -50.0, 50.0, 50.0],
+            y: vec![10.0, 0.0, 0.0, 10.0],
+            n_stations: vec![-50.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let xs100 = CrossSection {
+            station: 100.0,
+            x: vec![-50.0, -50.0, 50.0, 50.0],
+            y: vec![10.0, 0.0, 0.0, 10.0],
+            n_stations: vec![-50.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let xs0 = CrossSection {
+            station: 0.0,
+            x: vec![-50.0, -50.0, 50.0, 50.0],
+            y: vec![10.0, 0.0, 0.0, 10.0],
+            n_stations: vec![-50.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+
+        let inputs = SteadyInputs {
+            cross_sections: vec![xs200, xs100, xs0],
+            flow_rate: 100.0,
+            num_slices: Some(50),
+            regime: 1, // Supercritical
+            upstream_wsel: Some(5.0),
+            culvert_stations: Some(vec![50.0, 50.0]),
+            culvert_shape_types: Some(vec![0, 1]),
+            culvert_spans: Some(vec![6.0, 3.0]),
+            culvert_rises: Some(vec![6.0, 3.0]),
+            culvert_roughness_ns: Some(vec![0.013, 0.013]),
+            culvert_lengths: Some(vec![100.0, 100.0]),
+            culvert_entrance_loss_coeffs: Some(vec![0.5, 0.5]),
+            culvert_exit_loss_coeffs: Some(vec![1.0, 1.0]),
+            culvert_z_downs: Some(vec![0.0, 1.0]),
+            culvert_z_ups: Some(vec![0.0, 1.0]),
+            ..Default::default()
+        };
+
+        let result = solve_steady(&inputs);
+        assert!(result.wsel.iter().all(|&w| w > 0.0));
+    }
+
+    #[test]
+    fn test_supercritical_inline_weir_unit() {
+        let xs200 = CrossSection {
+            station: 200.0,
+            x: vec![-50.0, -50.0, 50.0, 50.0],
+            y: vec![10.0, 0.0, 0.0, 10.0],
+            n_stations: vec![-50.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let xs100 = CrossSection {
+            station: 100.0,
+            x: vec![-50.0, -50.0, 50.0, 50.0],
+            y: vec![10.0, 0.0, 0.0, 10.0],
+            n_stations: vec![-50.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let xs0 = CrossSection {
+            station: 0.0,
+            x: vec![-50.0, -50.0, 50.0, 50.0],
+            y: vec![10.0, 0.0, 0.0, 10.0],
+            n_stations: vec![-50.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+
+        // 1. Without profile
+        let inputs = SteadyInputs {
+            cross_sections: vec![xs200.clone(), xs100.clone(), xs0.clone()],
+            flow_rate: 50.0,
+            num_slices: Some(50),
+            regime: 1, // Supercritical
+            upstream_wsel: Some(5.0),
+            inline_structure_stations: Some(vec![50.0]),
+            inline_structure_crest_elevs: Some(vec![4.0]),
+            inline_structure_weir_lengths: Some(vec![10.0]),
+            inline_structure_weir_coeffs: Some(vec![2.6]),
+            inline_structure_lengths: Some(vec![10.0]),
+            ..Default::default()
+        };
+        let result = solve_steady(&inputs);
+        assert!(result.wsel.iter().all(|&w| w > 0.0));
+
+        // 2. With profile
+        let inputs_profile = SteadyInputs {
+            cross_sections: vec![xs200, xs100, xs0],
+            flow_rate: 50.0,
+            num_slices: Some(50),
+            regime: 1, // Supercritical
+            upstream_wsel: Some(5.0),
+            inline_structure_stations: Some(vec![50.0]),
+            inline_structure_roadway_stations: Some(vec![vec![0.0, 50.0, 100.0]]),
+            inline_structure_roadway_elevations: Some(vec![vec![4.0, 3.0, 4.0]]),
+            inline_structure_lengths: Some(vec![10.0]),
+            ..Default::default()
+        };
+        let result_profile = solve_steady(&inputs_profile);
+        assert!(result_profile.wsel.iter().all(|&w| w > 0.0));
+    }
+
+    #[test]
+    fn test_steady_metric_inline_weir_unit() {
+        let xs200 = CrossSection {
+            station: 200.0,
+            x: vec![-15.0, -15.0, 15.0, 15.0],
+            y: vec![3.0, 0.0, 0.0, 3.0],
+            n_stations: vec![-15.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let xs100 = CrossSection {
+            station: 100.0,
+            x: vec![-15.0, -15.0, 15.0, 15.0],
+            y: vec![3.0, 0.0, 0.0, 3.0],
+            n_stations: vec![-15.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let xs0 = CrossSection {
+            station: 0.0,
+            x: vec![-15.0, -15.0, 15.0, 15.0],
+            y: vec![3.0, 0.0, 0.0, 3.0],
+            n_stations: vec![-15.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+
+        // Subcritical with profile
+        let inputs = SteadyInputs {
+            cross_sections: vec![xs200, xs100, xs0],
+            flow_rate: 1.5, // cms
+            num_slices: Some(50),
+            regime: 0,
+            downstream_wsel: Some(0.9), // m
+            inline_structure_stations: Some(vec![50.0]),
+            inline_structure_roadway_stations: Some(vec![vec![0.0, 15.0, 30.0]]),
+            inline_structure_roadway_elevations: Some(vec![vec![1.2, 0.9, 1.2]]),
+            inline_structure_lengths: Some(vec![3.0]), // m
+            ..Default::default()
+        };
+        let result = solve_steady(&inputs);
+        assert!(result.wsel.iter().all(|&w| w > 0.0));
+    }
+
+    #[test]
+    fn test_steady_metric_compound_culverts_unit() {
+        let xs200 = CrossSection {
+            station: 200.0,
+            x: vec![-15.0, -15.0, 15.0, 15.0],
+            y: vec![3.0, 0.0, 0.0, 3.0],
+            n_stations: vec![-15.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let xs100 = CrossSection {
+            station: 100.0,
+            x: vec![-15.0, -15.0, 15.0, 15.0],
+            y: vec![3.0, 0.0, 0.0, 3.0],
+            n_stations: vec![-15.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let xs0 = CrossSection {
+            station: 0.0,
+            x: vec![-15.0, -15.0, 15.0, 15.0],
+            y: vec![3.0, 0.0, 0.0, 3.0],
+            n_stations: vec![-15.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+
+        let inputs = SteadyInputs {
+            cross_sections: vec![xs200, xs100, xs0],
+            flow_rate: 3.0, // cms
+            num_slices: Some(50),
+            regime: 0,
+            downstream_wsel: Some(1.0), // m
+            culvert_stations: Some(vec![50.0, 50.0]),
+            culvert_shape_types: Some(vec![0, 1]),
+            culvert_spans: Some(vec![1.8, 0.9]), // m
+            culvert_rises: Some(vec![1.8, 0.9]), // m
+            culvert_roughness_ns: Some(vec![0.013, 0.013]),
+            culvert_lengths: Some(vec![30.0, 30.0]),
+            culvert_entrance_loss_coeffs: Some(vec![0.5, 0.5]),
+            culvert_exit_loss_coeffs: Some(vec![1.0, 1.0]),
+            culvert_z_downs: Some(vec![0.0, 0.3]),
+            culvert_z_ups: Some(vec![0.0, 0.3]),
+            ..Default::default()
+        };
+
+        let result = solve_steady(&inputs);
+        assert!(result.wsel.iter().all(|&w| w > 0.0));
+    }
 }
 

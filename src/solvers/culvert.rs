@@ -3308,4 +3308,63 @@ mod tests {
         let geom_zero_p = CulvertGeometry::new(&zero_perims, 6.0, 4.0);
         assert_eq!(geom_zero_p.composite_n(2.0, 0.0, 0.013, 0.015, 1.0), 0.013);
     }
+
+    #[test]
+    fn test_roadway_profile_weir_flow_unit() {
+        let stations = vec![0.0, 50.0, 100.0];
+        let elevations = vec![10.0, 8.0, 10.0];
+
+        // 1. Invalid inputs
+        assert_eq!(roadway_profile_weir_flow(2.6, 12.0, 5.0, &vec![0.0], &vec![10.0], 0.0), 0.0);
+        assert_eq!(roadway_profile_weir_flow(2.6, 12.0, 5.0, &stations, &vec![10.0], 0.0), 0.0);
+
+        // 2. Normal flow (unsubmerged)
+        let q_unsub = roadway_profile_weir_flow(2.6, 11.0, 5.0, &stations, &elevations, 0.0);
+        assert!(q_unsub > 0.0);
+
+        // 3. Submerged flow (Bradley reduction)
+        let q_sub = roadway_profile_weir_flow(2.6, 11.0, 10.8, &stations, &elevations, 0.0);
+        assert!(q_sub < q_unsub);
+
+        // 4. Skewed flow
+        let q_skew = roadway_profile_weir_flow(2.6, 11.0, 5.0, &stations, &elevations, 30.0);
+        assert!(q_skew < q_unsub);
+
+        // 5. Head below crest
+        assert_eq!(roadway_profile_weir_flow(2.6, 7.0, 5.0, &stations, &elevations, 0.0), 0.0);
+    }
+
+    #[test]
+    fn test_solve_culvert_with_roadway_profile_unit() {
+        // 1. US Customary with profile
+        let mut params = us_circular_baseline();
+        params.q = 150.0;
+        params.roadway_stations = Some(vec![0.0, 50.0, 100.0]);
+        params.roadway_elevations = Some(vec![15.0, 12.0, 15.0]);
+        params.weir_coeff = 2.6;
+        let res_us = solve_culvert(&params);
+        assert!(res_us.wsel > 12.0);
+
+        // 2. Metric with profile
+        let mut params_metric = us_circular_baseline();
+        params_metric.units = UnitSystem::Metric;
+        params_metric.q = 5.0; // cms
+        params_metric.span = 1.5; // m
+        params_metric.rise = 1.5; // m
+        params_metric.length = 30.0; // m
+        params_metric.z_down = 3.0; // m
+        params_metric.z_up = 3.3; // m
+        params_metric.tw_wsel = 4.0; // m
+        params_metric.roadway_stations = Some(vec![0.0, 15.0, 30.0]);
+        params_metric.roadway_elevations = Some(vec![5.0, 4.2, 5.0]);
+        params_metric.weir_coeff = 1.44;
+        let res_metric = solve_culvert(&params_metric);
+        assert!(res_metric.wsel > 4.2);
+
+        // 3. Overtopping only case (weir only overtopping bisection)
+        let mut params_overtop = params.clone();
+        params_overtop.active_barrels = 0; // force all flow through weir
+        let res_overtop = solve_culvert(&params_overtop);
+        assert_eq!(res_overtop.control_type, "overtopping");
+    }
 }

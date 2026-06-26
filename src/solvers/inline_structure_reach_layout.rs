@@ -205,3 +205,93 @@ fn fallback_inline_structure_interval(
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_resolve_face_stations() {
+        // (Some, Some)
+        let f1 = resolve_inline_structure_face_stations_metric(50.0, UnitSystem::Metric, Some(55.0), Some(45.0), 10.0);
+        assert_eq!(f1.us_station_m, 55.0);
+        assert_eq!(f1.ds_station_m, 45.0);
+
+        // (Some, None)
+        let f2 = resolve_inline_structure_face_stations_metric(50.0, UnitSystem::Metric, Some(55.0), None, 10.0);
+        assert_eq!(f2.us_station_m, 55.0);
+        assert_eq!(f2.ds_station_m, 45.0);
+
+        let f2_zero = resolve_inline_structure_face_stations_metric(50.0, UnitSystem::Metric, Some(55.0), None, 0.0);
+        assert_eq!(f2_zero.us_station_m, 55.0);
+        assert_eq!(f2_zero.ds_station_m, 55.0);
+
+        // (None, Some)
+        let f3 = resolve_inline_structure_face_stations_metric(50.0, UnitSystem::Metric, None, Some(45.0), 10.0);
+        assert_eq!(f3.us_station_m, 55.0);
+        assert_eq!(f3.ds_station_m, 45.0);
+
+        let f3_zero = resolve_inline_structure_face_stations_metric(50.0, UnitSystem::Metric, None, Some(45.0), 0.0);
+        assert_eq!(f3_zero.us_station_m, 45.0);
+        assert_eq!(f3_zero.ds_station_m, 45.0);
+
+        // (None, None)
+        let f4 = resolve_inline_structure_face_stations_metric(50.0, UnitSystem::Metric, None, None, 10.0);
+        assert_eq!(f4.us_station_m, 55.0);
+        assert_eq!(f4.ds_station_m, 45.0);
+
+        let f4_zero = resolve_inline_structure_face_stations_metric(50.0, UnitSystem::Metric, None, None, 0.0);
+        assert_eq!(f4_zero.us_station_m, 50.0);
+        assert_eq!(f4_zero.ds_station_m, 50.0);
+
+        // USCustomary conversion
+        let f_us = resolve_inline_structure_face_stations_metric(50.0, UnitSystem::USCustomary, None, None, 10.0);
+        assert!((f_us.us_station_m - 55.0 * FT_TO_M).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_layout_cuts() {
+        let f_equal = InlineStructureFaceStations { us_station_m: 50.0, ds_station_m: 50.0 };
+        assert!(layout_cuts_for_inline_structure(f_equal).is_empty());
+
+        let f_diff = InlineStructureFaceStations { us_station_m: 55.0, ds_station_m: 45.0 };
+        let cuts = layout_cuts_for_inline_structure(f_diff);
+        assert_eq!(cuts.len(), 2);
+        assert_eq!(cuts[0].station_m, 55.0);
+        assert_eq!(cuts[1].station_m, 45.0);
+    }
+
+    #[test]
+    fn test_fallback_interval() {
+        let stations_exact = vec![100.0, 60.0, 40.0, 0.0];
+        let faces = InlineStructureFaceStations { us_station_m: 60.0, ds_station_m: 40.0 };
+        let res_exact = fallback_inline_structure_interval(faces, 50.0, UnitSystem::Metric, &stations_exact);
+        assert_eq!(res_exact, Some(1));
+
+        let stations = vec![100.0, 50.0, 0.0];
+        let res = fallback_inline_structure_interval(faces, 50.0, UnitSystem::Metric, &stations);
+        assert!(res.is_some());
+        
+        let res_none = fallback_inline_structure_interval(faces, 150.0, UnitSystem::Metric, &stations);
+        assert_eq!(res_none, None);
+    }
+
+    #[test]
+    fn test_apply_layout_empty() {
+        let inputs = crate::solvers::steady::SteadyInputs::default();
+        let mut stations = vec![100.0, 0.0];
+        let mut tables = vec![GeometryTable::default(), GeometryTable::default()];
+        let mut z_mins = vec![0.0, 0.0];
+        let mut xs = vec![None, None];
+        let res = apply_inline_structure_reach_layout_steady(
+            &inputs,
+            UnitSystem::Metric,
+            50,
+            &mut stations,
+            &mut tables,
+            &mut z_mins,
+            &mut xs,
+        );
+        assert!(res.is_empty());
+    }
+}
