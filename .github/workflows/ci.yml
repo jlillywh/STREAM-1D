@@ -22,11 +22,7 @@ jobs:
       - uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: Run tests with coverage
-        run: |
-          cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info > cargo_test.log 2>&1 || {
-            tail -n 150 cargo_test.log | python3 -c "import sys; print('::error file=Cargo.toml,line=1::' + sys.stdin.read().replace('\n', '%0A'))"
-            exit 1
-          }
+        run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
@@ -53,10 +49,7 @@ jobs:
           source .venv/bin/activate
           pip install --upgrade pip maturin
           maturin develop --features python --release
-          python3 verification/oracle/scripts/run_oracle_ci.py > oracle_ci.log 2>&1 || {
-            tail -n 150 oracle_ci.log | python3 -c "import sys; print('::error file=Cargo.toml,line=1::' + sys.stdin.read().replace('\n', '%0A'))"
-            exit 1
-          }
+          python3 verification/oracle/scripts/run_oracle_ci.py
 
   verification-notebook:
     name: verification notebook (headless)
@@ -71,8 +64,4 @@ jobs:
           python-version: "3.12"
 
       - name: Build stream1d and execute verification notebook
-        run: |
-          python3 scripts/run_verification_notebook.py > verification_notebook.log 2>&1 || {
-            tail -n 150 verification_notebook.log | python3 -c "import sys; print('::error file=Cargo.toml,line=1::' + sys.stdin.read().replace('\n', '%0A'))"
-            exit 1
-          }
+        run: python3 scripts/run_verification_notebook.py
