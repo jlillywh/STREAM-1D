@@ -598,6 +598,12 @@ pub struct CulvertSolveParams {
     /// Roadway profile elevations (optional).
     #[serde(default)]
     pub roadway_elevations: Option<Vec<f64>>,
+    /// FHWA HDS-5 chart number (optional).
+    #[serde(default)]
+    pub chart_number: Option<i32>,
+    /// FHWA HDS-5 scale number (optional).
+    #[serde(default)]
+    pub scale_number: Option<i32>,
 }
 
 fn default_num_barrels() -> i32 {
@@ -852,6 +858,93 @@ pub fn inlet_nomograph_coeffs(
                 (0.0300, 1.5, 0.0500, 0.60)
             }
         }
+    }
+}
+
+/// FHWA HDS-5 chart and scale lookup to determine coefficients (K, M, c, Y, is_form_2).
+/// Supports Charts 1, 2, 3, 8, 9, 10, 11, 12, 13, 14, 15, 16, 29, 30, 34, 35.
+pub fn fhwa_nomograph_coeffs(chart: i32, scale: i32) -> Option<(f64, f64, f64, f64, bool)> {
+    match (chart, scale) {
+        // Chart 1 (Circular Concrete Pipe)
+        (1, 1) => Some((0.0098, 2.00, 0.0398, 0.67, false)),
+        (1, 2) => Some((0.0018, 2.00, 0.0292, 0.74, false)),
+        (1, 3) => Some((0.0045, 2.00, 0.0317, 0.69, false)),
+
+        // Chart 2 (Circular CMP)
+        (2, 1) => Some((0.0078, 2.00, 0.0379, 0.69, false)),
+        (2, 2) => Some((0.0210, 1.33, 0.0463, 0.75, false)),
+        (2, 3) => Some((0.0340, 1.50, 0.0553, 0.54, false)),
+
+        // Chart 3 (Circular Pipe, Beveled Entrance)
+        (3, 1) => Some((0.0018, 2.50, 0.0300, 0.74, false)),
+        (3, 2) => Some((0.0018, 2.50, 0.0243, 0.83, false)),
+
+        // Chart 8 (Rectangular Box, Flared Wingwalls)
+        (8, 1) => Some((0.0260, 1.00, 0.0347, 0.81, false)),
+        (8, 2) => Some((0.0610, 0.75, 0.0400, 0.80, false)),
+        (8, 3) => Some((0.0610, 0.75, 0.0423, 0.82, false)),
+
+        // Chart 9 (Rectangular Box, Flared Wingwalls & Top Edge Bevel)
+        (9, 1) => Some((0.5100, 0.667, 0.0309, 0.80, true)),
+        (9, 2) => Some((0.4860, 0.667, 0.0249, 0.83, true)),
+
+        // Chart 10 (Rectangular Box, 90-deg Headwall, Chamfered or Beveled Inlet)
+        (10, 1) => Some((0.5150, 0.667, 0.0375, 0.79, true)),
+        (10, 2) => Some((0.4950, 0.667, 0.0314, 0.82, true)),
+        (10, 3) => Some((0.4860, 0.667, 0.0252, 0.865, true)),
+
+        // Chart 11 (Rectangular Box, Skewed Headwall)
+        (11, 1) => Some((0.5450, 0.667, 0.04505, 0.73, true)),
+        (11, 2) => Some((0.5330, 0.667, 0.04250, 0.705, true)),
+        (11, 3) => Some((0.5220, 0.667, 0.04020, 0.68, true)),
+        (11, 4) => Some((0.4980, 0.667, 0.03270, 0.75, true)),
+
+        // Chart 12 (Rectangular Box, Non-offset Flared Wingwalls, Chamfered Top)
+        (12, 1) => Some((0.4970, 0.667, 0.03390, 0.803, true)),
+        (12, 2) => Some((0.4930, 0.667, 0.03610, 0.806, true)),
+        (12, 3) => Some((0.4950, 0.667, 0.03860, 0.710, true)),
+
+        // Chart 13 (Rectangular Box, Offset Flared Wingwalls, Beveled Top)
+        (13, 1) => Some((0.4970, 0.667, 0.03020, 0.835, true)),
+        (13, 2) => Some((0.4950, 0.667, 0.02520, 0.881, true)),
+        (13, 3) => Some((0.4930, 0.667, 0.02270, 0.887, true)),
+
+        // Chart 14 (Corrugated Metal Box)
+        (14, 1) => Some((0.0083, 2.00, 0.0379, 0.69, false)),
+        (14, 2) => Some((0.0145, 1.75, 0.0419, 0.64, false)),
+        (14, 3) => Some((0.0340, 1.50, 0.0496, 0.57, false)),
+
+        // Chart 15 (Horizontal Ellipse Concrete)
+        (15, 1) => Some((0.0100, 2.00, 0.0398, 0.67, false)),
+        (15, 2) => Some((0.0018, 2.50, 0.0292, 0.74, false)),
+        (15, 3) => Some((0.0045, 2.00, 0.0317, 0.69, false)),
+
+        // Chart 16 (Vertical Ellipse Concrete)
+        (16, 1) => Some((0.0100, 2.00, 0.0398, 0.67, false)),
+        (16, 2) => Some((0.0018, 2.50, 0.0292, 0.74, false)),
+        (16, 3) => Some((0.0095, 2.00, 0.0317, 0.69, false)),
+
+        // Chart 29 (Oval Concrete Horizontal)
+        (29, 1) => Some((0.0100, 2.00, 0.0398, 0.67, false)),
+        (29, 2) => Some((0.0018, 2.50, 0.0292, 0.74, false)),
+        (29, 3) => Some((0.0045, 2.00, 0.0317, 0.69, false)),
+
+        // Chart 30 (Oval Concrete Vertical)
+        (30, 1) => Some((0.0100, 2.00, 0.0398, 0.67, false)),
+        (30, 2) => Some((0.0018, 2.50, 0.0292, 0.74, false)),
+        (30, 3) => Some((0.0095, 2.00, 0.0317, 0.69, false)),
+
+        // Chart 34 (CMP Pipe Arch)
+        (34, 1) => Some((0.0083, 2.00, 0.0379, 0.69, false)),
+        (34, 2) => Some((0.0300, 1.00, 0.0463, 0.75, false)),
+        (34, 3) => Some((0.0340, 1.50, 0.0496, 0.57, false)),
+
+        // Chart 35 (Structural Plate Pipe Arch)
+        (35, 1) => Some((0.0300, 1.50, 0.0496, 0.57, false)),
+        (35, 2) => Some((0.0088, 2.00, 0.0368, 0.68, false)),
+        (35, 3) => Some((0.0030, 2.00, 0.0269, 0.77, false)),
+
+        _ => None,
     }
 }
 
@@ -1183,14 +1276,33 @@ fn solve_culvert_barrel_internal(params: &CulvertSolveParams, q: f64) -> BarrelS
     let vc = if ac > 1e-9 { q_cfs / ac } else { 0.0 };
     let hc_eff = yc_eff + (vc * vc) / (2.0 * G_ENGLISH); // Specific head at critical depth above effective invert
 
-    let (k, m, c, y) = inlet_nomograph_coeffs(geom.shape, params.inlet_type, params.entrance_loss_coeff);
+    let (k, m, c, y, is_form_2) = if let (Some(chart), Some(scale)) = (params.chart_number, params.scale_number) {
+        if chart > 0 && scale > 0 {
+            if let Some((k_val, m_val, c_val, y_val, form2)) = fhwa_nomograph_coeffs(chart, scale) {
+                (k_val, m_val, c_val, y_val, form2)
+            } else {
+                let (k_val, m_val, c_val, y_val) = inlet_nomograph_coeffs(geom.shape, params.inlet_type, params.entrance_loss_coeff);
+                (k_val, m_val, c_val, y_val, false)
+            }
+        } else {
+            let (k_val, m_val, c_val, y_val) = inlet_nomograph_coeffs(geom.shape, params.inlet_type, params.entrance_loss_coeff);
+            (k_val, m_val, c_val, y_val, false)
+        }
+    } else {
+        let (k_val, m_val, c_val, y_val) = inlet_nomograph_coeffs(geom.shape, params.inlet_type, params.entrance_loss_coeff);
+        (k_val, m_val, c_val, y_val, false)
+    };
 
     // FHWA barrel slope S0 (positive when downstream invert is lower than upstream).
     let culv_slope = (z_up_ft - z_down_ft) / len_ft;
     let f_param = q_cfs / (a_full_eff * d_eff.sqrt());
 
-    // Unsubmerged Eq (Form 1)
-    let hw_d_unsub = (hc_eff / d_eff) + k * f_param.powf(m) - 0.5 * culv_slope;
+    // Unsubmerged Eq (Form 1 vs Form 2)
+    let hw_d_unsub = if is_form_2 {
+        k * f_param.powf(m)
+    } else {
+        (hc_eff / d_eff) + k * f_param.powf(m) - 0.5 * culv_slope
+    };
     // Submerged Eq
     let hw_d_sub = c * f_param.powi(2) + y - 0.5 * culv_slope;
 
@@ -1204,7 +1316,11 @@ fn solve_culvert_barrel_internal(params: &CulvertSolveParams, q: f64) -> BarrelS
         (1.0 - t) * hw_d_unsub + t * hw_d_sub
     };
 
-    let hw_inlet_eff = (hw_d * d_eff).max(hc_eff);
+    let hw_inlet_eff = if is_form_2 {
+        hw_d * d_eff
+    } else {
+        (hw_d * d_eff).max(hc_eff)
+    };
     let wsel_inlet = z_up_ft + db_ft + hw_inlet_eff;
 
     // 2. OUTLET CONTROL CALCULATIONS
@@ -1717,6 +1833,10 @@ pub fn solve_culvert_wsel(
         custom_shape_tbl_top_width: None,
         roadway_stations: None,
         roadway_elevations: None,
+
+        chart_number: None,
+
+        scale_number: None,
     };
     solve_culvert(&params).wsel
 }
@@ -1915,6 +2035,10 @@ mod tests {
             custom_shape_tbl_top_width: None,
             roadway_stations: None,
             roadway_elevations: None,
+
+            chart_number: None,
+
+            scale_number: None,
         }
     }
 
@@ -2137,6 +2261,10 @@ mod tests {
             custom_shape_tbl_top_width: None,
             roadway_stations: None,
             roadway_elevations: None,
+
+            chart_number: None,
+
+            scale_number: None,
         };
         let legacy = solve_culvert(&base).wsel;
         let mut projecting = base.clone();
@@ -2180,6 +2308,10 @@ mod tests {
             custom_shape_tbl_top_width: None,
             roadway_stations: None,
             roadway_elevations: None,
+
+            chart_number: None,
+
+            scale_number: None,
         };
         let bed = CulvertSolveParams {
             z_up: 10.0,
@@ -2225,6 +2357,10 @@ mod tests {
             custom_shape_tbl_top_width: None,
             roadway_stations: None,
             roadway_elevations: None,
+
+            chart_number: None,
+
+            scale_number: None,
         };
         let result = solve_culvert(&params);
         assert!(result.wsel > 14.0);
@@ -2266,6 +2402,10 @@ mod tests {
             custom_shape_tbl_top_width: None,
             roadway_stations: None,
             roadway_elevations: None,
+
+            chart_number: None,
+
+            scale_number: None,
         };
         assert_eq!(solve_culvert(&params).control_type, "inlet");
 
@@ -2315,6 +2455,51 @@ mod tests {
     }
 
     #[test]
+    fn test_fhwa_nomograph_lookup() {
+        // Chart 1 Scale 1 (circular concrete pipe - square edge w/ headwall)
+        let c1s1 = fhwa_nomograph_coeffs(1, 1).unwrap();
+        assert_eq!(c1s1, (0.0098, 2.00, 0.0398, 0.67, false));
+
+        // Chart 8 Scale 2 (box culvert - 90 or 15 deg flares)
+        let c8s2 = fhwa_nomograph_coeffs(8, 2).unwrap();
+        assert_eq!(c8s2, (0.0610, 0.75, 0.0400, 0.80, false));
+
+        // Chart 9 Scale 1 (box culvert, flared wingwalls & top edge bevel - Form 2)
+        let c9s1 = fhwa_nomograph_coeffs(9, 1).unwrap();
+        assert_eq!(c9s1, (0.5100, 0.667, 0.0309, 0.80, true));
+
+        // Invalid chart/scale returns None
+        assert!(fhwa_nomograph_coeffs(99, 1).is_none());
+        assert!(fhwa_nomograph_coeffs(1, 99).is_none());
+    }
+
+    #[test]
+    fn test_fhwa_chart_selection_solves() {
+        let mut params = us_circular_baseline();
+        
+        // Solve with legacy inlet_type = 1 (K=0.0098, M=2.00, c=0.0398, Y=0.67)
+        params.inlet_type = 1;
+        let legacy_wsel = solve_culvert(&params).wsel;
+
+        // Reset inlet_type and solve with direct Chart 1 / Scale 1
+        params.inlet_type = 0;
+        params.chart_number = Some(1);
+        params.scale_number = Some(1);
+        let direct_wsel = solve_culvert(&params).wsel;
+
+        // They must match exactly!
+        assert!((legacy_wsel - direct_wsel).abs() < 1e-6);
+
+        // Solve with Form 2 Chart 9 Scale 1 (box culvert with top edge bevel)
+        let mut box_params = us_circular_baseline();
+        box_params.shape_type = 1; // Box
+        box_params.chart_number = Some(9);
+        box_params.scale_number = Some(1);
+        let box_wsel = solve_culvert(&box_params).wsel;
+        assert!(box_wsel > 10.0);
+    }
+
+    #[test]
     fn test_crest_set_but_barrel_controls() {
         let params = CulvertSolveParams {
             q: 100.0,
@@ -2349,6 +2534,10 @@ mod tests {
             custom_shape_tbl_top_width: None,
             roadway_stations: None,
             roadway_elevations: None,
+
+            chart_number: None,
+
+            scale_number: None,
         };
         let result = solve_culvert(&params);
         assert!(result.wsel < 20.0);
@@ -2390,6 +2579,10 @@ mod tests {
             custom_shape_tbl_top_width: None,
             roadway_stations: None,
             roadway_elevations: None,
+
+            chart_number: None,
+
+            scale_number: None,
         };
         let result = solve_culvert(&params);
         assert_eq!(result.control_type, "inlet");
@@ -2437,6 +2630,10 @@ mod tests {
             custom_shape_tbl_top_width: None,
             roadway_stations: None,
             roadway_elevations: None,
+
+            chart_number: None,
+
+            scale_number: None,
         };
         let flat = CulvertSolveParams {
             z_down: 10.0,
@@ -2499,6 +2696,10 @@ mod tests {
                 custom_shape_tbl_top_width: None,
                 roadway_stations: None,
                 roadway_elevations: None,
+
+                chart_number: None,
+
+                scale_number: None,
             },
         };
         let curve = compute_culvert_rating_curve(&inputs);
@@ -2543,6 +2744,10 @@ mod tests {
             custom_shape_tbl_top_width: None,
             roadway_stations: None,
             roadway_elevations: None,
+
+            chart_number: None,
+
+            scale_number: None,
         };
         let result = solve_culvert(&params);
         assert_eq!(result.control_type, "overtopping");
@@ -2595,6 +2800,10 @@ mod tests {
             custom_shape_tbl_top_width: None,
             roadway_stations: None,
             roadway_elevations: None,
+
+            chart_number: None,
+
+            scale_number: None,
         };
         let mut skewed = base.clone();
         skewed.skew_deg = 30.0;
@@ -2639,6 +2848,10 @@ mod tests {
             custom_shape_tbl_top_width: None,
             roadway_stations: None,
             roadway_elevations: None,
+
+            chart_number: None,
+
+            scale_number: None,
         };
         let mut blocked = base.clone();
         blocked.active_barrels = 1;
@@ -2680,6 +2893,10 @@ mod tests {
             custom_shape_tbl_top_width: None,
             roadway_stations: None,
             roadway_elevations: None,
+
+            chart_number: None,
+
+            scale_number: None,
         };
         let equal_small = CulvertSolveParams {
             barrel_spans: None,
@@ -2690,6 +2907,10 @@ mod tests {
             custom_shape_tbl_top_width: None,
             roadway_stations: None,
             roadway_elevations: None,
+
+            chart_number: None,
+
+            scale_number: None,
             ..small_only.clone()
         };
         let hw_mixed = solve_culvert(&small_only).wsel;
@@ -2737,6 +2958,10 @@ mod tests {
             custom_shape_tbl_top_width: None,
             roadway_stations: None,
             roadway_elevations: None,
+
+            chart_number: None,
+
+            scale_number: None,
         };
         let explicit = CulvertSolveParams {
             barrel_spans: Some(vec![5.0, 5.0]),
@@ -2747,6 +2972,10 @@ mod tests {
             custom_shape_tbl_top_width: None,
             roadway_stations: None,
             roadway_elevations: None,
+
+            chart_number: None,
+
+            scale_number: None,
             ..uniform.clone()
         };
         let hw_uniform = solve_culvert(&uniform).wsel;
@@ -3131,6 +3360,10 @@ mod tests {
             custom_shape_tbl_top_width: None,
             roadway_stations: None,
             roadway_elevations: None,
+
+            chart_number: None,
+
+            scale_number: None,
         };
         let result = solve_culvert(&params);
         assert!(result.wsel > 1.2);
@@ -3224,6 +3457,10 @@ mod tests {
             custom_shape_tbl_top_width: None,
             roadway_stations: None,
             roadway_elevations: None,
+
+            chart_number: None,
+
+            scale_number: None,
         };
 
         let mut custom_params = box_params.clone();
