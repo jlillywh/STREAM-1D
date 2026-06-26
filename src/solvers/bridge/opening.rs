@@ -289,9 +289,6 @@ pub(crate) fn deck_obstructed_area_at_wsel(geom: &BridgeGeometry, wsel: f64) -> 
         let mut area = 0.0;
         for i in 0..deck.stations_m.len().saturating_sub(1) {
             let w = (deck.stations_m[i + 1] - deck.stations_m[i]) * geom.skew_cos;
-            if w <= 0.0 {
-                continue;
-            }
             let s_mid = 0.5 * (deck.stations_m[i] + deck.stations_m[i + 1]);
             let lc = interpolate_profile(&deck.stations_m, &deck.low_elevations_m, s_mid);
             let hc = effective_deck_crest_m(
@@ -326,9 +323,6 @@ pub(crate) fn deck_obstructed_width_at_wsel(geom: &BridgeGeometry, wsel: f64) ->
         let mut width = 0.0;
         for i in 0..deck.stations_m.len().saturating_sub(1) {
             let w = (deck.stations_m[i + 1] - deck.stations_m[i]) * geom.skew_cos;
-            if w <= 0.0 {
-                continue;
-            }
             let s_mid = 0.5 * (deck.stations_m[i] + deck.stations_m[i + 1]);
             let lc = interpolate_profile(&deck.stations_m, &deck.low_elevations_m, s_mid);
             let hc = effective_deck_crest_m(
