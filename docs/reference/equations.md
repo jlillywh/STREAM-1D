@@ -34,14 +34,24 @@ The culvert solver evaluates both inlet and outlet control to determine the cont
 $$WSEL_{up} = \max(WSEL_{inlet}, WSEL_{outlet})$$
 
 #### A. Inlet Control (FHWA Nomograph Formulations)
-Based on Federal Highway Administration (FHWA) standards, the inlet control headwater depth ($HW$) relative to the barrel rise ($D$) is computed for:
-* **Unsubmerged Flow ($\frac{Q}{AD^{0.5}} \le 3.0$):**
-  $$\frac{HW}{D} = \frac{H_c}{D} + K \left[\frac{Q}{A D^{0.5}}\right]^M - 0.5 S$$
-* **Submerged Flow ($\frac{Q}{AD^{0.5}} \ge 4.0$):**
+Based on Federal Highway Administration (FHWA) standards, the inlet control headwater-to-depth ratio ($HW/D$) is computed using one of two formulations based on the selected HDS-5 chart/scale or inlet type:
+
+* **Form 1 (Standard):** Used by circular, arch, and some box/CMP charts.
+  * **Unsubmerged Flow ($\frac{Q}{AD^{0.5}} \le 3.0$):**
+    $$\frac{HW}{D} = \frac{H_c}{D} + K \left[\frac{Q}{A D^{0.5}}\right]^M - 0.5 S$$
+    The effective headwater depth is $HW = \max\left( \frac{HW}{D} \cdot D, H_c \right)$ where $H_c$ is the specific head at critical depth above the effective invert.
+* **Form 2 (Orifice-like Unsubmerged):** Used by box charts 9, 10, 11, 12, and 13.
+  * **Unsubmerged Flow ($\frac{Q}{AD^{0.5}} \le 3.0$):**
+    $$\frac{HW}{D} = K \left[\frac{Q}{A D^{0.5}}\right]^M$$
+    The effective headwater depth is $HW = \frac{HW}{D} \cdot D$ (critical depth constraint and slope correction are omitted).
+* **Submerged Flow (Both forms, $\frac{Q}{AD^{0.5}} \ge 4.0$):**
   $$\frac{HW}{D} = c \left[\frac{Q}{A D^{0.5}}\right]^2 + Y - 0.5 S$$
 * **Transition Zone ($3.0 < \frac{Q}{AD^{0.5}} < 4.0$):**
-  Linear interpolation between unsubmerged and submerged formulas.
-* *Note: The shape parameters $K, M, c, Y$ are selected from FHWA nomographs by `culvert_inlet_types` (or legacy $K_e$ threshold when inlet type is 0).*
+  Linear interpolation between unsubmerged and submerged ratios.
+
+*Note: The parameters $K, M, c, Y$ and the form type are determined by direct FHWA HDS-5 chart/scale selection (`culvert_chart_numbers` and `culvert_scale_numbers`). If omitted or set to `None`/`0`, the solver falls back to mapping the legacy `culvert_inlet_types` and `culvert_entrance_loss_coeffs` (Form 1 coefficients).*
+
+* **Chart & Scale selection:** `culvert_chart_numbers` (1, 2, 3, 8, 9, 10, 11, 12, 13, 14, 15, 16, 29, 30, 34, 35) and `culvert_scale_numbers` (1, 2, 3, 4) configure the nomograph coefficients directly.
 * **Inlet types:** `culvert_inlet_types` per culvert — Circular: 1 square headwall, 2 groove end, 3 beveled 45°, 4 projecting; Box: 10 square edge, 11 flared wingwalls, 12 beveled top; Arch/ConSpan: 20 projecting, 21 smooth entry; 0 = legacy $K_e$ threshold.
 * **Invert overrides:** Optional `culvert_z_ups` / `culvert_z_downs` (defaults to adjacent section bed).
 * **Roadway overtopping:** Optional `culvert_crest_elevs` with `culvert_weir_coeffs` (default 2.6 US / 1.44 metric) and `culvert_weir_lengths` (default sum of projected active-barrel spans; omit `culvert_crest_elevs` entirely when overtopping is off). When the roadway crest is exceeded, total discharge splits iteratively between barrel flow and weir flow until balanced.
@@ -75,6 +85,8 @@ Parallel arrays — index `i` matches `culvert_stations[i]`. Use on **`SteadyInp
 | `culvert_exit_loss_coeffs` | Optional | $K_x$ (default 1.0) |
 | `culvert_barrels` | Optional | Total barrel count (default 1) |
 | `culvert_inlet_types` | Optional | FHWA nomograph code (see inlet list above); `0` = legacy $K_e$ threshold |
+| `culvert_chart_numbers` | Optional | FHWA HDS-5 chart number (direct chart selection, e.g., 1–16, 29, 30, 34, 35) |
+| `culvert_scale_numbers` | Optional | FHWA HDS-5 scale number (direct scale selection, e.g., 1–4) |
 | `culvert_z_ups`, `culvert_z_downs` | Optional | Invert elevations; default to adjacent section bed |
 | `culvert_roughness_n_bottoms` | Optional | Bottom/sediment *n* (defaults to `culvert_roughness_ns`) |
 | `culvert_depth_bottom_ns` | Optional | Depth to which bottom *n* applies |
