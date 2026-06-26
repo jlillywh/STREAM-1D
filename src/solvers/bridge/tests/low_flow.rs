@@ -398,8 +398,8 @@ fn test_tapered_vs_mean_constant_partial_wsel_more_blockage() {
     let table = rectangular_table(10.0, 0.0, 50);
     let (mean_const, taper) = tapered_vs_mean_constant_pier_geometries();
     let wsel = 2.5;
-    let props_mean = obstructed_hydraulics(&table, wsel, 0.0, &mean_const, false);
-    let props_taper = obstructed_hydraulics(&table, wsel, 0.0, &taper, false);
+    let props_mean = obstructed_hydraulics(&table, wsel, 0.0, &mean_const, false, false);
+    let props_taper = obstructed_hydraulics(&table, wsel, 0.0, &taper, false, false);
     assert!(props_taper.a_eff < props_mean.a_eff);
     // WSEL=2.5: taper surface width 1.375 m < mean constant 1.5 m â†’ more conveyance top width.
     assert!(props_taper.top_width > props_mean.top_width);

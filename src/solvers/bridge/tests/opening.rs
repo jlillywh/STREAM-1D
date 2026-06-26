@@ -61,8 +61,8 @@ fn test_asymmetric_abutments_reduce_area_more_on_wide_side() {
         abutments: BridgeAbutments::symmetric_total_width_m(4.0, 0.0, 10.0),
         ..base
     };
-    let props_asym = obstructed_hydraulics(&table, 3.0, 0.0, &narrow_left, false);
-    let props_sym = obstructed_hydraulics(&table, 3.0, 0.0, &symmetric, false);
+    let props_asym = obstructed_hydraulics(&table, 3.0, 0.0, &narrow_left, false, false);
+    let props_sym = obstructed_hydraulics(&table, 3.0, 0.0, &symmetric, false, false);
     assert!(
         (props_asym.a_eff - props_sym.a_eff).abs() < 1e-6,
         "same total width should yield same effective area"
@@ -145,8 +145,8 @@ fn test_per_side_abutment_tops_affect_obstructed_hydraulics() {
         ),
         ..base
     };
-    let props_both = obstructed_hydraulics(&table, 3.0, 0.0, &geom_both, false);
-    let props_right = obstructed_hydraulics(&table, 3.0, 0.0, &geom_right_only, false);
+    let props_both = obstructed_hydraulics(&table, 3.0, 0.0, &geom_both, false, false);
+    let props_right = obstructed_hydraulics(&table, 3.0, 0.0, &geom_right_only, false, false);
     assert!(props_right.a_eff > props_both.a_eff);
     assert!(props_right.top_width > props_both.top_width);
 }
@@ -193,12 +193,12 @@ fn test_abutment_reduces_opening_area() {
         table_departure: None,
         ..Default::default()
     };
-    let props_no = obstructed_hydraulics(&table, 3.0, 0.0, &geom_no_abut, false);
+    let props_no = obstructed_hydraulics(&table, 3.0, 0.0, &geom_no_abut, false, false);
     let geom_abut = BridgeGeometry {
         abutments: BridgeAbutments::symmetric_total_width_m(2.0, 0.0, 10.0),
         ..geom_no_abut.clone()
     };
-    let props_abut = obstructed_hydraulics(&table, 3.0, 0.0, &geom_abut, false);
+    let props_abut = obstructed_hydraulics(&table, 3.0, 0.0, &geom_abut, false, false);
     assert!(props_abut.a_eff < props_no.a_eff);
 }
 #[test]
@@ -261,7 +261,7 @@ fn test_obstructed_area_hand_calc_asymmetric_and_one_sided() {
         ),
         ..base.clone()
     };
-    let props_asym = obstructed_hydraulics(&table, 2.5, 0.0, &asymmetric, false);
+    let props_asym = obstructed_hydraulics(&table, 2.5, 0.0, &asymmetric, false, false);
     let hand_asym = hand_rectangular_a_eff(10.0, 2.5, 0.0, &asymmetric);
     assert!((hand_asym - 22.5).abs() < 1e-6, "hand A_eff@2.5 = {hand_asym}");
     assert!(
@@ -285,7 +285,7 @@ fn test_obstructed_area_hand_calc_asymmetric_and_one_sided() {
         ),
         ..base.clone()
     };
-    let props_left = obstructed_hydraulics(&table, 2.5, 0.0, &left_only, false);
+    let props_left = obstructed_hydraulics(&table, 2.5, 0.0, &left_only, false, false);
     assert!((hand_rectangular_a_eff(10.0, 2.5, 0.0, &left_only) - 17.5).abs() < 1e-6);
     assert!((props_left.a_eff - 17.5).abs() < 1e-3);
 
@@ -303,7 +303,7 @@ fn test_obstructed_area_hand_calc_asymmetric_and_one_sided() {
         ),
         ..base
     };
-    let props_right = obstructed_hydraulics(&table, 2.5, 0.0, &right_only, false);
+    let props_right = obstructed_hydraulics(&table, 2.5, 0.0, &right_only, false, false);
     assert!((hand_rectangular_a_eff(10.0, 2.5, 0.0, &right_only) - 23.5).abs() < 1e-6);
     assert!((props_right.a_eff - 23.5).abs() < 1e-3);
 }
@@ -414,10 +414,10 @@ fn test_wspro_headwater_hand_calc_reference_cases() {
             "{name}: WSPRO hw {hw:.4} vs reference {expected_hw:.4}"
         );
 
-        let props_down = obstructed_hydraulics(&table, tw, 0.0, &geom, false);
-        let props_up = obstructed_hydraulics(&table, hw, 0.0, &geom, true);
+        let props_down = obstructed_hydraulics(&table, tw, 0.0, &geom, false, false);
+        let props_up = obstructed_hydraulics(&table, hw, 0.0, &geom, true, false);
         let opening_wsel = hw.min(tw).min(geom.low_chord_m);
-        let props_open = obstructed_hydraulics(&table, opening_wsel, 0.0, &geom, true);
+        let props_open = obstructed_hydraulics(&table, opening_wsel, 0.0, &geom, true, false);
         let e_down = tw + velocity_head(q, props_down.a_eff);
         let e_up = hw + velocity_head(q, props_up.a_eff);
         let hf = friction_loss(
@@ -487,7 +487,7 @@ fn reach_cut_flow_area_uses_approach_ineffective_without_guide_banks() {
     let xs = geom.xs_approach.as_ref().expect("approach xs");
     let row = row_at_elevation(table, xs, wsel, None, None);
     assert!((a_approach - row.active_area).abs() < 1e-2);
-    let a_bu = obstructed_hydraulics(&table_up, wsel, geom.z_up_m, &geom, true).a_eff;
+    let a_bu = obstructed_hydraulics(&table_up, wsel, geom.z_up_m, &geom, true, false).a_eff;
     assert!(
         a_approach < a_bu - 1.0,
         "ineffective approach should convey less than BU reach face"
@@ -498,8 +498,8 @@ fn test_tapered_pier_obstructed_area_exceeds_rectangular() {
     let table = rectangular_table(10.0, 0.0, 50);
     let (rectangular, tapered) = tapered_vs_rectangular_pier_geometries();
     let wsel = 2.0;
-    let props_rect = obstructed_hydraulics(&table, wsel, 0.0, &rectangular, false);
-    let props_taper = obstructed_hydraulics(&table, wsel, 0.0, &tapered, false);
+    let props_rect = obstructed_hydraulics(&table, wsel, 0.0, &rectangular, false, false);
+    let props_taper = obstructed_hydraulics(&table, wsel, 0.0, &tapered, false, false);
     assert!(props_taper.a_eff < props_rect.a_eff);
     // Mid-depth tapered submerged area 0.5*(2+1.5)*2 = 3.5 vs rectangular 1*2 = 2
     let a_rect_piers = 2.0;
@@ -552,7 +552,7 @@ fn test_legacy_constant_pier_area_unchanged_via_empty_specs() {
         ..Default::default()
     };
     let wsel = 3.0;
-    let props = obstructed_hydraulics(&table, wsel, 0.0, &geom, false);
+    let props = obstructed_hydraulics(&table, wsel, 0.0, &geom, false, false);
     let a_piers_legacy = 2.0 * 0.5 * wsel;
     let base = 10.0 * wsel;
     assert!((props.a_eff - (base - a_piers_legacy)).abs() < 0.1);
@@ -563,8 +563,8 @@ fn test_profile_pier_obstructed_area_matches_tapered_trapezoid() {
     let (_, tapered) = tapered_vs_rectangular_pier_geometries();
     let profile = profile_pier_geometry();
     let wsel = 2.0;
-    let a_taper = obstructed_hydraulics(&table, wsel, 0.0, &tapered, false).a_eff;
-    let a_profile = obstructed_hydraulics(&table, wsel, 0.0, &profile, false).a_eff;
+    let a_taper = obstructed_hydraulics(&table, wsel, 0.0, &tapered, false, false).a_eff;
+    let a_profile = obstructed_hydraulics(&table, wsel, 0.0, &profile, false, false).a_eff;
     assert!((a_taper - a_profile).abs() < 1e-6, "taper={a_taper}, profile={a_profile}");
 }
 #[test]
@@ -574,10 +574,10 @@ fn test_tapered_pier_skew_increases_opening_plane_blockage() {
     let wsel = 2.0;
     geom.skew_cos = 1.0;
     geom.skew_deg = 0.0;
-    let props_normal = obstructed_hydraulics(&table, wsel, 0.0, &geom, false);
+    let props_normal = obstructed_hydraulics(&table, wsel, 0.0, &geom, false, false);
     geom.skew_cos = 0.5;
     geom.skew_deg = 60.0;
-    let props_skew = obstructed_hydraulics(&table, wsel, 0.0, &geom, false);
+    let props_skew = obstructed_hydraulics(&table, wsel, 0.0, &geom, false, false);
     assert!(props_skew.a_eff < props_normal.a_eff);
     let pier_block_normal = 10.0 * wsel - props_normal.a_eff;
     let pier_block_skew = 10.0 * wsel - props_skew.a_eff;
@@ -589,8 +589,8 @@ fn test_footing_increases_obstructed_area_below_shaft() {
     let (rectangular, _) = tapered_vs_rectangular_pier_geometries();
     let footing = pier_with_footing_geometry();
     let wsel = 2.0;
-    let a_shaft = obstructed_hydraulics(&table, wsel, 0.0, &rectangular, false).a_eff;
-    let a_footing = obstructed_hydraulics(&table, wsel, 0.0, &footing, false).a_eff;
+    let a_shaft = obstructed_hydraulics(&table, wsel, 0.0, &rectangular, false, false).a_eff;
+    let a_footing = obstructed_hydraulics(&table, wsel, 0.0, &footing, false, false).a_eff;
     assert!(a_footing < a_shaft);
 }
 #[test]
@@ -634,8 +634,8 @@ fn test_submerged_footing_reduces_opening_area() {
         ),
         ..rectangular
     };
-    let props_shaft = obstructed_hydraulics(&table, wsel, 0.0, &shaft_only, false);
-    let props_footing = obstructed_hydraulics(&table, wsel, 0.0, &with_footing, false);
+    let props_shaft = obstructed_hydraulics(&table, wsel, 0.0, &shaft_only, false, false);
+    let props_footing = obstructed_hydraulics(&table, wsel, 0.0, &with_footing, false, false);
     // Shaft wet 1â†’2 m at 1 m wide â†’ 1 mÂ² pier; footing 0â†’1 m tapers 3â†’1 m â†’ +2 mÂ².
     let a_pier_shaft = 1.0;
     let a_pier_footing = 3.0;
@@ -682,8 +682,8 @@ fn test_nosing_reduces_obstructed_top_width() {
     let (rectangular, _) = tapered_vs_rectangular_pier_geometries();
     let nosing = pier_with_nosing_geometry();
     let wsel = 2.0;
-    let tw_shaft = obstructed_hydraulics(&table, wsel, 0.0, &rectangular, false).top_width;
-    let tw_nosing = obstructed_hydraulics(&table, wsel, 0.0, &nosing, false).top_width;
+    let tw_shaft = obstructed_hydraulics(&table, wsel, 0.0, &rectangular, false, false).top_width;
+    let tw_nosing = obstructed_hydraulics(&table, wsel, 0.0, &nosing, false, false).top_width;
     assert!(
         tw_nosing + 0.5 < tw_shaft + 1e-6,
         "nosing top_width {tw_nosing} vs shaft {tw_shaft}"
@@ -696,8 +696,8 @@ fn test_yarnell_integrated_loss_increases_with_footing() {
     let footing = pier_with_footing_geometry();
     let wsel = 2.5;
     let q = 15.0;
-    let a_shaft = obstructed_hydraulics(&table, wsel, 0.0, &rectangular, false).a_eff;
-    let a_footing = obstructed_hydraulics(&table, wsel, 0.0, &footing, false).a_eff;
+    let a_shaft = obstructed_hydraulics(&table, wsel, 0.0, &rectangular, false, false).a_eff;
+    let a_footing = obstructed_hydraulics(&table, wsel, 0.0, &footing, false, false).a_eff;
     let hl_shaft = yarnell_pier_head_loss_integrated(q, wsel, 0.0, &rectangular, a_shaft);
     let hl_footing = yarnell_pier_head_loss_integrated(q, wsel, 0.0, &footing, a_footing);
     assert!(hl_footing > hl_shaft + 1e-6);

@@ -10,7 +10,8 @@ use crate::utils::G_METRIC;
 use super::section::BridgeFrictionWeighting;
 
 use super::geometry::{
-    apply_opening_blockage, capped_ice_thickness_m, effective_z_bed_m, interpolate_profile,
+    apply_opening_blockage, capped_ice_thickness_m, effective_deck_crest_m,
+    effective_scalar_high_chord_m, effective_z_bed_m, interpolate_profile,
     opening_station_bounds_from_deck, scale_base_area_for_ice, BridgeGeometry,
 };
 
@@ -254,7 +255,7 @@ pub(crate) fn yarnell_downstream_flow_area_m2(
     z_bed: f64,
     geom: &BridgeGeometry,
 ) -> f64 {
-    let props = obstructed_hydraulics(table, wsel, z_bed, geom, false);
+    let props = obstructed_hydraulics(table, wsel, z_bed, geom, false, false);
     (props.a_eff + pier_submerged_area_at_wsel(geom, wsel, z_bed)).max(1e-5)
 }
 
@@ -265,8 +266,8 @@ pub(crate) fn obstructed_opening_at_wsel(
     table_down: &GeometryTable,
     wsel: f64,
 ) -> (ObstructedHydraulics, bool) {
-    let up = obstructed_hydraulics(table_up, wsel, geom.z_up_m, geom, true);
-    let down = obstructed_hydraulics(table_down, wsel, geom.z_down_m, geom, false);
+    let up = obstructed_hydraulics(table_up, wsel, geom.z_up_m, geom, true, false);
+    let down = obstructed_hydraulics(table_down, wsel, geom.z_down_m, geom, false, false);
     if up.a_eff <= down.a_eff {
         (up, true)
     } else {
@@ -283,12 +284,75 @@ pub(crate) fn opening_height_below_deck_m(geom: &BridgeGeometry) -> f64 {
     h_up.min(h_down).max(1e-3)
 }
 
+pub(crate) fn deck_obstructed_area_at_wsel(geom: &BridgeGeometry, wsel: f64) -> f64 {
+    if let Some(deck) = geom.deck.as_ref().filter(|d| d.is_valid()) {
+        let mut area = 0.0;
+        for i in 0..deck.stations_m.len().saturating_sub(1) {
+            let w = (deck.stations_m[i + 1] - deck.stations_m[i]) * geom.skew_cos;
+            let s_mid = 0.5 * (deck.stations_m[i] + deck.stations_m[i + 1]);
+            let lc = interpolate_profile(&deck.stations_m, &deck.low_elevations_m, s_mid);
+            let hc = effective_deck_crest_m(
+                geom,
+                interpolate_profile(&deck.stations_m, &deck.high_elevations_m, s_mid),
+            );
+            if wsel <= lc {
+                continue;
+            } else if wsel <= hc {
+                area += w * (wsel - lc);
+            } else {
+                area += w * (hc - lc);
+            }
+        }
+        area
+    } else {
+        let lc = geom.low_chord_m;
+        let hc = effective_scalar_high_chord_m(geom);
+        let w = gross_projected_opening_width_m(geom);
+        if wsel <= lc {
+            0.0
+        } else if wsel <= hc {
+            w * (wsel - lc)
+        } else {
+            w * (hc - lc)
+        }
+    }
+}
+
+pub(crate) fn deck_obstructed_width_at_wsel(geom: &BridgeGeometry, wsel: f64) -> f64 {
+    if let Some(deck) = geom.deck.as_ref().filter(|d| d.is_valid()) {
+        let mut width = 0.0;
+        for i in 0..deck.stations_m.len().saturating_sub(1) {
+            let w = (deck.stations_m[i + 1] - deck.stations_m[i]) * geom.skew_cos;
+            let s_mid = 0.5 * (deck.stations_m[i] + deck.stations_m[i + 1]);
+            let lc = interpolate_profile(&deck.stations_m, &deck.low_elevations_m, s_mid);
+            let hc = effective_deck_crest_m(
+                geom,
+                interpolate_profile(&deck.stations_m, &deck.high_elevations_m, s_mid),
+            );
+            if wsel > lc && wsel <= hc {
+                width += w;
+            }
+        }
+        width
+    } else {
+        let lc = geom.low_chord_m;
+        let hc = effective_scalar_high_chord_m(geom);
+        let w = gross_projected_opening_width_m(geom);
+        if wsel > lc && wsel <= hc {
+            w
+        } else {
+            0.0
+        }
+    }
+}
+
 pub(crate) fn obstructed_hydraulics(
     table: &GeometryTable,
     wsel: f64,
     z_bed: f64,
     geom: &BridgeGeometry,
     is_upstream: bool,
+    subtract_deck: bool,
 ) -> ObstructedHydraulics {
     let ineffective = ineffective_for_side(geom, is_upstream);
     let row = lookup_row(
@@ -309,8 +373,13 @@ pub(crate) fn obstructed_hydraulics(
     let a_piers = pier_submerged_area_at_wsel(geom, wsel, z_bed);
     let a_abut = geom.abutments.submerged_area_m2(wsel, z_eff);
     let a_debris = pier_floating_debris_obstruction_m2(geom, wsel, z_bed);
+    let a_deck = if subtract_deck {
+        deck_obstructed_area_at_wsel(geom, wsel)
+    } else {
+        0.0
+    };
     let a_eff = apply_opening_blockage(
-        (a_base - a_piers - a_abut - a_debris).max(1e-5),
+        (a_base - a_piers - a_abut - a_debris - a_deck).max(1e-5),
         geom,
     );
 
@@ -327,9 +396,15 @@ pub(crate) fn obstructed_hydraulics(
         row.top_width
     };
     let abut_width_at_wsel = geom.abutments.submerged_width_at_wsel_m(wsel, z_eff);
+    let w_deck = if subtract_deck {
+        deck_obstructed_width_at_wsel(geom, wsel)
+    } else {
+        0.0
+    };
     let top_width = (t_base
         - total_pier_flow_width_at_wsel_m(geom, wsel, z_bed)
-        - abut_width_at_wsel)
+        - abut_width_at_wsel
+        - w_deck)
         .max(1e-3);
 
     ObstructedHydraulics {
@@ -347,7 +422,7 @@ pub(crate) fn specific_force(
     geom: &BridgeGeometry,
     is_upstream: bool,
 ) -> f64 {
-    let props = obstructed_hydraulics(table, wsel, z_bed, geom, is_upstream);
+    let props = obstructed_hydraulics(table, wsel, z_bed, geom, is_upstream, false);
     if props.a_eff < 1e-6 {
         return f64::INFINITY;
     }
@@ -364,7 +439,7 @@ pub(crate) fn obstructed_conveyance(
     let ineffective = ineffective_for_side(geom, is_upstream);
     let row = lookup_row(table, section_xs(geom, is_upstream), ineffective, None, wsel);
     let a_base = base_flow_area(&row, ineffective, None);
-    let props = obstructed_hydraulics(table, wsel, z_bed, geom, is_upstream);
+    let props = obstructed_hydraulics(table, wsel, z_bed, geom, is_upstream, false);
     if a_base > 1e-6 {
         row.conveyance * (props.a_eff / a_base)
     } else {
