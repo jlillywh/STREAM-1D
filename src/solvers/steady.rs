@@ -113,6 +113,12 @@ pub struct SteadyInputs {
     /// Custom shape table Top Width-values per culvert
     #[serde(default)]
     pub culvert_custom_shape_tbl_top_widths: Option<Vec<Vec<f64>>>,
+    /// Roadway profile stations per culvert (optional).
+    #[serde(default)]
+    pub culvert_roadway_stations: Option<Vec<Vec<f64>>>,
+    /// Roadway profile elevations per culvert (optional).
+    #[serde(default)]
+    pub culvert_roadway_elevations: Option<Vec<Vec<f64>>>,
 
     /// Inline structure stations (optional)
     #[serde(default)]
@@ -135,6 +141,12 @@ pub struct SteadyInputs {
     /// Downstream bounding cross-section river station per inline structure (optional)
     #[serde(default)]
     pub inline_structure_departure_reach_stations: Option<Vec<f64>>,
+    /// Roadway profile stations per inline structure (optional).
+    #[serde(default)]
+    pub inline_structure_roadway_stations: Option<Vec<Vec<f64>>>,
+    /// Roadway profile elevations per inline structure (optional).
+    #[serde(default)]
+    pub inline_structure_roadway_elevations: Option<Vec<Vec<f64>>>,
 
     /// Stations where bridges are located (in user units, e.g. feet or meters)
     #[serde(default)]
@@ -1435,6 +1447,8 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                         let custom_shape_tbl_area = inputs.culvert_custom_shape_tbl_areas.as_ref().and_then(|v| v.get(c_idx)).cloned();
                         let custom_shape_tbl_perimeter = inputs.culvert_custom_shape_tbl_perimeters.as_ref().and_then(|v| v.get(c_idx)).cloned();
                         let custom_shape_tbl_top_width = inputs.culvert_custom_shape_tbl_top_widths.as_ref().and_then(|v| v.get(c_idx)).cloned();
+                        let roadway_stations = inputs.culvert_roadway_stations.as_ref().and_then(|v| v.get(c_idx)).cloned();
+                        let roadway_elevations = inputs.culvert_roadway_elevations.as_ref().and_then(|v| v.get(c_idx)).cloned();
 
                         culvert_result = crate::solvers::culvert::solve_culvert(
                             &crate::solvers::culvert::CulvertSolveParams {
@@ -1468,6 +1482,8 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                                 custom_shape_tbl_area,
                                 custom_shape_tbl_perimeter,
                                 custom_shape_tbl_top_width,
+                                roadway_stations,
+                                roadway_elevations,
                             },
                         );
                         wsel_up_user = culvert_result.wsel;
@@ -1561,6 +1577,8 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                         let custom_shape_tbl_area = inputs.culvert_custom_shape_tbl_areas.as_ref().and_then(|v| v.get(c_idx)).cloned();
                         let custom_shape_tbl_perimeter = inputs.culvert_custom_shape_tbl_perimeters.as_ref().and_then(|v| v.get(c_idx)).cloned();
                         let custom_shape_tbl_top_width = inputs.culvert_custom_shape_tbl_top_widths.as_ref().and_then(|v| v.get(c_idx)).cloned();
+                        let roadway_stations = inputs.culvert_roadway_stations.as_ref().and_then(|v| v.get(c_idx)).cloned();
+                        let roadway_elevations = inputs.culvert_roadway_elevations.as_ref().and_then(|v| v.get(c_idx)).cloned();
 
                         let mut p = crate::solvers::culvert::CulvertSolveParams {
                             q: inputs.flow_rate,
@@ -1593,6 +1611,8 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                             custom_shape_tbl_area,
                             custom_shape_tbl_perimeter,
                             custom_shape_tbl_top_width,
+                            roadway_stations,
+                            roadway_elevations,
                         };
                         crate::solvers::culvert::normalize_culvert_params(&mut p);
                         compound_params.push(p);
@@ -1756,7 +1776,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                     sub_wsel[i + 1]
                 };
 
-                let (crest_ft, cw_us, length_ft) = if raw_units == UnitSystem::Metric {
+                let (mut crest_ft, cw_us, length_ft) = if raw_units == UnitSystem::Metric {
                     (
                         crest_user / FT_TO_M,
                         coeff_user / CFS_TO_CMS * FT_TO_M.powf(2.5),
@@ -1771,6 +1791,31 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                 };
 
                 let length_ft = if length_ft < 1e-9 { 10.0 } else { length_ft };
+
+                let roadway_stations_ft: Option<Vec<f64>> = inputs.inline_structure_roadway_stations.as_ref()
+                    .and_then(|v| v.get(is_idx))
+                    .map(|v| {
+                        if raw_units == UnitSystem::Metric {
+                            v.iter().map(|&x| x / FT_TO_M).collect()
+                        } else {
+                            v.clone()
+                        }
+                    });
+                let roadway_elevations_ft: Option<Vec<f64>> = inputs.inline_structure_roadway_elevations.as_ref()
+                    .and_then(|v| v.get(is_idx))
+                    .map(|v| {
+                        if raw_units == UnitSystem::Metric {
+                            v.iter().map(|&y| y / FT_TO_M).collect()
+                        } else {
+                            v.clone()
+                        }
+                    });
+
+                if let Some(ref elevs_ft) = roadway_elevations_ft {
+                    if !elevs_ft.is_empty() {
+                        crest_ft = elevs_ft.iter().copied().fold(f64::INFINITY, f64::min);
+                    }
+                }
 
                 let q_target_cfs = if raw_units == UnitSystem::Metric {
                     inputs.flow_rate / CFS_TO_CMS
@@ -1788,7 +1833,11 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                 let mut high = low + 200.0;
                 for _ in 0..45 {
                     let mid = 0.5 * (low + high);
-                    let q_weir = crate::solvers::culvert::weir_flow_us(cw_us, length_ft, mid, crest_ft, tw_ft);
+                    let q_weir = if let (Some(ref sts), Some(ref els)) = (&roadway_stations_ft, &roadway_elevations_ft) {
+                        crate::solvers::culvert::roadway_profile_weir_flow(cw_us, mid, tw_ft, sts, els, 0.0)
+                    } else {
+                        crate::solvers::culvert::weir_flow_us(cw_us, length_ft, mid, crest_ft, tw_ft)
+                    };
                     if q_weir < q_target_cfs {
                         low = mid;
                     } else {
@@ -2075,6 +2124,8 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                         let custom_shape_tbl_area = inputs.culvert_custom_shape_tbl_areas.as_ref().and_then(|v| v.get(c_idx)).cloned();
                         let custom_shape_tbl_perimeter = inputs.culvert_custom_shape_tbl_perimeters.as_ref().and_then(|v| v.get(c_idx)).cloned();
                         let custom_shape_tbl_top_width = inputs.culvert_custom_shape_tbl_top_widths.as_ref().and_then(|v| v.get(c_idx)).cloned();
+                        let roadway_stations = inputs.culvert_roadway_stations.as_ref().and_then(|v| v.get(c_idx)).cloned();
+                        let roadway_elevations = inputs.culvert_roadway_elevations.as_ref().and_then(|v| v.get(c_idx)).cloned();
 
                         let culvert_params = crate::solvers::culvert::CulvertSolveParams {
                             q: inputs.flow_rate,
@@ -2107,6 +2158,8 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                             custom_shape_tbl_area,
                             custom_shape_tbl_perimeter,
                             custom_shape_tbl_top_width,
+                            roadway_stations,
+                            roadway_elevations,
                         };
                         let (tw_new, res) =
                             crate::solvers::culvert::solve_culvert_from_headwater(&culvert_params, hw_wsel_user);
@@ -2202,6 +2255,8 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                         let custom_shape_tbl_area = inputs.culvert_custom_shape_tbl_areas.as_ref().and_then(|v| v.get(c_idx)).cloned();
                         let custom_shape_tbl_perimeter = inputs.culvert_custom_shape_tbl_perimeters.as_ref().and_then(|v| v.get(c_idx)).cloned();
                         let custom_shape_tbl_top_width = inputs.culvert_custom_shape_tbl_top_widths.as_ref().and_then(|v| v.get(c_idx)).cloned();
+                        let roadway_stations = inputs.culvert_roadway_stations.as_ref().and_then(|v| v.get(c_idx)).cloned();
+                        let roadway_elevations = inputs.culvert_roadway_elevations.as_ref().and_then(|v| v.get(c_idx)).cloned();
 
                         let mut p = crate::solvers::culvert::CulvertSolveParams {
                             q: inputs.flow_rate,
@@ -2234,6 +2289,8 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                             custom_shape_tbl_area,
                             custom_shape_tbl_perimeter,
                             custom_shape_tbl_top_width,
+                            roadway_stations,
+                            roadway_elevations,
                         };
                         crate::solvers::culvert::normalize_culvert_params(&mut p);
                         compound_params.push(p);
@@ -2453,7 +2510,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                     super_wsel[i]
                 };
 
-                let (crest_ft, cw_us, length_ft) = if raw_units == UnitSystem::Metric {
+                let (mut crest_ft, cw_us, length_ft) = if raw_units == UnitSystem::Metric {
                     (
                         crest_user / FT_TO_M,
                         coeff_user / CFS_TO_CMS * FT_TO_M.powf(2.5),
@@ -2468,6 +2525,31 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                 };
 
                 let length_ft = if length_ft < 1e-9 { 10.0 } else { length_ft };
+
+                let roadway_stations_ft: Option<Vec<f64>> = inputs.inline_structure_roadway_stations.as_ref()
+                    .and_then(|v| v.get(is_idx))
+                    .map(|v| {
+                        if raw_units == UnitSystem::Metric {
+                            v.iter().map(|&x| x / FT_TO_M).collect()
+                        } else {
+                            v.clone()
+                        }
+                    });
+                let roadway_elevations_ft: Option<Vec<f64>> = inputs.inline_structure_roadway_elevations.as_ref()
+                    .and_then(|v| v.get(is_idx))
+                    .map(|v| {
+                        if raw_units == UnitSystem::Metric {
+                            v.iter().map(|&y| y / FT_TO_M).collect()
+                        } else {
+                            v.clone()
+                        }
+                    });
+
+                if let Some(ref elevs_ft) = roadway_elevations_ft {
+                    if !elevs_ft.is_empty() {
+                        crest_ft = elevs_ft.iter().copied().fold(f64::INFINITY, f64::min);
+                    }
+                }
 
                 let q_target_cfs = if raw_units == UnitSystem::Metric {
                     inputs.flow_rate / CFS_TO_CMS
@@ -2490,7 +2572,11 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                 let mut high = hw_ft;
                 for _ in 0..45 {
                     let mid = 0.5 * (low + high);
-                    let q_weir = crate::solvers::culvert::weir_flow_us(cw_us, length_ft, hw_ft, crest_ft, mid);
+                    let q_weir = if let (Some(ref sts), Some(ref els)) = (&roadway_stations_ft, &roadway_elevations_ft) {
+                        crate::solvers::culvert::roadway_profile_weir_flow(cw_us, hw_ft, mid, sts, els, 0.0)
+                    } else {
+                        crate::solvers::culvert::weir_flow_us(cw_us, length_ft, hw_ft, crest_ft, mid)
+                    };
                     if q_weir > q_target_cfs {
                         low = mid;
                     } else {
@@ -5030,6 +5116,180 @@ mod tests {
         assert!((inlets[0] - expected_hw).abs() < 0.05, "expected ~{}, got {}", expected_hw, inlets[0]);
         assert!((outlets[0] - 3.0).abs() < 0.05, "outlet WSEL should match TW");
         assert_eq!(q_weirs[0], 50.0);
+    }
+
+    #[test]
+    fn test_culvert_irregular_roadway() {
+        let xs200 = CrossSection {
+            station: 200.0,
+            x: vec![-50.0, -50.0, 50.0, 50.0],
+            y: vec![20.0, 0.0, 0.0, 20.0],
+            n_stations: vec![-50.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let xs100 = CrossSection {
+            station: 100.0,
+            x: vec![-50.0, -50.0, 50.0, 50.0],
+            y: vec![20.0, 0.0, 0.0, 20.0],
+            n_stations: vec![-50.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let xs0 = CrossSection {
+            station: 0.0,
+            x: vec![-50.0, -50.0, 50.0, 50.0],
+            y: vec![20.0, 0.0, 0.0, 20.0],
+            n_stations: vec![-50.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+
+        // Case 1: Flat crest elevation at 15.0 ft
+        let inputs_flat = SteadyInputs {
+            cross_sections: vec![xs200.clone(), xs100.clone(), xs0.clone()],
+            flow_rate: 150.0,
+            num_slices: Some(50),
+            regime: 0,
+            downstream_wsel: Some(5.0),
+            culvert_stations: Some(vec![50.0]),
+            culvert_shape_types: Some(vec![1]), // Box
+            culvert_spans: Some(vec![5.0]),
+            culvert_rises: Some(vec![5.0]),
+            culvert_lengths: Some(vec![10.0]),
+            culvert_crest_elevs: Some(vec![15.0]),
+            culvert_weir_coeffs: Some(vec![2.6]),
+            ..Default::default()
+        };
+        let res_flat = solve_steady(&inputs_flat);
+
+        // Case 2: V-shaped profile with stations [0, 50, 100] and elevations [15, 12, 15]
+        let inputs_profile = SteadyInputs {
+            cross_sections: vec![xs200, xs100, xs0],
+            flow_rate: 150.0,
+            num_slices: Some(50),
+            regime: 0,
+            downstream_wsel: Some(5.0),
+            culvert_stations: Some(vec![50.0]),
+            culvert_shape_types: Some(vec![1]),
+            culvert_spans: Some(vec![5.0]),
+            culvert_rises: Some(vec![5.0]),
+            culvert_lengths: Some(vec![10.0]),
+            culvert_crest_elevs: None, // Omit to rely entirely on profile
+            culvert_roadway_stations: Some(vec![vec![0.0, 50.0, 100.0]]),
+            culvert_roadway_elevations: Some(vec![vec![15.0, 12.0, 15.0]]),
+            culvert_weir_coeffs: Some(vec![2.6]),
+            ..Default::default()
+        };
+        let res_profile = solve_steady(&inputs_profile);
+
+        // Under high flow (150 cfs), overtopping occurs.
+        // The V-shaped profile starting at 12.0 ft provides a lower/larger discharge section,
+        // so the solved headwater WSEL (at the upstream section, station 100 -> index 1)
+        // must be lower than in the flat crest case (crest at 15.0 ft).
+        assert!(res_profile.wsel[1] < res_flat.wsel[1]);
+        assert!(res_profile.wsel[1] > 12.0); // should be above minimum overtopping crest
+    }
+
+    #[test]
+    fn test_inline_weir_irregular_roadway() {
+        let xs200 = CrossSection {
+            station: 200.0,
+            x: vec![-50.0, -50.0, 50.0, 50.0],
+            y: vec![15.0, 0.0, 0.0, 15.0],
+            n_stations: vec![-50.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let xs100 = CrossSection {
+            station: 100.0,
+            x: vec![-50.0, -50.0, 50.0, 50.0],
+            y: vec![15.0, 0.0, 0.0, 15.0],
+            n_stations: vec![-50.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let xs0 = CrossSection {
+            station: 0.0,
+            x: vec![-50.0, -50.0, 50.0, 50.0],
+            y: vec![15.0, 0.0, 0.0, 15.0],
+            n_stations: vec![-50.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+
+        // Flat crest elevation at 8.0 ft
+        let inputs_flat = SteadyInputs {
+            cross_sections: vec![xs200.clone(), xs100.clone(), xs0.clone()],
+            flow_rate: 60.0,
+            num_slices: Some(50),
+            regime: 0,
+            downstream_wsel: Some(3.0),
+            inline_structure_stations: Some(vec![50.0]),
+            inline_structure_crest_elevs: Some(vec![8.0]),
+            inline_structure_weir_lengths: Some(vec![10.0]),
+            inline_structure_lengths: Some(vec![10.0]),
+            ..Default::default()
+        };
+        let res_flat = solve_steady(&inputs_flat);
+
+        // V-shaped profile with stations [0, 50, 100] and elevations [8, 5, 8]
+        let inputs_profile = SteadyInputs {
+            cross_sections: vec![xs200, xs100, xs0],
+            flow_rate: 60.0,
+            num_slices: Some(50),
+            regime: 0,
+            downstream_wsel: Some(3.0),
+            inline_structure_stations: Some(vec![50.0]),
+            inline_structure_crest_elevs: None, // Rely entirely on profile
+            inline_structure_roadway_stations: Some(vec![vec![0.0, 50.0, 100.0]]),
+            inline_structure_roadway_elevations: Some(vec![vec![8.0, 5.0, 8.0]]),
+            inline_structure_lengths: Some(vec![10.0]),
+            ..Default::default()
+        };
+        let res_profile = solve_steady(&inputs_profile);
+
+        // The irregular profile has lower crest sections than the flat crest at 8.0 ft.
+        // Therefore, solved HW WSEL (upstream of inline structure, station 100 -> index 1)
+        // should be lower than in the flat crest case.
+        assert!(res_profile.wsel[1] < res_flat.wsel[1]);
+        assert!(res_profile.wsel[1] > 5.0); // should be above minimum profile elevation
     }
 }
 
