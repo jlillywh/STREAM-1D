@@ -255,7 +255,7 @@ pub(crate) fn yarnell_downstream_flow_area_m2(
     z_bed: f64,
     geom: &BridgeGeometry,
 ) -> f64 {
-    let props = obstructed_hydraulics(table, wsel, z_bed, geom, false);
+    let props = obstructed_hydraulics(table, wsel, z_bed, geom, false, false);
     (props.a_eff + pier_submerged_area_at_wsel(geom, wsel, z_bed)).max(1e-5)
 }
 
@@ -266,8 +266,8 @@ pub(crate) fn obstructed_opening_at_wsel(
     table_down: &GeometryTable,
     wsel: f64,
 ) -> (ObstructedHydraulics, bool) {
-    let up = obstructed_hydraulics(table_up, wsel, geom.z_up_m, geom, true);
-    let down = obstructed_hydraulics(table_down, wsel, geom.z_down_m, geom, false);
+    let up = obstructed_hydraulics(table_up, wsel, geom.z_up_m, geom, true, false);
+    let down = obstructed_hydraulics(table_down, wsel, geom.z_down_m, geom, false, false);
     if up.a_eff <= down.a_eff {
         (up, true)
     } else {
@@ -358,6 +358,7 @@ pub(crate) fn obstructed_hydraulics(
     z_bed: f64,
     geom: &BridgeGeometry,
     is_upstream: bool,
+    subtract_deck: bool,
 ) -> ObstructedHydraulics {
     let ineffective = ineffective_for_side(geom, is_upstream);
     let row = lookup_row(
@@ -378,7 +379,11 @@ pub(crate) fn obstructed_hydraulics(
     let a_piers = pier_submerged_area_at_wsel(geom, wsel, z_bed);
     let a_abut = geom.abutments.submerged_area_m2(wsel, z_eff);
     let a_debris = pier_floating_debris_obstruction_m2(geom, wsel, z_bed);
-    let a_deck = deck_obstructed_area_at_wsel(geom, wsel);
+    let a_deck = if subtract_deck {
+        deck_obstructed_area_at_wsel(geom, wsel)
+    } else {
+        0.0
+    };
     let a_eff = apply_opening_blockage(
         (a_base - a_piers - a_abut - a_debris - a_deck).max(1e-5),
         geom,
@@ -397,7 +402,11 @@ pub(crate) fn obstructed_hydraulics(
         row.top_width
     };
     let abut_width_at_wsel = geom.abutments.submerged_width_at_wsel_m(wsel, z_eff);
-    let w_deck = deck_obstructed_width_at_wsel(geom, wsel);
+    let w_deck = if subtract_deck {
+        deck_obstructed_width_at_wsel(geom, wsel)
+    } else {
+        0.0
+    };
     let top_width = (t_base
         - total_pier_flow_width_at_wsel_m(geom, wsel, z_bed)
         - abut_width_at_wsel
@@ -419,7 +428,7 @@ pub(crate) fn specific_force(
     geom: &BridgeGeometry,
     is_upstream: bool,
 ) -> f64 {
-    let props = obstructed_hydraulics(table, wsel, z_bed, geom, is_upstream);
+    let props = obstructed_hydraulics(table, wsel, z_bed, geom, is_upstream, false);
     if props.a_eff < 1e-6 {
         return f64::INFINITY;
     }
@@ -436,7 +445,7 @@ pub(crate) fn obstructed_conveyance(
     let ineffective = ineffective_for_side(geom, is_upstream);
     let row = lookup_row(table, section_xs(geom, is_upstream), ineffective, None, wsel);
     let a_base = base_flow_area(&row, ineffective, None);
-    let props = obstructed_hydraulics(table, wsel, z_bed, geom, is_upstream);
+    let props = obstructed_hydraulics(table, wsel, z_bed, geom, is_upstream, false);
     if a_base > 1e-6 {
         row.conveyance * (props.a_eff / a_base)
     } else {

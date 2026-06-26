@@ -133,7 +133,7 @@ pub(crate) fn main_pressure_flow_discharge(
         let z = opening_height_below_deck_m(geom);
         let y3 = (wsel_up - geom.z_up_m).max(1e-3);
         let cd = sluice_gate_discharge_coeff(y3 / z, geom.pressure_coeff_inlet);
-        let props = obstructed_hydraulics(table_up, wsel_up, geom.z_up_m, geom, true);
+        let props = obstructed_hydraulics(table_up, wsel_up, geom.z_up_m, geom, true, false);
         let v_head = velocity_head(q_metric, props.a_eff);
         let drive = (y3 - 0.5 * z + v_head).max(0.0);
         cd * a_net * (2.0 * G_METRIC * drive).sqrt()

@@ -24,15 +24,16 @@ pub(crate) fn solve_low_flow_energy_or_wspro(
     table_up: &GeometryTable,
     table_down: &GeometryTable,
     use_wspro: bool,
+    subtract_deck: bool,
 ) -> f64 {
-    let props_down = obstructed_hydraulics(table_down, tw_m, geom.z_down_m, geom, false);
+    let props_down = obstructed_hydraulics(table_down, tw_m, geom.z_down_m, geom, false, subtract_deck);
     if props_down.a_eff < 1e-6 {
         return tw_m;
     }
     let e_down = tw_m + velocity_head(q_metric, props_down.a_eff);
 
     let residual = |wsel_up: f64| -> f64 {
-        let props_up = obstructed_hydraulics(table_up, wsel_up, geom.z_up_m, geom, true);
+        let props_up = obstructed_hydraulics(table_up, wsel_up, geom.z_up_m, geom, true, subtract_deck);
         if props_up.a_eff < 1e-6 {
             return 1e6;
         }
@@ -140,7 +141,7 @@ pub(crate) fn pier_drag_momentum_with_table(
     if a_pier <= 1e-6 {
         return 0.0;
     }
-    let props = obstructed_hydraulics(table, wsel, z_bed, geom, is_upstream);
+    let props = obstructed_hydraulics(table, wsel, z_bed, geom, is_upstream, false);
     let v = q / props.a_eff.max(1e-5);
     let y_pier = depth * 0.5;
     let cd = geom.pier_shape.drag_coefficient();
@@ -166,7 +167,7 @@ pub(crate) fn solve_critical_depth_obstructed(
     for _ in 0..50 {
         let mid = 0.5 * (low + high);
         let elev = y_min + mid;
-        let props = obstructed_hydraulics(table, elev, z_bed, geom, is_upstream);
+        let props = obstructed_hydraulics(table, elev, z_bed, geom, is_upstream, false);
         if props.a_eff < 1e-6 {
             low = mid;
             continue;
@@ -223,7 +224,7 @@ pub fn classify_low_flow(
     };
 
     let m_down = specific_force(table_down, tw_m, geom.z_down_m, q_metric, geom, false);
-    let props = obstructed_hydraulics(table_down, tw_m, geom.z_down_m, geom, false);
+    let props = obstructed_hydraulics(table_down, tw_m, geom.z_down_m, geom, false, false);
     let v_down = if props.a_eff > 1e-5 {
         q_metric / props.a_eff
     } else {
@@ -379,7 +380,7 @@ pub(crate) fn upstream_energy_grade(
     z_bed: f64,
     is_upstream: bool,
 ) -> f64 {
-    let props = obstructed_hydraulics(table, wsel, z_bed, geom, is_upstream);
+    let props = obstructed_hydraulics(table, wsel, z_bed, geom, is_upstream, false);
     wsel + velocity_head(q_metric, props.a_eff)
 }
 
@@ -403,6 +404,7 @@ pub(crate) fn solve_high_flow_energy(
         table_up,
         table_down,
         high_flow_energy_uses_wspro(geom),
+        true,
     )
 }
 
@@ -431,12 +433,12 @@ pub(crate) fn solve_low_flow_class_a(
     match method {
         LowFlowMethod::Energy => {
             return solve_low_flow_energy_or_wspro(
-                q_metric, tw_m, geom, table_up, table_down, false,
+                q_metric, tw_m, geom, table_up, table_down, false, false,
             );
         }
         LowFlowMethod::Wspro => {
             return solve_low_flow_energy_or_wspro(
-                q_metric, tw_m, geom, table_up, table_down, true,
+                q_metric, tw_m, geom, table_up, table_down, true, false,
             );
         }
         LowFlowMethod::Momentum => {}

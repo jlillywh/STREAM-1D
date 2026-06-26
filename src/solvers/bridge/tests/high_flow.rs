@@ -1403,7 +1403,7 @@ fn test_deck_obstructed_area_subtracted_in_obstructed_hydraulics() {
     
     // 1. Water surface is below deck: wsel = 4.0
     let wsel_low = 4.0;
-    let props_low = obstructed_hydraulics(&table, wsel_low, 0.0, &geom, true);
+    let props_low = obstructed_hydraulics(&table, wsel_low, 0.0, &geom, true, true);
     // Unobstructed base area: 10 * 4.0 = 40.0
     assert!((props_low.a_eff - 40.0).abs() < 1e-4);
     assert!((props_low.top_width - 10.0).abs() < 1e-4);
@@ -1412,7 +1412,7 @@ fn test_deck_obstructed_area_subtracted_in_obstructed_hydraulics() {
 
     // 2. Water surface is within deck: wsel = 6.0
     let wsel_mid = 6.0;
-    let props_mid = obstructed_hydraulics(&table, wsel_mid, 0.0, &geom, true);
+    let props_mid = obstructed_hydraulics(&table, wsel_mid, 0.0, &geom, true, true);
     // Base area: 10 * 6.0 = 60.0. Blocked deck: 10 * (6.0 - 5.0) = 10.0. Expected: 50.0
     assert!((props_mid.a_eff - 50.0).abs() < 1e-4);
     // Top width base: 10.0. Blocked: 10.0. Expected: clamped to 1e-3
@@ -1422,7 +1422,7 @@ fn test_deck_obstructed_area_subtracted_in_obstructed_hydraulics() {
 
     // 3. Water surface is above deck: wsel = 8.0
     let wsel_high = 8.0;
-    let props_high = obstructed_hydraulics(&table, wsel_high, 0.0, &geom, true);
+    let props_high = obstructed_hydraulics(&table, wsel_high, 0.0, &geom, true, true);
     // Base area: 10 * 8.0 = 80.0. Blocked deck: 10 * (7.0 - 5.0) = 20.0. Expected: 60.0
     assert!((props_high.a_eff - 60.0).abs() < 1e-4);
     // Top width base: 10.0. Blocked: 0.0 (since wsel > high_chord). Expected: 10.0
