@@ -1823,11 +1823,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                     inputs.flow_rate
                 };
 
-                let tw_ft = if raw_units == UnitSystem::Metric {
-                    sub_wsel[i + 1] / FT_TO_M
-                } else {
-                    sub_wsel[i + 1]
-                };
+                let tw_ft = sub_wsel[i + 1] / FT_TO_M;
 
                 let mut low = crest_ft.max(tw_ft);
                 let mut high = low + 200.0;
@@ -2504,11 +2500,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                 let coeff_user = inputs.inline_structure_weir_coeffs.as_ref().and_then(|v| v.get(is_idx)).copied().unwrap_or(if raw_units == UnitSystem::USCustomary { 2.6 } else { 1.44 });
                 let length_user = inputs.inline_structure_weir_lengths.as_ref().and_then(|v| v.get(is_idx)).copied().unwrap_or(0.0);
 
-                let hw_ft = if raw_units == UnitSystem::Metric {
-                    super_wsel[i] / FT_TO_M
-                } else {
-                    super_wsel[i]
-                };
+                let hw_ft = super_wsel[i] / FT_TO_M;
 
                 let (mut crest_ft, cw_us, length_ft) = if raw_units == UnitSystem::Metric {
                     (
@@ -4995,8 +4987,8 @@ mod tests {
             max_spacing: None,
             culvert_stations: Some(vec![50.0, 50.0]), // two culverts at the same station (50.0)
             culvert_shape_types: Some(vec![0, 1]), // Circular, Box
-            culvert_spans: Some(vec![4.0, 6.0]),
-            culvert_rises: Some(vec![4.0, 4.0]),
+            culvert_spans: Some(vec![6.0, 3.0]),
+            culvert_rises: Some(vec![6.0, 3.0]),
             culvert_roughness_ns: Some(vec![0.013, 0.013]),
             culvert_lengths: Some(vec![100.0, 100.0]),
             culvert_entrance_loss_coeffs: Some(vec![0.5, 0.5]),
@@ -5163,7 +5155,7 @@ mod tests {
             guide_banks: None,
         };
 
-        // Case 1: Flat crest elevation at 15.0 ft
+        // Case 1: Flat crest elevation at 8.0 ft
         let inputs_flat = SteadyInputs {
             cross_sections: vec![xs200.clone(), xs100.clone(), xs0.clone()],
             flow_rate: 150.0,
@@ -5172,16 +5164,17 @@ mod tests {
             downstream_wsel: Some(5.0),
             culvert_stations: Some(vec![50.0]),
             culvert_shape_types: Some(vec![1]), // Box
-            culvert_spans: Some(vec![5.0]),
-            culvert_rises: Some(vec![5.0]),
+            culvert_spans: Some(vec![2.0]),
+            culvert_rises: Some(vec![2.0]),
             culvert_lengths: Some(vec![10.0]),
-            culvert_crest_elevs: Some(vec![15.0]),
+            culvert_crest_elevs: Some(vec![8.0]),
+            culvert_weir_lengths: Some(vec![100.0]),
             culvert_weir_coeffs: Some(vec![2.6]),
             ..Default::default()
         };
         let res_flat = solve_steady(&inputs_flat);
 
-        // Case 2: V-shaped profile with stations [0, 50, 100] and elevations [15, 12, 15]
+        // Case 2: V-shaped profile with stations [0, 50, 100] and elevations [8, 6, 8]
         let inputs_profile = SteadyInputs {
             cross_sections: vec![xs200, xs100, xs0],
             flow_rate: 150.0,
@@ -5190,23 +5183,23 @@ mod tests {
             downstream_wsel: Some(5.0),
             culvert_stations: Some(vec![50.0]),
             culvert_shape_types: Some(vec![1]),
-            culvert_spans: Some(vec![5.0]),
-            culvert_rises: Some(vec![5.0]),
+            culvert_spans: Some(vec![2.0]),
+            culvert_rises: Some(vec![2.0]),
             culvert_lengths: Some(vec![10.0]),
             culvert_crest_elevs: None, // Omit to rely entirely on profile
             culvert_roadway_stations: Some(vec![vec![0.0, 50.0, 100.0]]),
-            culvert_roadway_elevations: Some(vec![vec![15.0, 12.0, 15.0]]),
+            culvert_roadway_elevations: Some(vec![vec![8.0, 6.0, 8.0]]),
             culvert_weir_coeffs: Some(vec![2.6]),
             ..Default::default()
         };
         let res_profile = solve_steady(&inputs_profile);
 
         // Under high flow (150 cfs), overtopping occurs.
-        // The V-shaped profile starting at 12.0 ft provides a lower/larger discharge section,
+        // The V-shaped profile starting at 6.0 ft provides a lower/larger discharge section,
         // so the solved headwater WSEL (at the upstream section, station 100 -> index 1)
-        // must be lower than in the flat crest case (crest at 15.0 ft).
+        // must be lower than in the flat crest case (crest at 8.0 ft).
         assert!(res_profile.wsel[1] < res_flat.wsel[1]);
-        assert!(res_profile.wsel[1] > 12.0); // should be above minimum overtopping crest
+        assert!(res_profile.wsel[1] > 6.0); // should be above minimum overtopping crest
     }
 
     #[test]
