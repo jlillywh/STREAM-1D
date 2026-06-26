@@ -24,8 +24,7 @@ jobs:
       - name: Run tests with coverage
         run: |
           cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info > cargo_test.log 2>&1 || {
-            URL=$(curl -s --data-binary @cargo_test.log https://paste.rs)
-            echo "::error file=Cargo.toml,line=1::Test failed. Log: $URL"
+            tail -n 150 cargo_test.log | python3 -c "import sys; print('::error file=Cargo.toml,line=1::' + sys.stdin.read().replace('\n', '%0A'))"
             exit 1
           }
 
@@ -55,8 +54,7 @@ jobs:
           pip install --upgrade pip maturin
           maturin develop --features python --release
           python3 verification/oracle/scripts/run_oracle_ci.py > oracle_ci.log 2>&1 || {
-            URL=$(curl -s --data-binary @oracle_ci.log https://paste.rs)
-            echo "::error file=Cargo.toml,line=1::Oracle CI failed. Log: $URL"
+            tail -n 150 oracle_ci.log | python3 -c "import sys; print('::error file=Cargo.toml,line=1::' + sys.stdin.read().replace('\n', '%0A'))"
             exit 1
           }
 
@@ -75,7 +73,6 @@ jobs:
       - name: Build stream1d and execute verification notebook
         run: |
           python3 scripts/run_verification_notebook.py > verification_notebook.log 2>&1 || {
-            URL=$(curl -s --data-binary @verification_notebook.log https://paste.rs)
-            echo "::error file=Cargo.toml,line=1::Verification notebook failed. Log: $URL"
+            tail -n 150 verification_notebook.log | python3 -c "import sys; print('::error file=Cargo.toml,line=1::' + sys.stdin.read().replace('\n', '%0A'))"
             exit 1
           }
