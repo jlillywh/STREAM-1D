@@ -1386,3 +1386,47 @@ fn internal_bridge_cuts_build_opening_friction_segments() {
     assert_eq!(geom.internal_opening_segment_lengths_m.len(), 2);
     assert_eq!(geom.internal_opening_z_m.len(), 1);
 }
+
+#[test]
+fn test_deck_obstructed_area_subtracted_in_obstructed_hydraulics() {
+    use crate::solvers::bridge::opening::{obstructed_hydraulics, deck_obstructed_area_at_wsel, deck_obstructed_width_at_wsel};
+    let table = rectangular_table(10.0, 0.0, 50); // 10m wide rectangular channel, bed at 0.0
+    let deck = BridgeDeckProfile {
+        stations_m: vec![0.0, 10.0],
+        low_elevations_m: vec![5.0, 5.0],
+        high_elevations_m: vec![7.0, 7.0],
+    };
+    let geom = build_bridge_geometry(
+        5.0, 7.0, 0.0, 0, 0, 1.44, 0.8, 0.0, 0.0, UnitSystem::Metric,
+        &BridgeCouplingParams::default(), 50.0, Some(&deck), None,
+    );
+    
+    // 1. Water surface is below deck: wsel = 4.0
+    let wsel_low = 4.0;
+    let props_low = obstructed_hydraulics(&table, wsel_low, 0.0, &geom, true);
+    // Unobstructed base area: 10 * 4.0 = 40.0
+    assert!((props_low.a_eff - 40.0).abs() < 1e-4);
+    assert!((props_low.top_width - 10.0).abs() < 1e-4);
+    assert_eq!(deck_obstructed_area_at_wsel(&geom, wsel_low), 0.0);
+    assert_eq!(deck_obstructed_width_at_wsel(&geom, wsel_low), 0.0);
+
+    // 2. Water surface is within deck: wsel = 6.0
+    let wsel_mid = 6.0;
+    let props_mid = obstructed_hydraulics(&table, wsel_mid, 0.0, &geom, true);
+    // Base area: 10 * 6.0 = 60.0. Blocked deck: 10 * (6.0 - 5.0) = 10.0. Expected: 50.0
+    assert!((props_mid.a_eff - 50.0).abs() < 1e-4);
+    // Top width base: 10.0. Blocked: 10.0. Expected: clamped to 1e-3
+    assert!((props_mid.top_width - 1e-3).abs() < 1e-4);
+    assert_eq!(deck_obstructed_area_at_wsel(&geom, wsel_mid), 10.0);
+    assert_eq!(deck_obstructed_width_at_wsel(&geom, wsel_mid), 10.0);
+
+    // 3. Water surface is above deck: wsel = 8.0
+    let wsel_high = 8.0;
+    let props_high = obstructed_hydraulics(&table, wsel_high, 0.0, &geom, true);
+    // Base area: 10 * 8.0 = 80.0. Blocked deck: 10 * (7.0 - 5.0) = 20.0. Expected: 60.0
+    assert!((props_high.a_eff - 60.0).abs() < 1e-4);
+    // Top width base: 10.0. Blocked: 0.0 (since wsel > high_chord). Expected: 10.0
+    assert!((props_high.top_width - 10.0).abs() < 1e-4);
+    assert_eq!(deck_obstructed_area_at_wsel(&geom, wsel_high), 20.0);
+    assert_eq!(deck_obstructed_width_at_wsel(&geom, wsel_high), 0.0);
+}

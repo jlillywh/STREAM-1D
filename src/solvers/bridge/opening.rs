@@ -10,7 +10,8 @@ use crate::utils::G_METRIC;
 use super::section::BridgeFrictionWeighting;
 
 use super::geometry::{
-    apply_opening_blockage, capped_ice_thickness_m, effective_z_bed_m, interpolate_profile,
+    apply_opening_blockage, capped_ice_thickness_m, effective_deck_crest_m,
+    effective_scalar_high_chord_m, effective_z_bed_m, interpolate_profile,
     opening_station_bounds_from_deck, scale_base_area_for_ice, BridgeGeometry,
 };
 
@@ -283,6 +284,74 @@ pub(crate) fn opening_height_below_deck_m(geom: &BridgeGeometry) -> f64 {
     h_up.min(h_down).max(1e-3)
 }
 
+pub(crate) fn deck_obstructed_area_at_wsel(geom: &BridgeGeometry, wsel: f64) -> f64 {
+    if let Some(deck) = geom.deck.as_ref().filter(|d| d.is_valid()) {
+        let mut area = 0.0;
+        for i in 0..deck.stations_m.len().saturating_sub(1) {
+            let w = (deck.stations_m[i + 1] - deck.stations_m[i]) * geom.skew_cos;
+            if w <= 0.0 {
+                continue;
+            }
+            let s_mid = 0.5 * (deck.stations_m[i] + deck.stations_m[i + 1]);
+            let lc = interpolate_profile(&deck.stations_m, &deck.low_elevations_m, s_mid);
+            let hc = effective_deck_crest_m(
+                geom,
+                interpolate_profile(&deck.stations_m, &deck.high_elevations_m, s_mid),
+            );
+            if wsel <= lc {
+                continue;
+            } else if wsel <= hc {
+                area += w * (wsel - lc);
+            } else {
+                area += w * (hc - lc);
+            }
+        }
+        area
+    } else {
+        let lc = geom.low_chord_m;
+        let hc = effective_scalar_high_chord_m(geom);
+        let w = gross_projected_opening_width_m(geom);
+        if wsel <= lc {
+            0.0
+        } else if wsel <= hc {
+            w * (wsel - lc)
+        } else {
+            w * (hc - lc)
+        }
+    }
+}
+
+pub(crate) fn deck_obstructed_width_at_wsel(geom: &BridgeGeometry, wsel: f64) -> f64 {
+    if let Some(deck) = geom.deck.as_ref().filter(|d| d.is_valid()) {
+        let mut width = 0.0;
+        for i in 0..deck.stations_m.len().saturating_sub(1) {
+            let w = (deck.stations_m[i + 1] - deck.stations_m[i]) * geom.skew_cos;
+            if w <= 0.0 {
+                continue;
+            }
+            let s_mid = 0.5 * (deck.stations_m[i] + deck.stations_m[i + 1]);
+            let lc = interpolate_profile(&deck.stations_m, &deck.low_elevations_m, s_mid);
+            let hc = effective_deck_crest_m(
+                geom,
+                interpolate_profile(&deck.stations_m, &deck.high_elevations_m, s_mid),
+            );
+            if wsel > lc && wsel <= hc {
+                width += w;
+            }
+        }
+        width
+    } else {
+        let lc = geom.low_chord_m;
+        let hc = effective_scalar_high_chord_m(geom);
+        let w = gross_projected_opening_width_m(geom);
+        if wsel > lc && wsel <= hc {
+            w
+        } else {
+            0.0
+        }
+    }
+}
+
 pub(crate) fn obstructed_hydraulics(
     table: &GeometryTable,
     wsel: f64,
@@ -309,8 +378,9 @@ pub(crate) fn obstructed_hydraulics(
     let a_piers = pier_submerged_area_at_wsel(geom, wsel, z_bed);
     let a_abut = geom.abutments.submerged_area_m2(wsel, z_eff);
     let a_debris = pier_floating_debris_obstruction_m2(geom, wsel, z_bed);
+    let a_deck = deck_obstructed_area_at_wsel(geom, wsel);
     let a_eff = apply_opening_blockage(
-        (a_base - a_piers - a_abut - a_debris).max(1e-5),
+        (a_base - a_piers - a_abut - a_debris - a_deck).max(1e-5),
         geom,
     );
 
@@ -327,9 +397,11 @@ pub(crate) fn obstructed_hydraulics(
         row.top_width
     };
     let abut_width_at_wsel = geom.abutments.submerged_width_at_wsel_m(wsel, z_eff);
+    let w_deck = deck_obstructed_width_at_wsel(geom, wsel);
     let top_width = (t_base
         - total_pier_flow_width_at_wsel_m(geom, wsel, z_bed)
-        - abut_width_at_wsel)
+        - abut_width_at_wsel
+        - w_deck)
         .max(1e-3);
 
     ObstructedHydraulics {
