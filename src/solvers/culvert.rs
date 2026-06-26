@@ -1045,12 +1045,44 @@ fn barrel_control_type(barrel: &BarrelSolveInternal) -> String {
     }
 }
 
-fn weir_flow_us(cw: f64, length_ft: f64, wsel_ft: f64, crest_ft: f64) -> f64 {
+const BRADLEY_SUBMERGENCE_PCT: [f64; 12] =
+    [0.0, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 95.0, 98.0];
+const BRADLEY_FLOW_FACTOR: [f64; 12] =
+    [1.0, 1.0, 0.99, 0.97, 0.94, 0.90, 0.84, 0.75, 0.62, 0.40, 0.22, 0.08];
+
+fn bradley_weir_submergence_factor(submergence_ratio: f64) -> f64 {
+    if submergence_ratio <= 0.0 {
+        return 1.0;
+    }
+    if submergence_ratio >= 1.0 {
+        return 0.0;
+    }
+    let pct = submergence_ratio * 100.0;
+    if pct > 98.0 {
+        // Linearly interpolate from 0.08 at 98% to 0.0 at 100%
+        let t = (pct - 98.0) / (100.0 - 98.0);
+        return 0.08 * (1.0 - t);
+    }
+    for i in 1..BRADLEY_SUBMERGENCE_PCT.len() {
+        if pct <= BRADLEY_SUBMERGENCE_PCT[i] {
+            let t = (pct - BRADLEY_SUBMERGENCE_PCT[i - 1])
+                / (BRADLEY_SUBMERGENCE_PCT[i] - BRADLEY_SUBMERGENCE_PCT[i - 1]);
+            return BRADLEY_FLOW_FACTOR[i - 1]
+                + t * (BRADLEY_FLOW_FACTOR[i] - BRADLEY_FLOW_FACTOR[i - 1]);
+        }
+    }
+    0.0
+}
+
+fn weir_flow_us(cw: f64, length_ft: f64, wsel_ft: f64, crest_ft: f64, tw_ft: f64) -> f64 {
     let head = (wsel_ft - crest_ft).max(0.0);
     if head < 1e-9 || length_ft < 1e-9 {
         return 0.0;
     }
-    cw * length_ft * head.powf(1.5)
+    let tail_above = (tw_ft - crest_ft).max(0.0);
+    let submergence_ratio = (tail_above / head).clamp(0.0, 1.0);
+    let factor = bradley_weir_submergence_factor(submergence_ratio);
+    cw * length_ft * head.powf(1.5) * factor
 }
 
 fn solve_wsel_weir_only(
@@ -1065,12 +1097,17 @@ fn solve_wsel_weir_only(
     } else {
         q_target
     };
+    let tw_ft = if params.units == UnitSystem::Metric {
+        params.tw_wsel / FT_TO_M
+    } else {
+        params.tw_wsel
+    };
     let mut low = crest_ft;
     let mut high = crest_ft + 50.0;
     let mut best = high;
     for _ in 0..50 {
         let mid = 0.5 * (low + high);
-        let q_mid = weir_flow_us(cw_us, length_ft, mid, crest_ft);
+        let q_mid = weir_flow_us(cw_us, length_ft, mid, crest_ft, tw_ft);
         if q_mid < q_target_cfs {
             low = mid;
         } else {
@@ -1106,6 +1143,11 @@ pub fn solve_culvert(params: &CulvertSolveParams) -> CulvertSolveResult {
     };
 
     let default_weir_len_user = default_weir_length_user(&params);
+    let tw_ft = if params.units == UnitSystem::Metric {
+        params.tw_wsel / FT_TO_M
+    } else {
+        params.tw_wsel
+    };
     let (crest_ft, cw_us, length_ft) = if params.units == UnitSystem::Metric {
         (
             crest_user / FT_TO_M,
@@ -1151,7 +1193,7 @@ pub fn solve_culvert(params: &CulvertSolveParams) -> CulvertSolveResult {
             return assemble_culvert_result(&params, &last_barrel, q_barrel_total, 0.0, last_control);
         }
 
-        let q_weir_cfs = weir_flow_us(cw_us, length_ft, wsel_ft, crest_ft);
+        let q_weir_cfs = weir_flow_us(cw_us, length_ft, wsel_ft, crest_ft, tw_ft);
         let q_weir = if params.units == UnitSystem::Metric {
             q_weir_cfs * CFS_TO_CMS
         } else {
@@ -1184,7 +1226,7 @@ pub fn solve_culvert(params: &CulvertSolveParams) -> CulvertSolveResult {
     } else {
         last_barrel.wsel
     };
-    let q_weir_cfs = weir_flow_us(cw_us, length_ft, wsel_ft, crest_ft);
+    let q_weir_cfs = weir_flow_us(cw_us, length_ft, wsel_ft, crest_ft, tw_ft);
     let q_weir = if params.units == UnitSystem::Metric {
         q_weir_cfs * CFS_TO_CMS
     } else {
@@ -2650,5 +2692,33 @@ mod tests {
         let result = solve_culvert(&params);
         assert!(result.wsel > 1.2);
         assert_eq!(result.control_type, "overtopping");
+    }
+
+    #[test]
+    fn test_overtopping_with_submergence_reduces_weir_flow() {
+        // Case 1: Unsubmerged overtopping
+        let mut p1 = us_circular_baseline();
+        p1.crest_elev = Some(14.15);
+        p1.weir_coeff = 2.6;
+        p1.weir_length = 5.0;
+        p1.tw_wsel = 12.0; // below crest
+        let r1 = solve_culvert(&p1);
+
+        // Case 2: Submerged overtopping
+        let mut p2 = p1.clone();
+        p2.tw_wsel = 14.5; // above crest, creating submergence
+        let r2 = solve_culvert(&p2);
+
+        // Since the weir flow is submerged, it should be less efficient.
+        // Therefore, the upstream WSEL (r2.wsel) must be higher than r1.wsel to pass the same total flow (q = 100.0).
+        assert!(r2.wsel > r1.wsel, "Submerged WSEL {} should be higher than unsubmerged WSEL {}", r2.wsel, r1.wsel);
+
+        // Let's also verify that for the same headwater, weir flow is reduced under submergence.
+        // E.g. at wsel = 15.0:
+        // Unsubmerged weir flow (crest 14.15, tw 12.0)
+        let q_unsub = weir_flow_us(2.6, 5.0, 15.0, 14.15, 12.0);
+        // Submerged weir flow (crest 14.15, tw 14.4)
+        let q_sub = weir_flow_us(2.6, 5.0, 15.0, 14.15, 14.4);
+        assert!(q_sub < q_unsub, "Submerged weir flow {} should be less than unsubmerged {}", q_sub, q_unsub);
     }
 }
