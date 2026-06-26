@@ -114,6 +114,28 @@ pub struct SteadyInputs {
     #[serde(default)]
     pub culvert_custom_shape_tbl_top_widths: Option<Vec<Vec<f64>>>,
 
+    /// Inline structure stations (optional)
+    #[serde(default)]
+    pub inline_structure_stations: Option<Vec<f64>>,
+    /// Inline structure width/length (optional, in feet/meters)
+    #[serde(default)]
+    pub inline_structure_lengths: Option<Vec<f64>>,
+    /// Inline structure crest elevations (optional, in feet/meters)
+    #[serde(default)]
+    pub inline_structure_crest_elevs: Option<Vec<f64>>,
+    /// Inline structure weir discharge coefficients (optional)
+    #[serde(default)]
+    pub inline_structure_weir_coeffs: Option<Vec<f64>>,
+    /// Inline structure weir lengths (optional, in feet/meters)
+    #[serde(default)]
+    pub inline_structure_weir_lengths: Option<Vec<f64>>,
+    /// Upstream bounding cross-section river station per inline structure (optional)
+    #[serde(default)]
+    pub inline_structure_approach_reach_stations: Option<Vec<f64>>,
+    /// Downstream bounding cross-section river station per inline structure (optional)
+    #[serde(default)]
+    pub inline_structure_departure_reach_stations: Option<Vec<f64>>,
+
     /// Stations where bridges are located (in user units, e.g. feet or meters)
     #[serde(default)]
     pub bridge_stations: Option<Vec<f64>>,
@@ -434,6 +456,15 @@ pub struct SteadyResult {
     /// Tier 2a — barrel Froude number.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub culvert_barrel_froude: Option<Vec<f64>>,
+    /// Solved upstream water surface elevation per inline structure (user units).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inline_structure_wsel_inlet: Option<Vec<f64>>,
+    /// Solved downstream water surface elevation per inline structure (user units).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inline_structure_wsel_outlet: Option<Vec<f64>>,
+    /// Solved weir discharge per inline structure (user units).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inline_structure_q_weirs: Option<Vec<f64>>,
 }
 
 impl GeometryTable {
@@ -1055,6 +1086,15 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
         &mut densified_z_mins,
         &mut densified_xs,
     );
+    let inline_structure_face_intervals = crate::solvers::inline_structure_reach_layout::apply_inline_structure_reach_layout_steady(
+        inputs,
+        raw_units,
+        num_slices,
+        &mut densified_stations,
+        &mut densified_tables,
+        &mut densified_z_mins,
+        &mut densified_xs,
+    );
     let original_stations: Vec<f64> = xs_list.iter().map(|xs| xs.station).collect();
     crate::solvers::bridge_interior::refresh_original_to_densified(
         &original_stations,
@@ -1071,6 +1111,9 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
     for (i, c_idx) in crate::solvers::culvert_reach_layout::culvert_intervals_from_faces(&culvert_face_intervals) {
         culvert_at_interval.entry(i).or_default().push(c_idx);
     }
+    let inline_structure_at_interval: std::collections::HashMap<usize, usize> = crate::solvers::inline_structure_reach_layout::inline_structure_intervals_from_faces(&inline_structure_face_intervals)
+        .into_iter()
+        .collect();
 
     let dm = densified_tables.len();
 
@@ -1134,11 +1177,22 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
     let mut culvert_barrel_velocities: Option<Vec<f64>> = culvert_count.map(|n| vec![0.0; n]);
     let mut culvert_barrel_froude: Option<Vec<f64>> = culvert_count.map(|n| vec![0.0; n]);
 
+    let inline_structure_count = inputs.inline_structure_stations.as_ref().map(|s| s.len());
+    let mut inline_structure_wsel_inlet: Option<Vec<f64>> = inline_structure_count.map(|n| vec![0.0; n]);
+    let mut inline_structure_wsel_outlet: Option<Vec<f64>> = inline_structure_count.map(|n| vec![0.0; n]);
+    let mut inline_structure_q_weirs: Option<Vec<f64>> = inline_structure_count.map(|n| vec![0.0; n]);
+
     let mut structure_adjacent_indices = std::collections::HashSet::new();
     let mut structure_ineffective: std::collections::HashMap<usize, IneffectiveFlowAreas> =
         std::collections::HashMap::new();
     if let Some(ref _c_stations) = inputs.culvert_stations {
         for (&i, _) in culvert_at_interval.iter() {
+            structure_adjacent_indices.insert(i);
+            structure_adjacent_indices.insert(i + 1);
+        }
+    }
+    if let Some(ref _is_stations) = inputs.inline_structure_stations {
+        for (&i, _) in inline_structure_at_interval.iter() {
             structure_adjacent_indices.insert(i);
             structure_adjacent_indices.insert(i + 1);
         }
@@ -1691,6 +1745,78 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                         solved_hw
                     };
                 }
+            } else if let Some(&is_idx) = inline_structure_at_interval.get(&i) {
+                let crest_user = inputs.inline_structure_crest_elevs.as_ref().and_then(|v| v.get(is_idx)).copied().unwrap_or(0.0);
+                let coeff_user = inputs.inline_structure_weir_coeffs.as_ref().and_then(|v| v.get(is_idx)).copied().unwrap_or(if raw_units == UnitSystem::USCustomary { 2.6 } else { 1.44 });
+                let length_user = inputs.inline_structure_weir_lengths.as_ref().and_then(|v| v.get(is_idx)).copied().unwrap_or(0.0);
+
+                let tw_wsel_user = if raw_units == UnitSystem::USCustomary {
+                    sub_wsel[i + 1] / FT_TO_M
+                } else {
+                    sub_wsel[i + 1]
+                };
+
+                let (crest_ft, cw_us, length_ft) = if raw_units == UnitSystem::Metric {
+                    (
+                        crest_user / FT_TO_M,
+                        coeff_user / CFS_TO_CMS * FT_TO_M.powf(2.5),
+                        length_user / FT_TO_M,
+                    )
+                } else {
+                    (
+                        crest_user,
+                        coeff_user,
+                        length_user,
+                    )
+                };
+
+                let length_ft = if length_ft < 1e-9 { 10.0 } else { length_ft };
+
+                let q_target_cfs = if raw_units == UnitSystem::Metric {
+                    inputs.flow_rate / CFS_TO_CMS
+                } else {
+                    inputs.flow_rate
+                };
+
+                let tw_ft = if raw_units == UnitSystem::Metric {
+                    sub_wsel[i + 1] / FT_TO_M
+                } else {
+                    sub_wsel[i + 1]
+                };
+
+                let mut low = crest_ft.max(tw_ft);
+                let mut high = low + 200.0;
+                for _ in 0..45 {
+                    let mid = 0.5 * (low + high);
+                    let q_weir = crate::solvers::culvert::weir_flow_us(cw_us, length_ft, mid, crest_ft, tw_ft);
+                    if q_weir < q_target_cfs {
+                        low = mid;
+                    } else {
+                        high = mid;
+                    }
+                }
+                let solved_hw_ft = 0.5 * (low + high);
+                let solved_hw_user = if raw_units == UnitSystem::Metric {
+                    solved_hw_ft * FT_TO_M
+                } else {
+                    solved_hw_ft
+                };
+
+                if let Some(ref mut v) = inline_structure_wsel_inlet {
+                    v[is_idx] = solved_hw_user;
+                }
+                if let Some(ref mut v) = inline_structure_wsel_outlet {
+                    v[is_idx] = if raw_units == UnitSystem::Metric { tw_ft * FT_TO_M } else { tw_ft };
+                }
+                if let Some(ref mut v) = inline_structure_q_weirs {
+                    v[is_idx] = inputs.flow_rate;
+                }
+
+                sub_wsel[i] = if raw_units == UnitSystem::USCustomary {
+                    solved_hw_user * FT_TO_M
+                } else {
+                    solved_hw_user
+                };
             } else {
                 sub_wsel[i] = solve_step(
                     &densified_tables[i + 1],
@@ -2316,6 +2442,83 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                 } else {
                     tw_wsel_user
                 };
+            } else if let Some(&is_idx) = inline_structure_at_interval.get(&i) {
+                let crest_user = inputs.inline_structure_crest_elevs.as_ref().and_then(|v| v.get(is_idx)).copied().unwrap_or(0.0);
+                let coeff_user = inputs.inline_structure_weir_coeffs.as_ref().and_then(|v| v.get(is_idx)).copied().unwrap_or(if raw_units == UnitSystem::USCustomary { 2.6 } else { 1.44 });
+                let length_user = inputs.inline_structure_weir_lengths.as_ref().and_then(|v| v.get(is_idx)).copied().unwrap_or(0.0);
+
+                let hw_ft = if raw_units == UnitSystem::Metric {
+                    super_wsel[i] / FT_TO_M
+                } else {
+                    super_wsel[i]
+                };
+
+                let (crest_ft, cw_us, length_ft) = if raw_units == UnitSystem::Metric {
+                    (
+                        crest_user / FT_TO_M,
+                        coeff_user / CFS_TO_CMS * FT_TO_M.powf(2.5),
+                        length_user / FT_TO_M,
+                    )
+                } else {
+                    (
+                        crest_user,
+                        coeff_user,
+                        length_user,
+                    )
+                };
+
+                let length_ft = if length_ft < 1e-9 { 10.0 } else { length_ft };
+
+                let q_target_cfs = if raw_units == UnitSystem::Metric {
+                    inputs.flow_rate / CFS_TO_CMS
+                } else {
+                    inputs.flow_rate
+                };
+
+                let bed_z_down = if raw_units == UnitSystem::USCustomary {
+                    densified_z_mins[i + 1] / FT_TO_M
+                } else {
+                    densified_z_mins[i + 1]
+                };
+                let bed_z_down_ft = if raw_units == UnitSystem::Metric {
+                    bed_z_down / FT_TO_M
+                } else {
+                    bed_z_down
+                };
+
+                let mut low = bed_z_down_ft;
+                let mut high = hw_ft;
+                for _ in 0..45 {
+                    let mid = 0.5 * (low + high);
+                    let q_weir = crate::solvers::culvert::weir_flow_us(cw_us, length_ft, hw_ft, crest_ft, mid);
+                    if q_weir > q_target_cfs {
+                        low = mid;
+                    } else {
+                        high = mid;
+                    }
+                }
+                let solved_tw_ft = 0.5 * (low + high);
+                let solved_tw_user = if raw_units == UnitSystem::Metric {
+                    solved_tw_ft * FT_TO_M
+                } else {
+                    solved_tw_ft
+                };
+
+                if let Some(ref mut v) = inline_structure_wsel_inlet {
+                    v[is_idx] = if raw_units == UnitSystem::Metric { hw_ft * FT_TO_M } else { hw_ft };
+                }
+                if let Some(ref mut v) = inline_structure_wsel_outlet {
+                    v[is_idx] = solved_tw_user;
+                }
+                if let Some(ref mut v) = inline_structure_q_weirs {
+                    v[is_idx] = inputs.flow_rate;
+                }
+
+                super_wsel[i + 1] = if raw_units == UnitSystem::USCustomary {
+                    solved_tw_user * FT_TO_M
+                } else {
+                    solved_tw_user
+                };
             } else {
                 super_wsel[i + 1] = solve_step(
                     &densified_tables[i],
@@ -2563,6 +2766,9 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
         culvert_barrel_depths,
         culvert_barrel_velocities,
         culvert_barrel_froude,
+        inline_structure_wsel_inlet,
+        inline_structure_wsel_outlet,
+        inline_structure_q_weirs,
     }
 }
 
@@ -4736,6 +4942,94 @@ mod tests {
         let wsel_outlets = result.culvert_wsel_outlet.expect("outlets");
         assert!((wsel_inlets[0] - wsel_inlets[1]).abs() < 0.05, "inlets WSEL mismatched: {} vs {}", wsel_inlets[0], wsel_inlets[1]);
         assert!((wsel_outlets[0] - 3.0).abs() < 0.05, "outlet WSEL for circular should be near TW");
+    }
+
+    #[test]
+    fn test_inline_weir_structure() {
+        // Set up 3 identical cross-sections spaced 100 ft apart.
+        // Stationing: 200, 100, 0.
+        // Bed is flat at 0.0 elevation.
+        let xs200 = CrossSection {
+            station: 200.0,
+            x: vec![-50.0, -50.0, 50.0, 50.0],
+            y: vec![10.0, 0.0, 0.0, 10.0],
+            n_stations: vec![-50.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let xs100 = CrossSection {
+            station: 100.0,
+            x: vec![-50.0, -50.0, 50.0, 50.0],
+            y: vec![10.0, 0.0, 0.0, 10.0],
+            n_stations: vec![-50.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let xs0 = CrossSection {
+            station: 0.0,
+            x: vec![-50.0, -50.0, 50.0, 50.0],
+            y: vec![10.0, 0.0, 0.0, 10.0],
+            n_stations: vec![-50.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+
+        let inputs = SteadyInputs {
+            cross_sections: vec![xs200, xs100, xs0],
+            flow_rate: 50.0,
+            num_slices: Some(50),
+            coeff_contraction: None,
+            coeff_expansion: None,
+            regime: 0, // Subcritical
+            downstream_wsel: Some(3.0), // TW = 3.0 ft (unsubmerged since crest is 4.0 ft)
+            upstream_wsel: None,
+            max_spacing: None,
+            inline_structure_stations: Some(vec![50.0]),
+            inline_structure_crest_elevs: Some(vec![4.0]),
+            inline_structure_weir_lengths: Some(vec![10.0]),
+            inline_structure_weir_coeffs: Some(vec![2.6]),
+            inline_structure_lengths: Some(vec![10.0]),
+            ..Default::default()
+        };
+
+        let result = solve_steady(&inputs);
+
+        // Verification of integrated inline structure element
+        // Downstream section WSEL is tailwater: 3.0 ft.
+        assert_eq!(result.wsel[2], 3.0);
+
+        let inlets = result.inline_structure_wsel_inlet.expect("inlets");
+        let outlets = result.inline_structure_wsel_outlet.expect("outlets");
+        let q_weirs = result.inline_structure_q_weirs.expect("q_weirs");
+
+        assert_eq!(inlets.len(), 1);
+        assert_eq!(outlets.len(), 1);
+        assert_eq!(q_weirs.len(), 1);
+
+        // Solved upstream WSEL should match analytical weir equation: H = (50 / (2.6 * 10))^(2/3) ~ 1.546 ft.
+        // HW = 4.0 + 1.546 = 5.546 ft.
+        let expected_hw = 5.546;
+        assert!((inlets[0] - expected_hw).abs() < 0.05, "expected ~{}, got {}", expected_hw, inlets[0]);
+        assert!((outlets[0] - 3.0).abs() < 0.05, "outlet WSEL should match TW");
+        assert_eq!(q_weirs[0], 50.0);
     }
 }
 
