@@ -1,4 +1,4 @@
-use crate::utils::{G_METRIC, UnitSystem, FT_TO_M};
+use crate::utils::{G_METRIC, UnitSystem, FT_TO_M, CFS_TO_CMS};
 use crate::geometry::{
     flow_area_for_row, geometry_row_at_elevation, section_needs_dynamic_geometry,
     specific_force_at_elevation, CrossSection, DensifyReachModifierPolicy, GeometryRow,
