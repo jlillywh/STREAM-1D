@@ -543,7 +543,7 @@ pub(crate) fn solve_low_flow_class_b(
     // HEC-RAS Class B energy fallback when momentum fails or energy/WSPRO is selected.
     let use_wspro = matches!(geom.low_flow_method, LowFlowMethod::Wspro)
         || (geom.low_flow_method == LowFlowMethod::Auto && geom.abutments.is_configured());
-    solve_low_flow_energy_or_wspro(q_metric, tw_m, geom, table_up, table_down, use_wspro)
+    solve_low_flow_energy_or_wspro(q_metric, tw_m, geom, table_up, table_down, use_wspro, false)
 }
 
 pub(crate) fn solve_low_flow_class_c(
