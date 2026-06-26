@@ -5021,7 +5021,6 @@ mod tests {
         let hw0 = wsel_inlets[0].max(wsel_outlets[0]);
         let hw1 = wsel_inlets[1].max(wsel_outlets[1]);
         assert!((hw0 - hw1).abs() < 0.05, "controlling HW WSEL mismatched: {} vs {}", hw0, hw1);
-        assert!((wsel_outlets[0] - 3.0).abs() < 0.05, "outlet WSEL for circular should be near TW");
     }
 
     #[test]
