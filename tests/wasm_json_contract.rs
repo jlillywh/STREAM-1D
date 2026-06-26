@@ -63,6 +63,10 @@ fn wasm_culvert_rating_curve_contract() {
             skew_deg: 0.0,
             barrel_spans: None,
             barrel_rises: None,
+            custom_shape_tbl_y: None,
+            custom_shape_tbl_area: None,
+            custom_shape_tbl_perimeter: None,
+            custom_shape_tbl_top_width: None,
         },
     };
     let curve = compute_culvert_rating_curve(&inputs);

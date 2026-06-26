@@ -136,6 +136,10 @@ export interface CulvertArrays {
   culvert_approach_reach_stations?: number[];
   /** Downstream bounding cross-section station per culvert. */
   culvert_departure_reach_stations?: number[];
+  culvert_custom_shape_tbl_ys?: number[][];
+  culvert_custom_shape_tbl_areas?: number[][];
+  culvert_custom_shape_tbl_perimeters?: number[][];
+  culvert_custom_shape_tbl_top_widths?: number[][];
 }
 
 export interface BridgeArrays {
@@ -431,6 +435,10 @@ export interface CulvertRatingCurveInputs {
   skew_deg?: number;
   barrel_spans?: number[];
   barrel_rises?: number[];
+  custom_shape_tbl_y?: number[];
+  custom_shape_tbl_area?: number[];
+  custom_shape_tbl_perimeter?: number[];
+  custom_shape_tbl_top_width?: number[];
 }
 
 export interface CulvertRatingCurveResult {

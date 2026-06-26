@@ -108,6 +108,11 @@ pub fn build_api_metadata() -> WasmApiMetadata {
                 name: "Horseshoe".to_string(),
                 description: "Horseshoe; span = spring-line width, rise = total height".to_string(),
             },
+            EnumEntry {
+                code: 7,
+                name: "Custom".to_string(),
+                description: "User-defined shape using area, perimeter, and top width tables".to_string(),
+            },
         ],
         culvert_inlet_types: vec![
             EnumEntry {

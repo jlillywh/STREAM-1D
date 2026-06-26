@@ -205,6 +205,7 @@ pub(crate) fn bridge_headwater_implicit_rhs(
 }
 
 /// Tailwater residual for reverse-flow BC inversion: R = y_tw − TW_low(y_hw, Q).
+#[allow(dead_code)]
 pub(crate) fn bridge_tailwater_implicit_rhs(
     y_hw_metric: f64,
     y_tw_metric: f64,
