@@ -280,7 +280,7 @@ mod tests {
     fn test_apply_layout_empty() {
         let inputs = crate::solvers::steady::SteadyInputs::default();
         let mut stations = vec![100.0, 0.0];
-        let mut tables = vec![GeometryTable::default(), GeometryTable::default()];
+        let mut tables = vec![GeometryTable { rows: vec![] }, GeometryTable { rows: vec![] }];
         let mut z_mins = vec![0.0, 0.0];
         let mut xs = vec![None, None];
         let res = apply_inline_structure_reach_layout_steady(
