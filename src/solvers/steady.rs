@@ -101,6 +101,18 @@ pub struct SteadyInputs {
     /// Downstream bounding cross-section river station per culvert.
     #[serde(default)]
     pub culvert_departure_reach_stations: Option<Vec<f64>>,
+    /// Custom shape table Y-values per culvert
+    #[serde(default)]
+    pub culvert_custom_shape_tbl_ys: Option<Vec<Vec<f64>>>,
+    /// Custom shape table Area-values per culvert
+    #[serde(default)]
+    pub culvert_custom_shape_tbl_areas: Option<Vec<Vec<f64>>>,
+    /// Custom shape table Perimeter-values per culvert
+    #[serde(default)]
+    pub culvert_custom_shape_tbl_perimeters: Option<Vec<Vec<f64>>>,
+    /// Custom shape table Top Width-values per culvert
+    #[serde(default)]
+    pub culvert_custom_shape_tbl_top_widths: Option<Vec<Vec<f64>>>,
 
     /// Stations where bridges are located (in user units, e.g. feet or meters)
     #[serde(default)]
@@ -1362,6 +1374,11 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                         0.0
                     };
 
+                    let custom_shape_tbl_y = inputs.culvert_custom_shape_tbl_ys.as_ref().and_then(|v| v.get(c_idx)).cloned();
+                    let custom_shape_tbl_area = inputs.culvert_custom_shape_tbl_areas.as_ref().and_then(|v| v.get(c_idx)).cloned();
+                    let custom_shape_tbl_perimeter = inputs.culvert_custom_shape_tbl_perimeters.as_ref().and_then(|v| v.get(c_idx)).cloned();
+                    let custom_shape_tbl_top_width = inputs.culvert_custom_shape_tbl_top_widths.as_ref().and_then(|v| v.get(c_idx)).cloned();
+
                     culvert_result = crate::solvers::culvert::solve_culvert(
                         &crate::solvers::culvert::CulvertSolveParams {
                             q: inputs.flow_rate,
@@ -1390,6 +1407,10 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                             skew_deg,
                             barrel_spans: barrel_spans.clone(),
                             barrel_rises: barrel_rises.clone(),
+                            custom_shape_tbl_y,
+                            custom_shape_tbl_area,
+                            custom_shape_tbl_perimeter,
+                            custom_shape_tbl_top_width,
                         },
                     );
                     wsel_up_user = culvert_result.wsel;
@@ -1676,6 +1697,11 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                     };
                     let ds_velocity_user = inputs.flow_rate / ds_area_user.max(1e-9);
 
+                    let custom_shape_tbl_y = inputs.culvert_custom_shape_tbl_ys.as_ref().and_then(|v| v.get(c_idx)).cloned();
+                    let custom_shape_tbl_area = inputs.culvert_custom_shape_tbl_areas.as_ref().and_then(|v| v.get(c_idx)).cloned();
+                    let custom_shape_tbl_perimeter = inputs.culvert_custom_shape_tbl_perimeters.as_ref().and_then(|v| v.get(c_idx)).cloned();
+                    let custom_shape_tbl_top_width = inputs.culvert_custom_shape_tbl_top_widths.as_ref().and_then(|v| v.get(c_idx)).cloned();
+
                     let culvert_params = crate::solvers::culvert::CulvertSolveParams {
                         q: inputs.flow_rate,
                         shape_type,
@@ -1703,6 +1729,10 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                         skew_deg,
                         barrel_spans: barrel_spans.clone(),
                         barrel_rises: barrel_rises.clone(),
+                        custom_shape_tbl_y,
+                        custom_shape_tbl_area,
+                        custom_shape_tbl_perimeter,
+                        custom_shape_tbl_top_width,
                     };
                     let (tw_new, _) =
                         crate::solvers::culvert::solve_culvert_from_headwater(&culvert_params, hw_wsel_user);

@@ -16,6 +16,8 @@ pub enum CulvertShape {
     Elliptical = 5,
     /// Horseshoe: circular invert + vertical legs + circular crown.
     Horseshoe = 6,
+    /// User-defined custom shape.
+    Custom = 7,
 }
 
 impl CulvertShape {
@@ -27,6 +29,7 @@ impl CulvertShape {
             4 => CulvertShape::PipeArch,
             5 => CulvertShape::Elliptical,
             6 => CulvertShape::Horseshoe,
+            7 => CulvertShape::Custom,
             _ => CulvertShape::Circular,
         }
     }
@@ -297,6 +300,7 @@ pub fn get_culvert_area(shape: CulvertShape, span: f64, rise: f64, y: f64) -> f6
         CulvertShape::PipeArch | CulvertShape::Elliptical | CulvertShape::Horseshoe => {
             extended_shape_area(shape, span, rise, y_clamp)
         }
+        CulvertShape::Custom => 0.0,
     }
 }
 
@@ -324,6 +328,7 @@ pub fn get_culvert_top_width(shape: CulvertShape, span: f64, rise: f64, y: f64) 
         CulvertShape::PipeArch | CulvertShape::Elliptical | CulvertShape::Horseshoe => {
             extended_shape_width(shape, span, rise, y)
         }
+        CulvertShape::Custom => 0.0,
     }
 }
 
@@ -372,6 +377,7 @@ pub fn get_culvert_perimeter(shape: CulvertShape, span: f64, rise: f64, y: f64) 
         CulvertShape::PipeArch | CulvertShape::Elliptical | CulvertShape::Horseshoe => {
             extended_shape_perimeter(shape, span, rise, y_clamp)
         }
+        CulvertShape::Custom => 0.0,
     }
 }
 
@@ -574,6 +580,18 @@ pub struct CulvertSolveParams {
     /// Per-barrel rise (length = active barrels). Omit entries to use `rise`.
     #[serde(default)]
     pub barrel_rises: Option<Vec<f64>>,
+    /// Custom shape table - elevation / depth above invert
+    #[serde(default)]
+    pub custom_shape_tbl_y: Option<Vec<f64>>,
+    /// Custom shape table - wetted area
+    #[serde(default)]
+    pub custom_shape_tbl_area: Option<Vec<f64>>,
+    /// Custom shape table - wetted perimeter
+    #[serde(default)]
+    pub custom_shape_tbl_perimeter: Option<Vec<f64>>,
+    /// Custom shape table - top water width
+    #[serde(default)]
+    pub custom_shape_tbl_top_width: Option<Vec<f64>>,
 }
 
 fn default_num_barrels() -> i32 {
@@ -638,7 +656,6 @@ fn use_multi_barrel_solve(params: &CulvertSolveParams) -> bool {
 }
 
 fn estimate_max_barrel_q(params: &CulvertSolveParams) -> f64 {
-    let shape = CulvertShape::from_i32(params.shape_type);
     let (span_ft, rise_ft, db_ft) = if params.units == UnitSystem::Metric {
         (
             params.span / FT_TO_M,
@@ -649,7 +666,8 @@ fn estimate_max_barrel_q(params: &CulvertSolveParams) -> f64 {
         (params.span, params.rise, params.depth_blocked)
     };
     let (span_ft, _) = apply_barrel_skew(params.skew_deg, span_ft, 1.0);
-    let a_full = get_culvert_effective_area(shape, span_ft, rise_ft, rise_ft, db_ft);
+    let geom = CulvertGeometry::new(params, span_ft, rise_ft);
+    let a_full = geom.effective_area(rise_ft, db_ft);
     let q_cfs = a_full * (2.0 * G_ENGLISH * rise_ft.max(0.5)).sqrt();
     if params.units == UnitSystem::Metric {
         q_cfs * CFS_TO_CMS
@@ -810,7 +828,7 @@ pub fn inlet_nomograph_coeffs(
                 (0.0098, 2.0, 0.0398, 0.67)
             }
         }
-        CulvertShape::Box => {
+        CulvertShape::Box | CulvertShape::Custom => {
             if entrance_loss_coeff <= 0.2 {
                 (0.026, 1.0, 0.0347, 0.81)
             } else {
@@ -883,9 +901,226 @@ fn overtopping_only_result(wsel: f64, q_weir: f64) -> CulvertSolveResult {
     }
 }
 
-fn solve_culvert_barrel_internal(params: &CulvertSolveParams, q: f64) -> BarrelSolveInternal {
-    let shape = CulvertShape::from_i32(params.shape_type);
+struct CulvertGeometry {
+    shape: CulvertShape,
+    span: f64, // feet
+    rise: f64, // feet
+    custom_ys: Option<Vec<f64>>, // feet
+    custom_areas: Option<Vec<f64>>, // sq feet
+    custom_perimeters: Option<Vec<f64>>, // feet
+    custom_top_widths: Option<Vec<f64>>, // feet
+}
 
+impl CulvertGeometry {
+    fn new(params: &CulvertSolveParams, span_ft: f64, rise_ft: f64) -> Self {
+        let shape = CulvertShape::from_i32(params.shape_type);
+        if shape != CulvertShape::Custom {
+            return Self {
+                shape,
+                span: span_ft,
+                rise: rise_ft,
+                custom_ys: None,
+                custom_areas: None,
+                custom_perimeters: None,
+                custom_top_widths: None,
+            };
+        }
+
+        let scale_l = if params.units == UnitSystem::Metric { 1.0 / FT_TO_M } else { 1.0 };
+        let scale_a = scale_l * scale_l;
+
+        let custom_ys = params.custom_shape_tbl_y.as_ref().map(|v| {
+            v.iter().map(|&val| val * scale_l).collect()
+        });
+        let custom_areas = params.custom_shape_tbl_area.as_ref().map(|v| {
+            v.iter().map(|&val| val * scale_a).collect()
+        });
+        let custom_perimeters = params.custom_shape_tbl_perimeter.as_ref().map(|v| {
+            v.iter().map(|&val| val * scale_l).collect()
+        });
+        let custom_top_widths = params.custom_shape_tbl_top_width.as_ref().map(|v| {
+            v.iter().map(|&val| val * scale_l).collect()
+        });
+
+        Self {
+            shape,
+            span: span_ft,
+            rise: rise_ft,
+            custom_ys,
+            custom_areas,
+            custom_perimeters,
+            custom_top_widths,
+        }
+    }
+
+    fn area(&self, y: f64) -> f64 {
+        if self.shape == CulvertShape::Custom {
+            self.interpolate_custom(y, "area")
+        } else {
+            get_culvert_area(self.shape, self.span, self.rise, y)
+        }
+    }
+
+    fn perimeter(&self, y: f64) -> f64 {
+        if self.shape == CulvertShape::Custom {
+            self.interpolate_custom(y, "perimeter")
+        } else {
+            get_culvert_perimeter(self.shape, self.span, self.rise, y)
+        }
+    }
+
+    fn top_width(&self, y: f64) -> f64 {
+        if self.shape == CulvertShape::Custom {
+            self.interpolate_custom(y, "top_width")
+        } else {
+            get_culvert_top_width(self.shape, self.span, self.rise, y)
+        }
+    }
+
+    fn interpolate_custom(&self, y: f64, field: &str) -> f64 {
+        let ys = match &self.custom_ys {
+            Some(v) => v,
+            None => return 0.0,
+        };
+        let n = ys.len();
+        if n < 2 {
+            return 0.0;
+        }
+        if y <= ys[0] {
+            return match field {
+                "perimeter" => self.span,
+                _ => 0.0,
+            };
+        }
+        let y_clamp = y.min(ys[n - 1]);
+
+        let mut idx = 0;
+        for i in 0..n - 1 {
+            if y_clamp >= ys[i] && y_clamp <= ys[i + 1] {
+                idx = i;
+                break;
+            }
+        }
+        let dy = ys[idx + 1] - ys[idx];
+        let t = if dy > 1e-9 { (y_clamp - ys[idx]) / dy } else { 0.0 };
+
+        match field {
+            "area" => {
+                if let Some(areas) = &self.custom_areas {
+                    (1.0 - t) * areas[idx] + t * areas[idx + 1]
+                } else {
+                    0.0
+                }
+            }
+            "perimeter" => {
+                if let Some(perims) = &self.custom_perimeters {
+                    (1.0 - t) * perims[idx] + t * perims[idx + 1]
+                } else {
+                    0.0
+                }
+            }
+            "top_width" => {
+                if y >= self.rise {
+                    0.0
+                } else {
+                    if let Some(widths) = &self.custom_top_widths {
+                        (1.0 - t) * widths[idx] + t * widths[idx + 1]
+                    } else {
+                        0.0
+                    }
+                }
+            }
+            _ => 0.0,
+        }
+    }
+
+    fn effective_area(&self, y: f64, depth_blocked: f64) -> f64 {
+        let d_b = depth_blocked.min(self.rise);
+        if y <= d_b {
+            0.0
+        } else {
+            self.area(y) - self.area(d_b)
+        }
+    }
+
+    fn effective_top_width(&self, y: f64, depth_blocked: f64) -> f64 {
+        let d_b = depth_blocked.min(self.rise);
+        if y <= d_b {
+            0.0
+        } else {
+            self.top_width(y)
+        }
+    }
+
+    fn effective_perimeter(&self, y: f64, depth_blocked: f64) -> f64 {
+        let d_b = depth_blocked.min(self.rise);
+        if y <= d_b {
+            0.0
+        } else if d_b < 1e-9 {
+            self.perimeter(y.min(self.rise))
+        } else {
+            let y_clamp = y.min(self.rise);
+            let p_y = self.perimeter(y_clamp);
+            let p_b = self.perimeter(d_b);
+            let t_b = self.top_width(d_b);
+            (p_y - p_b) + t_b
+        }
+    }
+
+    fn composite_n(&self, y: f64, depth_blocked: f64, n_top: f64, n_bottom: f64, depth_bottom_n: f64) -> f64 {
+        let d_b = depth_blocked.min(self.rise);
+        let d_n = depth_bottom_n.min(self.rise);
+        if d_n <= d_b || (n_bottom - n_top).abs() < 1e-9 {
+            return n_top;
+        }
+        if y <= d_b {
+            return n_bottom;
+        }
+        if y <= d_n {
+            return n_bottom;
+        }
+        let p_bottom = self.effective_perimeter(d_n, d_b);
+        let y_clamp = y.min(self.rise);
+        let p_y = self.perimeter(y_clamp);
+        let p_n = self.perimeter(d_n);
+        let p_top = (p_y - p_n).max(0.0);
+        let p_total = p_bottom + p_top;
+        if p_total > 1e-9 {
+            ((p_bottom * n_bottom.powf(1.5) + p_top * n_top.powf(1.5)) / p_total).powf(2.0 / 3.0)
+        } else {
+            n_top
+        }
+    }
+
+    fn critical_depth(&self, q: f64, depth_blocked: f64) -> f64 {
+        let d_b = depth_blocked.min(self.rise);
+        let mut low = d_b;
+        let mut high = self.rise;
+        let mut best_yc = d_b;
+
+        for _ in 0..50 {
+            let mid = 0.5 * (low + high);
+            let area = self.effective_area(mid, d_b);
+            let top_width = self.effective_top_width(mid, d_b);
+
+            if area < 1e-9 {
+                low = mid;
+                continue;
+            }
+
+            let fr_sq = (q * q * top_width) / (G_ENGLISH * area.powi(3));
+            if top_width < 1e-9 || fr_sq > 1.0 {
+                low = mid;
+            } else {
+                high = mid;
+            }
+            best_yc = mid;
+        }
+        best_yc
+    }
+}
+
+fn solve_culvert_barrel_internal(params: &CulvertSolveParams, q: f64) -> BarrelSolveInternal {
     // Convert inputs to English units for calculation
     let (q_cfs, span_ft, rise_ft, len_ft, z_down_ft, z_up_ft, tw_ft, db_ft, dbn_ft) =
         if params.units == UnitSystem::Metric {
@@ -915,9 +1150,10 @@ fn solve_culvert_barrel_internal(params: &CulvertSolveParams, q: f64) -> BarrelS
         };
 
     let (span_ft, len_ft) = apply_barrel_skew(params.skew_deg, span_ft, len_ft);
+    let geom = CulvertGeometry::new(params, span_ft, rise_ft);
 
     let d_eff = (rise_ft - db_ft).max(0.01);
-    let a_full_eff = get_culvert_effective_area(shape, span_ft, rise_ft, rise_ft, db_ft);
+    let a_full_eff = geom.effective_area(rise_ft, db_ft);
 
     let ds_vel_ft = if params.units == UnitSystem::Metric {
         params.ds_velocity / FT_TO_M
@@ -935,13 +1171,13 @@ fn solve_culvert_barrel_internal(params: &CulvertSolveParams, q: f64) -> BarrelS
 
     // 1. INLET CONTROL CALCULATIONS
     // Bisection search for critical depth inside barrel in feet (measured from original invert)
-    let yc = solve_barrel_critical_depth(shape, span_ft, rise_ft, q_cfs, db_ft);
+    let yc = geom.critical_depth(q_cfs, db_ft);
     let yc_eff = (yc - db_ft).max(0.0);
-    let ac = get_culvert_effective_area(shape, span_ft, rise_ft, yc, db_ft);
+    let ac = geom.effective_area(yc, db_ft);
     let vc = if ac > 1e-9 { q_cfs / ac } else { 0.0 };
     let hc_eff = yc_eff + (vc * vc) / (2.0 * G_ENGLISH); // Specific head at critical depth above effective invert
 
-    let (k, m, c, y) = inlet_nomograph_coeffs(shape, params.inlet_type, params.entrance_loss_coeff);
+    let (k, m, c, y) = inlet_nomograph_coeffs(geom.shape, params.inlet_type, params.entrance_loss_coeff);
 
     // FHWA barrel slope S0 (positive when downstream invert is lower than upstream).
     let culv_slope = (z_up_ft - z_down_ft) / len_ft;
@@ -967,19 +1203,16 @@ fn solve_culvert_barrel_internal(params: &CulvertSolveParams, q: f64) -> BarrelS
 
     // 2. OUTLET CONTROL CALCULATIONS
     let y_barrel = (tw_ft - z_down_ft).max(yc).min(rise_ft);
-    let a_barrel = get_culvert_effective_area(shape, span_ft, rise_ft, y_barrel, db_ft);
+    let a_barrel = geom.effective_area(y_barrel, db_ft);
     let v_barrel = if a_barrel > 1e-9 { q_cfs / a_barrel } else { 0.0 };
 
     let he = params.entrance_loss_coeff * (v_barrel * v_barrel) / (2.0 * G_ENGLISH);
     let ho = params.exit_loss_coeff * ((v_barrel * v_barrel) / (2.0 * G_ENGLISH) - ds_vel_hd).max(0.0);
 
     // Friction loss (hf = L * Sf) using composite n and effective geometry
-    let p_barrel = get_culvert_effective_perimeter(shape, span_ft, rise_ft, y_barrel, db_ft);
+    let p_barrel = geom.effective_perimeter(y_barrel, db_ft);
     let r_barrel = if p_barrel > 1e-9 { a_barrel / p_barrel } else { 0.0 };
-    let n_c = get_culvert_composite_n(
-        shape,
-        span_ft,
-        rise_ft,
+    let n_c = geom.composite_n(
         y_barrel,
         db_ft,
         params.roughness_n,
@@ -1015,7 +1248,7 @@ fn solve_culvert_barrel_internal(params: &CulvertSolveParams, q: f64) -> BarrelS
         wsel_outlet
     };
 
-    let t_barrel = get_culvert_effective_top_width(shape, span_ft, rise_ft, y_barrel, db_ft);
+    let t_barrel = geom.effective_top_width(y_barrel, db_ft);
     let d_hyd = if t_barrel > 1e-9 {
         a_barrel / t_barrel
     } else {
@@ -1045,12 +1278,44 @@ fn barrel_control_type(barrel: &BarrelSolveInternal) -> String {
     }
 }
 
-fn weir_flow_us(cw: f64, length_ft: f64, wsel_ft: f64, crest_ft: f64) -> f64 {
+const BRADLEY_SUBMERGENCE_PCT: [f64; 12] =
+    [0.0, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 95.0, 98.0];
+const BRADLEY_FLOW_FACTOR: [f64; 12] =
+    [1.0, 1.0, 0.99, 0.97, 0.94, 0.90, 0.84, 0.75, 0.62, 0.40, 0.22, 0.08];
+
+fn bradley_weir_submergence_factor(submergence_ratio: f64) -> f64 {
+    if submergence_ratio <= 0.0 {
+        return 1.0;
+    }
+    if submergence_ratio >= 1.0 {
+        return 0.0;
+    }
+    let pct = submergence_ratio * 100.0;
+    if pct > 98.0 {
+        // Linearly interpolate from 0.08 at 98% to 0.0 at 100%
+        let t = (pct - 98.0) / (100.0 - 98.0);
+        return 0.08 * (1.0 - t);
+    }
+    for i in 1..BRADLEY_SUBMERGENCE_PCT.len() {
+        if pct <= BRADLEY_SUBMERGENCE_PCT[i] {
+            let t = (pct - BRADLEY_SUBMERGENCE_PCT[i - 1])
+                / (BRADLEY_SUBMERGENCE_PCT[i] - BRADLEY_SUBMERGENCE_PCT[i - 1]);
+            return BRADLEY_FLOW_FACTOR[i - 1]
+                + t * (BRADLEY_FLOW_FACTOR[i] - BRADLEY_FLOW_FACTOR[i - 1]);
+        }
+    }
+    0.0
+}
+
+fn weir_flow_us(cw: f64, length_ft: f64, wsel_ft: f64, crest_ft: f64, tw_ft: f64) -> f64 {
     let head = (wsel_ft - crest_ft).max(0.0);
     if head < 1e-9 || length_ft < 1e-9 {
         return 0.0;
     }
-    cw * length_ft * head.powf(1.5)
+    let tail_above = (tw_ft - crest_ft).max(0.0);
+    let submergence_ratio = (tail_above / head).clamp(0.0, 1.0);
+    let factor = bradley_weir_submergence_factor(submergence_ratio);
+    cw * length_ft * head.powf(1.5) * factor
 }
 
 fn solve_wsel_weir_only(
@@ -1065,12 +1330,17 @@ fn solve_wsel_weir_only(
     } else {
         q_target
     };
+    let tw_ft = if params.units == UnitSystem::Metric {
+        params.tw_wsel / FT_TO_M
+    } else {
+        params.tw_wsel
+    };
     let mut low = crest_ft;
     let mut high = crest_ft + 50.0;
     let mut best = high;
     for _ in 0..50 {
         let mid = 0.5 * (low + high);
-        let q_mid = weir_flow_us(cw_us, length_ft, mid, crest_ft);
+        let q_mid = weir_flow_us(cw_us, length_ft, mid, crest_ft, tw_ft);
         if q_mid < q_target_cfs {
             low = mid;
         } else {
@@ -1106,6 +1376,11 @@ pub fn solve_culvert(params: &CulvertSolveParams) -> CulvertSolveResult {
     };
 
     let default_weir_len_user = default_weir_length_user(&params);
+    let tw_ft = if params.units == UnitSystem::Metric {
+        params.tw_wsel / FT_TO_M
+    } else {
+        params.tw_wsel
+    };
     let (crest_ft, cw_us, length_ft) = if params.units == UnitSystem::Metric {
         (
             crest_user / FT_TO_M,
@@ -1151,7 +1426,7 @@ pub fn solve_culvert(params: &CulvertSolveParams) -> CulvertSolveResult {
             return assemble_culvert_result(&params, &last_barrel, q_barrel_total, 0.0, last_control);
         }
 
-        let q_weir_cfs = weir_flow_us(cw_us, length_ft, wsel_ft, crest_ft);
+        let q_weir_cfs = weir_flow_us(cw_us, length_ft, wsel_ft, crest_ft, tw_ft);
         let q_weir = if params.units == UnitSystem::Metric {
             q_weir_cfs * CFS_TO_CMS
         } else {
@@ -1184,7 +1459,7 @@ pub fn solve_culvert(params: &CulvertSolveParams) -> CulvertSolveResult {
     } else {
         last_barrel.wsel
     };
-    let q_weir_cfs = weir_flow_us(cw_us, length_ft, wsel_ft, crest_ft);
+    let q_weir_cfs = weir_flow_us(cw_us, length_ft, wsel_ft, crest_ft, tw_ft);
     let q_weir = if params.units == UnitSystem::Metric {
         q_weir_cfs * CFS_TO_CMS
     } else {
@@ -1334,6 +1609,10 @@ pub fn solve_culvert_wsel(
         skew_deg: 0.0,
         barrel_spans: None,
         barrel_rises: None,
+        custom_shape_tbl_y: None,
+        custom_shape_tbl_area: None,
+        custom_shape_tbl_perimeter: None,
+        custom_shape_tbl_top_width: None,
     };
     solve_culvert(&params).wsel
 }
@@ -1526,6 +1805,10 @@ mod tests {
             skew_deg: 0.0,
             barrel_spans: None,
             barrel_rises: None,
+            custom_shape_tbl_y: None,
+            custom_shape_tbl_area: None,
+            custom_shape_tbl_perimeter: None,
+            custom_shape_tbl_top_width: None,
         }
     }
 
@@ -1742,6 +2025,10 @@ mod tests {
             skew_deg: 0.0,
             barrel_spans: None,
             barrel_rises: None,
+            custom_shape_tbl_y: None,
+            custom_shape_tbl_area: None,
+            custom_shape_tbl_perimeter: None,
+            custom_shape_tbl_top_width: None,
         };
         let legacy = solve_culvert(&base).wsel;
         let mut projecting = base.clone();
@@ -1779,6 +2066,10 @@ mod tests {
             skew_deg: 0.0,
             barrel_spans: None,
             barrel_rises: None,
+            custom_shape_tbl_y: None,
+            custom_shape_tbl_area: None,
+            custom_shape_tbl_perimeter: None,
+            custom_shape_tbl_top_width: None,
         };
         let bed = CulvertSolveParams {
             z_up: 10.0,
@@ -1818,6 +2109,10 @@ mod tests {
             skew_deg: 0.0,
             barrel_spans: None,
             barrel_rises: None,
+            custom_shape_tbl_y: None,
+            custom_shape_tbl_area: None,
+            custom_shape_tbl_perimeter: None,
+            custom_shape_tbl_top_width: None,
         };
         let result = solve_culvert(&params);
         assert!(result.wsel > 14.0);
@@ -1853,6 +2148,10 @@ mod tests {
             skew_deg: 0.0,
             barrel_spans: None,
             barrel_rises: None,
+            custom_shape_tbl_y: None,
+            custom_shape_tbl_area: None,
+            custom_shape_tbl_perimeter: None,
+            custom_shape_tbl_top_width: None,
         };
         assert_eq!(solve_culvert(&params).control_type, "inlet");
 
@@ -1930,6 +2229,10 @@ mod tests {
             skew_deg: 0.0,
             barrel_spans: None,
             barrel_rises: None,
+            custom_shape_tbl_y: None,
+            custom_shape_tbl_area: None,
+            custom_shape_tbl_perimeter: None,
+            custom_shape_tbl_top_width: None,
         };
         let result = solve_culvert(&params);
         assert!(result.wsel < 20.0);
@@ -1965,6 +2268,10 @@ mod tests {
             skew_deg: 0.0,
             barrel_spans: None,
             barrel_rises: None,
+            custom_shape_tbl_y: None,
+            custom_shape_tbl_area: None,
+            custom_shape_tbl_perimeter: None,
+            custom_shape_tbl_top_width: None,
         };
         let result = solve_culvert(&params);
         assert_eq!(result.control_type, "inlet");
@@ -2006,6 +2313,10 @@ mod tests {
             skew_deg: 0.0,
             barrel_spans: None,
             barrel_rises: None,
+            custom_shape_tbl_y: None,
+            custom_shape_tbl_area: None,
+            custom_shape_tbl_perimeter: None,
+            custom_shape_tbl_top_width: None,
         };
         let flat = CulvertSolveParams {
             z_down: 10.0,
@@ -2062,6 +2373,10 @@ mod tests {
                 skew_deg: 0.0,
                 barrel_spans: None,
                 barrel_rises: None,
+                custom_shape_tbl_y: None,
+                custom_shape_tbl_area: None,
+                custom_shape_tbl_perimeter: None,
+                custom_shape_tbl_top_width: None,
             },
         };
         let curve = compute_culvert_rating_curve(&inputs);
@@ -2100,6 +2415,10 @@ mod tests {
             skew_deg: 0.0,
             barrel_spans: None,
             barrel_rises: None,
+            custom_shape_tbl_y: None,
+            custom_shape_tbl_area: None,
+            custom_shape_tbl_perimeter: None,
+            custom_shape_tbl_top_width: None,
         };
         let result = solve_culvert(&params);
         assert_eq!(result.control_type, "overtopping");
@@ -2146,6 +2465,10 @@ mod tests {
             skew_deg: 0.0,
             barrel_spans: None,
             barrel_rises: None,
+            custom_shape_tbl_y: None,
+            custom_shape_tbl_area: None,
+            custom_shape_tbl_perimeter: None,
+            custom_shape_tbl_top_width: None,
         };
         let mut skewed = base.clone();
         skewed.skew_deg = 30.0;
@@ -2184,6 +2507,10 @@ mod tests {
             skew_deg: 0.0,
             barrel_spans: None,
             barrel_rises: None,
+            custom_shape_tbl_y: None,
+            custom_shape_tbl_area: None,
+            custom_shape_tbl_perimeter: None,
+            custom_shape_tbl_top_width: None,
         };
         let mut blocked = base.clone();
         blocked.active_barrels = 1;
@@ -2219,10 +2546,18 @@ mod tests {
             skew_deg: 0.0,
             barrel_spans: Some(vec![8.0, 4.0]),
             barrel_rises: Some(vec![8.0, 4.0]),
+            custom_shape_tbl_y: None,
+            custom_shape_tbl_area: None,
+            custom_shape_tbl_perimeter: None,
+            custom_shape_tbl_top_width: None,
         };
         let equal_small = CulvertSolveParams {
             barrel_spans: None,
             barrel_rises: None,
+            custom_shape_tbl_y: None,
+            custom_shape_tbl_area: None,
+            custom_shape_tbl_perimeter: None,
+            custom_shape_tbl_top_width: None,
             ..small_only.clone()
         };
         let hw_mixed = solve_culvert(&small_only).wsel;
@@ -2264,10 +2599,18 @@ mod tests {
             skew_deg: 0.0,
             barrel_spans: None,
             barrel_rises: None,
+            custom_shape_tbl_y: None,
+            custom_shape_tbl_area: None,
+            custom_shape_tbl_perimeter: None,
+            custom_shape_tbl_top_width: None,
         };
         let explicit = CulvertSolveParams {
             barrel_spans: Some(vec![5.0, 5.0]),
             barrel_rises: Some(vec![5.0, 5.0]),
+            custom_shape_tbl_y: None,
+            custom_shape_tbl_area: None,
+            custom_shape_tbl_perimeter: None,
+            custom_shape_tbl_top_width: None,
             ..uniform.clone()
         };
         let hw_uniform = solve_culvert(&uniform).wsel;
@@ -2646,9 +2989,183 @@ mod tests {
             skew_deg: 0.0,
             barrel_spans: None,
             barrel_rises: None,
+            custom_shape_tbl_y: None,
+            custom_shape_tbl_area: None,
+            custom_shape_tbl_perimeter: None,
+            custom_shape_tbl_top_width: None,
         };
         let result = solve_culvert(&params);
         assert!(result.wsel > 1.2);
         assert_eq!(result.control_type, "overtopping");
+    }
+
+    #[test]
+    fn test_overtopping_with_submergence_reduces_weir_flow() {
+        // Case 1: Unsubmerged overtopping
+        let mut p1 = us_circular_baseline();
+        p1.crest_elev = Some(14.15);
+        p1.weir_coeff = 2.6;
+        p1.weir_length = 5.0;
+        p1.tw_wsel = 12.0; // below crest
+        let r1 = solve_culvert(&p1);
+
+        // Case 2: Submerged overtopping
+        let mut p2 = p1.clone();
+        p2.tw_wsel = 14.5; // above crest, creating submergence
+        let r2 = solve_culvert(&p2);
+
+        // Since the weir flow is submerged, it should be less efficient.
+        // Therefore, the upstream WSEL (r2.wsel) must be higher than r1.wsel to pass the same total flow (q = 100.0).
+        assert!(r2.wsel > r1.wsel, "Submerged WSEL {} should be higher than unsubmerged WSEL {}", r2.wsel, r1.wsel);
+
+        // Let's also verify that for the same headwater, weir flow is reduced under submergence.
+        // E.g. at wsel = 15.0:
+        // Unsubmerged weir flow (crest 14.15, tw 12.0)
+        let q_unsub = weir_flow_us(2.6, 5.0, 15.0, 14.15, 12.0);
+        // Submerged weir flow (crest 14.15, tw 14.4)
+        let q_sub = weir_flow_us(2.6, 5.0, 15.0, 14.15, 14.4);
+        assert!(q_sub < q_unsub, "Submerged weir flow {} should be less than unsubmerged {}", q_sub, q_unsub);
+    }
+
+    #[test]
+    fn test_custom_shape_matches_box() {
+        let mut ys = Vec::new();
+        let mut areas = Vec::new();
+        let mut perims = Vec::new();
+        let mut widths = Vec::new();
+        let steps = 40;
+        let dy = 4.0 / steps as f64;
+        for i in 0..=steps {
+            let y = i as f64 * dy;
+            ys.push(y);
+            areas.push(y * 6.0);
+            let p = if y >= 4.0 {
+                2.0 * 6.0 + 2.0 * 4.0
+            } else {
+                6.0 + 2.0 * y
+            };
+            perims.push(p);
+            let w = if y >= 4.0 {
+                0.0
+            } else {
+                6.0
+            };
+            widths.push(w);
+        }
+
+        let mut box_params = CulvertSolveParams {
+            q: 120.0,
+            shape_type: 1, // Box
+            inlet_type: 1,
+            span: 6.0,
+            rise: 4.0,
+            roughness_n: 0.013,
+            length: 80.0,
+            entrance_loss_coeff: 0.5,
+            exit_loss_coeff: 1.0,
+            z_down: 10.0,
+            z_up: 11.0,
+            tw_wsel: 13.0,
+            units: UnitSystem::USCustomary,
+            manning_n_bottom: 0.013,
+            depth_bottom_n: 0.0,
+            depth_blocked: 0.0,
+            ds_velocity: 0.0,
+            us_velocity: 0.0,
+            crest_elev: None,
+            weir_coeff: 0.0,
+            weir_length: 0.0,
+            num_barrels: 1,
+            active_barrels: 1,
+            skew_deg: 0.0,
+            barrel_spans: None,
+            barrel_rises: None,
+            custom_shape_tbl_y: None,
+            custom_shape_tbl_area: None,
+            custom_shape_tbl_perimeter: None,
+            custom_shape_tbl_top_width: None,
+        };
+
+        let mut custom_params = box_params.clone();
+        custom_params.shape_type = 7; // Custom
+        custom_params.custom_shape_tbl_y = Some(ys);
+        custom_params.custom_shape_tbl_area = Some(areas);
+        custom_params.custom_shape_tbl_perimeter = Some(perims);
+        custom_params.custom_shape_tbl_top_width = Some(widths);
+
+        // Test case 1: Partially full outlet flow (low tailwater)
+        let solved_box_part = solve_culvert(&box_params);
+        let solved_custom_part = solve_culvert(&custom_params);
+        assert_eq!(solved_box_part.control_type, solved_custom_part.control_type);
+        assert!((solved_box_part.wsel - solved_custom_part.wsel).abs() < 0.01);
+
+        // Test case 2: Fully submerged outlet flow (high tailwater)
+        box_params.tw_wsel = 16.0;
+        custom_params.tw_wsel = 16.0;
+        let solved_box_full = solve_culvert(&box_params);
+        let solved_custom_full = solve_culvert(&custom_params);
+        assert_eq!(solved_box_full.control_type, solved_custom_full.control_type);
+        assert!((solved_box_full.wsel - solved_custom_full.wsel).abs() < 0.01);
+
+        // Cover get_culvert_* wildcard Custom match arms
+        assert_eq!(get_culvert_area(CulvertShape::Custom, 6.0, 4.0, 2.0), 0.0);
+        assert_eq!(get_culvert_top_width(CulvertShape::Custom, 6.0, 4.0, 2.0), 0.0);
+        assert_eq!(get_culvert_perimeter(CulvertShape::Custom, 6.0, 4.0, 2.0), 0.0);
+
+        // Cover entrance_loss_coeff <= 0.2 branch in inlet_nomograph_coeffs for Custom
+        let coeffs_low = inlet_nomograph_coeffs(CulvertShape::Custom, 0, 0.1);
+        assert_eq!(coeffs_low.0, 0.026);
+
+        // Cover Metric unit scaling in CulvertGeometry
+        let mut metric_params = custom_params.clone();
+        metric_params.units = UnitSystem::Metric;
+        metric_params.span = 6.0 * FT_TO_M;
+        metric_params.rise = 4.0 * FT_TO_M;
+        metric_params.z_down = 10.0 * FT_TO_M;
+        metric_params.z_up = 11.0 * FT_TO_M;
+        metric_params.tw_wsel = 13.0 * FT_TO_M;
+        metric_params.q = 120.0 * CFS_TO_CMS;
+        metric_params.custom_shape_tbl_y = Some(custom_params.custom_shape_tbl_y.as_ref().unwrap().iter().map(|&val| val * FT_TO_M).collect());
+        metric_params.custom_shape_tbl_area = Some(custom_params.custom_shape_tbl_area.as_ref().unwrap().iter().map(|&val| val * FT_TO_M * FT_TO_M).collect());
+        metric_params.custom_shape_tbl_perimeter = Some(custom_params.custom_shape_tbl_perimeter.as_ref().unwrap().iter().map(|&val| val * FT_TO_M).collect());
+        metric_params.custom_shape_tbl_top_width = Some(custom_params.custom_shape_tbl_top_width.as_ref().unwrap().iter().map(|&val| val * FT_TO_M).collect());
+        let solved_metric = solve_culvert(&metric_params);
+        assert!(solved_metric.wsel > 0.0);
+
+        // Cover interpolate_custom none fields / empty / short table branches
+        let mut empty_params = custom_params.clone();
+        empty_params.custom_shape_tbl_y = None;
+        let geom_empty = CulvertGeometry::new(&empty_params, 6.0, 4.0);
+        assert_eq!(geom_empty.area(2.0), 0.0);
+
+        let mut none_fields = custom_params.clone();
+        none_fields.custom_shape_tbl_area = None;
+        none_fields.custom_shape_tbl_perimeter = None;
+        none_fields.custom_shape_tbl_top_width = None;
+        let geom_none = CulvertGeometry::new(&none_fields, 6.0, 4.0);
+        assert_eq!(geom_none.area(2.0), 0.0);
+        assert_eq!(geom_none.perimeter(2.0), 0.0);
+        assert_eq!(geom_none.top_width(2.0), 0.0);
+
+        let mut short_params = custom_params.clone();
+        short_params.custom_shape_tbl_y = Some(vec![0.0]);
+        let geom_short = CulvertGeometry::new(&short_params, 6.0, 4.0);
+        assert_eq!(geom_short.area(2.0), 0.0);
+
+        // Cover y <= d_b branch in effective_area, effective_top_width, effective_perimeter
+        let geom_test = CulvertGeometry::new(&custom_params, 6.0, 4.0);
+        assert_eq!(geom_test.effective_area(1.0, 2.0), 0.0);
+        assert_eq!(geom_test.effective_top_width(1.0, 2.0), 0.0);
+        assert_eq!(geom_test.effective_perimeter(1.0, 2.0), 0.0);
+
+        // Cover y <= d_b in composite_n
+        assert_eq!(geom_test.composite_n(1.0, 2.0, 0.013, 0.015, 1.0), 0.013);
+        assert_eq!(geom_test.composite_n(1.5, 0.0, 0.013, 0.015, 2.0), 0.015);
+
+        // Cover p_total <= 1e-9 in composite_n
+        let mut zero_perims = custom_params.clone();
+        zero_perims.custom_shape_tbl_perimeter = Some(vec![0.0; 41]);
+        let geom_zero_p = CulvertGeometry::new(&zero_perims, 6.0, 4.0);
+        assert_eq!(geom_zero_p.composite_n(2.0, 0.0, 0.013, 0.015, 1.0), 0.013);
     }
 }

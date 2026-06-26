@@ -226,6 +226,10 @@ fn calibrate_point_benchmarks_print() {
             skew_deg: 0.0,
             barrel_spans: None,
             barrel_rises: None,
+            custom_shape_tbl_y: None,
+            custom_shape_tbl_area: None,
+            custom_shape_tbl_perimeter: None,
+            custom_shape_tbl_top_width: None,
         });
         eprintln!(
             "{}: control={} wsel={:.3}",
@@ -267,6 +271,10 @@ fn test_culvert_point_benchmarks() {
             skew_deg: 0.0,
             barrel_spans: None,
             barrel_rises: None,
+            custom_shape_tbl_y: None,
+            custom_shape_tbl_area: None,
+            custom_shape_tbl_perimeter: None,
+            custom_shape_tbl_top_width: None,
         });
 
         assert_eq!(
