@@ -572,101 +572,7 @@ export interface BridgeRatingCurveResult {
   head_losses: number[];
 }
 
-/** Culvert fields accepted by `solveUnsteady` (same keys as `SteadyInputs`, API v7+). */
-export type UnsteadyCulvertInputs = Partial<
-  Pick<
-    SteadyInputs,
-    | 'culvert_stations'
-    | 'culvert_shape_types'
-    | 'culvert_spans'
-    | 'culvert_rises'
-    | 'culvert_roughness_ns'
-    | 'culvert_lengths'
-    | 'culvert_entrance_loss_coeffs'
-    | 'culvert_exit_loss_coeffs'
-    | 'culvert_barrels'
-    | 'culvert_roughness_n_bottoms'
-    | 'culvert_depth_bottom_ns'
-    | 'culvert_depth_blockeds'
-    | 'culvert_inlet_types'
-    | 'culvert_z_ups'
-    | 'culvert_z_downs'
-    | 'culvert_crest_elevs'
-    | 'culvert_weir_coeffs'
-    | 'culvert_weir_lengths'
-    | 'culvert_skew_angles'
-    | 'culvert_active_barrels'
-    | 'culvert_barrel_spans'
-    | 'culvert_barrel_rises'
-    | 'culvert_approach_reach_stations'
-    | 'culvert_departure_reach_stations'
-  >
->;
 
-export interface UnsteadyInputs extends UnsteadyCulvertInputs, BridgeArrays {
-  cross_sections: CrossSection[];
-  initial_wsel: number[];
-  initial_q: number[];
-  dt: number;
-  num_steps: number;
-  upstream_q_hydrograph: number[];
-  downstream_wsel_hydrograph: number[];
-  /** 0 = known WSEL hydrograph (default), 1 = critical depth, 2 = friction slope, 3 = rating curve */
-  downstream_bc_type?: number;
-  downstream_bc_slope?: number;
-  downstream_bc_rating_q?: number[];
-  downstream_bc_rating_wsel?: number[];
-  /** Reserved — upstream Q(t) remains default when omitted */
-  upstream_wsel_hydrograph?: number[];
-  upstream_bc_type?: number;
-  upstream_bc_slope?: number;
-  upstream_bc_rating_q?: number[];
-  upstream_bc_rating_wsel?: number[];
-  theta?: number;
-  num_slices?: number;
-  max_spacing?: number;
-  /** Same as `SteadyInputs.densify_reach_modifier_policy` — `equations.md` §H1. */
-  densify_reach_modifier_policy?: number;
-  coeff_contraction?: number;
-  coeff_expansion?: number;
-  /**
-   * Inline structure post-step coupling order when culverts and bridges are both present:
-   * 0 = combined downstream-first (default), 1 = culverts then bridges, 2 = bridges then culverts.
-   */
-  structure_coupling_order?: number;
-  /**
-   * Preissmann structure coupling (API v33+): 0 = post-step only (default),
-   * 1 = reserved (reach–structure–reach outer loop, not implemented),
-   * 2 = hybrid implicit + explicit fallback where needed.
-   */
-  unsteady_structure_coupling_mode?: number;
-}
-
-export interface UnsteadyResult {
-  wsel: number[][];
-  q: number[][];
-  velocity: number[][];
-  max_courant?: number;
-  recommended_dt?: number;
-  /** Present when culverts are modeled — [time_step][culvert_index] */
-  culvert_control_types?: CulvertControlType[][];
-  culvert_wsel_inlet?: number[][];
-  culvert_wsel_outlet?: number[][];
-  culvert_q_barrels?: number[][];
-  culvert_q_weirs?: number[][];
-  culvert_barrel_depths?: number[][];
-  culvert_barrel_velocities?: number[][];
-  culvert_barrel_froude?: number[][];
-  /** Present when bridges are modeled — [time_step][bridge_index] */
-  bridge_flow_regimes?: BridgeFlowRegime[][];
-  bridge_wsel_upstream?: number[][];
-  bridge_wsel_downstream?: number[][];
-  bridge_head_losses?: number[][];
-  /** Present when inline structures are modeled — one value per time step (API v34). */
-  structure_coupling_converged?: boolean[];
-  structure_implicit_interval_count?: number[];
-  structure_explicit_fallback_count?: number[];
-}
 
 export type BridgeFlowRegime = 'low_a' | 'low_b' | 'low_c' | 'pressure' | 'weir' | 'energy';
 
@@ -690,7 +596,6 @@ export interface WasmApiMetadata {
   };
   culvert_tier2a_fields: {
     steady_outputs: string[];
-    unsteady_outputs: string[];
     rating_curve_entry_point: string;
   };
   culvert_geometry_fields: {
@@ -698,18 +603,13 @@ export interface WasmApiMetadata {
   };
   bridge_fields: {
     inputs: string[];
-    unsteady_outputs: string[];
     flow_regimes: BridgeFlowRegime[];
     rating_curve_entry_point: string;
     /** Flattened keys for `computeBridgeRatingCurve` (not `bridge_*` prefixed). */
     rating_curve_inputs: string[];
     rating_curve_outputs: string[];
   };
-  structure_coupling_orders: WasmEnumEntry[];
-  /** API v33+ — Preissmann structure coupling mode (`unsteady_structure_coupling_mode`). */
-  unsteady_structure_coupling_modes: WasmEnumEntry[];
-  /** API v34 — per-step structure coupling diagnostics on `UnsteadyResult`. */
-  unsteady_structure_coupling_outputs: string[];
+
 }
 
 /** Module exports from `pkg/stream1d.js` after `wasm-pack build --target web` */
@@ -719,7 +619,6 @@ export interface Streams1dWasmModule {
   getWasmApiMetadata: () => WasmApiMetadata;
   validateSteadyInputs: (inputs: SteadyInputs) => SteadyValidationResult;
   solveSteady: (inputs: SteadyInputs) => SteadyResult;
-  solveUnsteady: (inputs: UnsteadyInputs) => UnsteadyResult;
   computeCulvertRatingCurve: (inputs: CulvertRatingCurveInputs) => CulvertRatingCurveResult;
   computeBridgeRatingCurve: (inputs: BridgeRatingCurveInputs) => BridgeRatingCurveResult;
 }

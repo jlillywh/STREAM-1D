@@ -142,17 +142,6 @@ fn culvert_length_user_steady(
         .unwrap_or(0.0)
 }
 
-fn culvert_length_user_unsteady(
-    c: &crate::solvers::unsteady::UnsteadyCulvertInputs,
-    c_idx: usize,
-) -> f64 {
-    c.culvert_lengths
-        .as_ref()
-        .and_then(|v| v.get(c_idx))
-        .copied()
-        .unwrap_or(0.0)
-}
-
 fn approach_reach_user_steady(
     inputs: &crate::solvers::steady::SteadyInputs,
     c_idx: usize,
@@ -175,40 +164,12 @@ fn departure_reach_user_steady(
         .copied()
 }
 
-fn approach_reach_user_unsteady(
-    c: &crate::solvers::unsteady::UnsteadyCulvertInputs,
-    c_idx: usize,
-) -> Option<f64> {
-    c.culvert_approach_reach_stations
-        .as_ref()
-        .and_then(|v| v.get(c_idx))
-        .copied()
-}
-
-fn departure_reach_user_unsteady(
-    c: &crate::solvers::unsteady::UnsteadyCulvertInputs,
-    c_idx: usize,
-) -> Option<f64> {
-    c.culvert_departure_reach_stations
-        .as_ref()
-        .and_then(|v| v.get(c_idx))
-        .copied()
-}
-
 pub fn culvert_has_explicit_bounds_steady(
     inputs: &crate::solvers::steady::SteadyInputs,
     c_idx: usize,
 ) -> bool {
     approach_reach_user_steady(inputs, c_idx).is_some()
         || departure_reach_user_steady(inputs, c_idx).is_some()
-}
-
-pub fn culvert_has_explicit_bounds_unsteady(
-    c: &crate::solvers::unsteady::UnsteadyCulvertInputs,
-    c_idx: usize,
-) -> bool {
-    approach_reach_user_unsteady(c, c_idx).is_some()
-        || departure_reach_user_unsteady(c, c_idx).is_some()
 }
 
 /// Insert US/DS bounding nodes and return culvert interval index per culvert.
@@ -271,74 +232,7 @@ pub fn apply_culvert_reach_layout_steady(
         .collect()
 }
 
-pub fn apply_culvert_reach_layout_unsteady(
-    inputs: &crate::solvers::unsteady::UnsteadyInputs,
-    raw_units: UnitSystem,
-    num_slices: usize,
-    stations: &mut Vec<f64>,
-    tables: &mut Vec<GeometryTable>,
-    z_mins: &mut Vec<f64>,
-    xs: &mut Vec<CrossSection>,
-    y_current: &mut Vec<f64>,
-    q_current: &mut Vec<f64>,
-) -> Vec<Option<usize>> {
-    let c = &inputs.culvert;
-    let Some(ref centers) = c.culvert_stations else {
-        return vec![];
-    };
 
-    let mut all_cuts = Vec::new();
-    let mut face_list = Vec::with_capacity(centers.len());
-
-    for (c_idx, &center) in centers.iter().enumerate() {
-        let faces = resolve_culvert_face_stations_metric(
-            center,
-            raw_units,
-            approach_reach_user_unsteady(c, c_idx),
-            departure_reach_user_unsteady(c, c_idx),
-            culvert_length_user_unsteady(c, c_idx),
-        );
-        face_list.push(faces);
-        if culvert_has_explicit_bounds_unsteady(c, c_idx) {
-            all_cuts.extend(layout_cuts_for_culvert(faces));
-        }
-    }
-
-    if !all_cuts.is_empty() {
-        let densify_policy =
-            DensifyReachModifierPolicy::from_option(inputs.densify_reach_modifier_policy);
-        let mut xs_opt: Vec<Option<CrossSection>> = xs.iter().cloned().map(Some).collect();
-        insert_reach_layout_cuts(
-            stations,
-            tables,
-            z_mins,
-            &mut xs_opt,
-            &all_cuts,
-            num_slices,
-            densify_policy,
-            raw_units,
-            &mut [y_current, q_current],
-        );
-        xs.clear();
-        xs.extend(xs_opt.into_iter().enumerate().map(|(idx, opt)| {
-            let mut section = opt.expect("unsteady reach grid requires a cross-section at every node");
-            section.station = stations[idx];
-            section
-        }));
-    }
-
-    face_list
-        .iter()
-        .enumerate()
-        .map(|(c_idx, faces)| {
-            if culvert_has_explicit_bounds_unsteady(c, c_idx) {
-                find_culvert_face_interval(*faces, stations)
-            } else {
-                fallback_culvert_interval(*faces, centers[c_idx], raw_units, stations)
-            }
-        })
-        .collect()
-}
 
 fn fallback_culvert_interval(
     faces: CulvertFaceStations,
@@ -593,71 +487,5 @@ mod tests {
         assert!(!culvert_has_explicit_bounds_steady(&crate::solvers::steady::SteadyInputs::default(), 0));
     }
 
-    #[test]
-    fn apply_layout_unsteady_inserts_bounding_nodes() {
-        let mut stations = vec![600.0, 400.0, 200.0];
-        let mut tables: Vec<GeometryTable> = stations
-            .iter()
-            .map(|_| flat_xs(0.0).generate_lookup_table(20))
-            .collect();
-        let mut z_mins: Vec<f64> = stations.iter().map(|_| 0.0).collect();
-        let mut xs: Vec<CrossSection> = stations.iter().map(|&st| flat_xs(st)).collect();
-        let mut y_current = vec![3.0; stations.len()];
-        let mut q_current = vec![10.0; stations.len()];
 
-        let inputs = crate::solvers::unsteady::UnsteadyInputs {
-            cross_sections: xs.clone(),
-            initial_wsel: y_current.clone(),
-            initial_q: q_current.clone(),
-            dt: 60.0,
-            num_steps: 1,
-            upstream_q_hydrograph: vec![10.0],
-            downstream_wsel_hydrograph: vec![3.0],
-            theta: Some(0.6),
-            num_slices: Some(20),
-            coeff_contraction: Some(0.1),
-            coeff_expansion: Some(0.3),
-            culvert: crate::solvers::unsteady::UnsteadyCulvertInputs {
-                culvert_stations: Some(vec![500.0]),
-                culvert_lengths: Some(vec![100.0]),
-                culvert_approach_reach_stations: Some(vec![550.0]),
-                culvert_departure_reach_stations: Some(vec![450.0]),
-                ..Default::default()
-            },
-            bridge: Default::default(),
-            structure_coupling_order: None,
-            unsteady_structure_coupling_mode: None,
-            max_spacing: None,
-            densify_reach_modifier_policy: None,
-            downstream_bc_type: None,
-            downstream_bc_slope: None,
-            downstream_bc_rating_q: None,
-            downstream_bc_rating_wsel: None,
-            upstream_wsel_hydrograph: None,
-            upstream_bc_type: None,
-            upstream_bc_slope: None,
-            upstream_bc_rating_q: None,
-            upstream_bc_rating_wsel: None,
-        };
-
-        let intervals = apply_culvert_reach_layout_unsteady(
-            &inputs,
-            UnitSystem::Metric,
-            20,
-            &mut stations,
-            &mut tables,
-            &mut z_mins,
-            &mut xs,
-            &mut y_current,
-            &mut q_current,
-        );
-
-        assert_eq!(intervals.len(), 1);
-        assert!(intervals[0].is_some());
-        assert!(stations.iter().any(|&s| (s - 550.0).abs() < 1e-6));
-        assert!(stations.iter().any(|&s| (s - 450.0).abs() < 1e-6));
-        assert_eq!(xs.len(), stations.len());
-        assert_eq!(y_current.len(), stations.len());
-        assert_eq!(q_current.len(), stations.len());
-    }
 }

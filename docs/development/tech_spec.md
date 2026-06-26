@@ -7,24 +7,23 @@ How STREAM-1D fits into web apps and batch pipelines. Solver usage: [README](../
 Stateless Rust core — no project DB or file I/O. Host owns persistence, GIS, and HEC import; calls WASM or Python per solve.
 
 ```text
-UI thread  →  JSON / typed arrays  →  Worker  →  WASM (geometry + steady/unsteady)
-                ←  result arrays  ←
+UI thread  →  JSON / typed arrays  →  Worker  →  WASM (geometry + steady)
 ```
 
 ## Scope (integrators)
 
-| Feature | Steady | Unsteady |
-|---------|--------|----------|
-| Single reach | Yes | Yes |
-| Culverts / bridges | Yes | Yes — coupling modes 0–4 ([`unsteady_structure_coupling.md`](unsteady_structure_coupling.md)) |
-| One tributary junction | Yes (subcritical) | No |
-| Networks, 2D, sediment | No | No |
+| Feature | Supported |
+|---------|-----------|
+| Single reach | Yes |
+| Culverts / bridges | Yes |
+| One tributary junction | Yes (subcritical) |
+| Networks, 2D, sediment | No |
 
 Merge split HEC main stems into one `cross_sections` array; pass tributary via `tributary_cross_sections` + `junction_main_station`.
 
 ## WASM entry points
 
-`solveSteady`, `solveUnsteady`, `computeCulvertRatingCurve`, `computeBridgeRatingCurve`, `validateSteadyInputs`, `getWasmApiMetadata`.
+`solveSteady`, `computeCulvertRatingCurve`, `computeBridgeRatingCurve`, `validateSteadyInputs`, `getWasmApiMetadata`.
 
 Check `api_version` on upgrade ([`api_changelog.md`](../reference/api_changelog.md)). Types: [`wasm_api.types.ts`](../wasm_api.types.ts).
 

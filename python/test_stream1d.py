@@ -73,24 +73,6 @@ def test_steady_inputs_culvert_geometry_serialization():
     assert d['culvert_barrel_spans'] == [[8.0, 6.0]]
     assert d['culvert_shape_types'] == [4]
 
-def test_unsteady_inputs_culvert_serialization():
-    xs = st.CrossSection(100.0, [0.0, 10.0], [1.0, 1.0], [0.0], [0.035])
-    inputs = st.UnsteadyInputs(
-        cross_sections=[xs, st.CrossSection(0.0, [0.0, 10.0], [0.0, 0.0], [0.0], [0.035])],
-        initial_wsel=[2.0, 1.0],
-        initial_q=[10.0, 10.0],
-        dt=60.0,
-        num_steps=2,
-        upstream_q_hydrograph=[10.0, 10.0],
-        downstream_wsel_hydrograph=[1.0, 1.0],
-        culvert_stations=[50.0],
-        culvert_spans=[2.0],
-        culvert_rises=[2.0],
-    )
-    d = inputs.to_dict()
-    assert d['culvert_stations'] == [50.0]
-    assert d['culvert_spans'] == [2.0]
-
 def test_solve_steady_dict():
     payload = {
         'cross_sections': [
@@ -105,48 +87,6 @@ def test_solve_steady_dict():
     res = st.solve_steady(payload)
     assert 'wsel' in res
     assert len(res['wsel']) == 2
-
-def test_solve_unsteady_object():
-    xs1000 = st.CrossSection(1000.0, [0.0, 0.0, 10.0, 10.0], [6.0, 1.0, 1.0, 6.0], [0.0], [0.02], "Metric")
-    xs500 = st.CrossSection(500.0, [0.0, 0.0, 10.0, 10.0], [5.5, 0.5, 0.5, 5.5], [0.0], [0.02], "Metric")
-    xs0 = st.CrossSection(0.0, [0.0, 0.0, 10.0, 10.0], [5.0, 0.0, 0.0, 5.0], [0.0], [0.02], "Metric")
-
-    inputs = st.UnsteadyInputs(
-        cross_sections=[xs1000, xs500, xs0],
-        initial_wsel=[2.0, 1.5, 1.0],
-        initial_q=[14.0, 14.0, 14.0],
-        dt=60.0,
-        num_steps=5,
-        upstream_q_hydrograph=[14.0] * 5,
-        downstream_wsel_hydrograph=[1.0] * 5,
-        theta=0.6,
-        num_slices=50
-    )
-    res = st.solve_unsteady(inputs)
-    assert 'wsel' in res
-    assert 'q' in res
-    assert len(res['wsel']) == 5
-    assert len(res['wsel'][0]) == 3
-
-def test_solve_unsteady_dict():
-    payload = {
-        'cross_sections': [
-            {'station': 1000.0, 'x': [0.0, 0.0, 10.0, 10.0], 'y': [6.0, 1.0, 1.0, 6.0], 'n_stations': [0.0], 'n_values': [0.02], 'unit_system': 'Metric'},
-            {'station': 500.0, 'x': [0.0, 0.0, 10.0, 10.0], 'y': [5.5, 0.5, 0.5, 5.5], 'n_stations': [0.0], 'n_values': [0.02], 'unit_system': 'Metric'},
-            {'station': 0.0, 'x': [0.0, 0.0, 10.0, 10.0], 'y': [5.0, 0.0, 0.0, 5.0], 'n_stations': [0.0], 'n_values': [0.02], 'unit_system': 'Metric'}
-        ],
-        'initial_wsel': [2.0, 1.5, 1.0],
-        'initial_q': [14.0, 14.0, 14.0],
-        'dt': 60.0,
-        'num_steps': 5,
-        'upstream_q_hydrograph': [14.0] * 5,
-        'downstream_wsel_hydrograph': [1.0] * 5,
-        'theta': 0.6,
-        'num_slices': 50
-    }
-    res = st.solve_unsteady(payload)
-    assert 'wsel' in res
-    assert len(res['wsel']) == 5
 
 def test_solve_steady_integrated_bridge():
     # Simple reach: stations 200, 100, 0
@@ -372,23 +312,7 @@ def test_steady_inputs_bridge_abutment_per_side_serialization():
     assert d['bridge_abutment_right_top_elevations'] == [2.5]
     assert d['bridge_abutment_left_top_profile_stations'] == [[0.0, 1.0]]
 
-def test_unsteady_inputs_bridge_abutment_per_side_serialization():
-    xs = st.CrossSection(100.0, [0.0, 0.0, 10.0, 10.0], [5.0, 0.0, 0.0, 5.0], [0.0], [0.03], 'Metric')
-    inputs = st.UnsteadyInputs(
-        cross_sections=[xs, st.CrossSection(0.0, [0.0, 0.0, 10.0, 10.0], [5.0, 0.0, 0.0, 5.0], [0.0], [0.03], 'Metric')],
-        initial_wsel=[2.0, 1.5],
-        initial_q=[15.0, 15.0],
-        dt=60.0,
-        num_steps=2,
-        upstream_q_hydrograph=[15.0, 15.0],
-        downstream_wsel_hydrograph=[1.5, 1.5],
-        bridge_stations=[50.0],
-        bridge_low_chords=[5.0],
-        bridge_high_chords=[7.0],
-        bridge_abutment_left_widths=[3.0],
-    )
-    d = inputs.to_dict()
-    assert d['bridge_abutment_left_widths'] == [3.0]
+
 
 def test_compute_bridge_rating_curve_per_side_abutments():
     asymmetric = st.compute_bridge_rating_curve({

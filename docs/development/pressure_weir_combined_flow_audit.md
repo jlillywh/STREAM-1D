@@ -16,11 +16,10 @@ Expected differences vs HEC-RAS 6.x 1D high flow (pressure, weir, combined). Imp
 | Opening area under haunched deck | Scalar `profile_opening_area_factor` | Not WSEL-dependent along profile |
 | Sluice/orifice switch | Global switch at **max** low chord | Uniform deck aligned; haunched deck simplified |
 | Energy fallback / submergence cap | Opening energy only; no vents/weir | When `max_weir_submergence` exceeded or method = energy |
-| Unsteady bridge coupling | Post-step `solve_bridge_coupled` (modes 0–4) | Not in network implicit Jacobian |
 
 ## Out of scope
 
-Standalone inline weirs, multi-reach unsteady bridge networks, native `.g01` import (host responsibility).
+Standalone inline weirs, native `.g01` import (host responsibility).
 
 ## Verification
 

@@ -21,12 +21,7 @@ pub(crate) fn bridge_rating_curve_json(inputs_json: &str) -> Result<String, Stri
     serde_json::to_string(&result).map_err(|e| format!("Failed to serialize BridgeRatingCurveResult: {}", e))
 }
 
-pub(crate) fn unsteady_result_json(inputs_json: &str) -> Result<String, String> {
-    let inputs: crate::solvers::UnsteadyInputs =
-        serde_json::from_str(inputs_json).map_err(|e| format!("Failed to parse UnsteadyInputs JSON: {}", e))?;
-    let result = crate::solvers::solve_unsteady(&inputs);
-    serde_json::to_string(&result).map_err(|e| format!("Failed to serialize UnsteadyResult: {}", e))
-}
+
 
 pub(crate) fn validate_steady_inputs_json(inputs_json: &str) -> Result<String, String> {
     let inputs: crate::solvers::SteadyInputs =
@@ -57,8 +52,7 @@ mod tests {
         let bridge_json = r#"{"q_values":[15.0],"low_chord":5.0,"high_chord":7.0,"z_down":0.0,"z_up":0.0,"tw_wsel":2.5,"units":"Metric","low_flow_method":3,"channel_width":10.0,"manning_n":0.03}"#;
         assert!(bridge_rating_curve_json(bridge_json).unwrap().contains("flow_regimes"));
 
-        let unsteady_json = r#"{"cross_sections":[{"station":100.0,"x":[0.0,10.0],"y":[0.0,0.0],"n_stations":[0.0],"n_values":[0.03],"unit_system":"Metric"},{"station":0.0,"x":[0.0,10.0],"y":[0.0,0.0],"n_stations":[0.0],"n_values":[0.03],"unit_system":"Metric"}],"initial_wsel":[2.0,1.0],"initial_q":[10.0,10.0],"dt":60.0,"num_steps":2,"upstream_q_hydrograph":[10.0,10.0],"downstream_wsel_hydrograph":[1.0,1.0]}"#;
-        assert!(unsteady_result_json(unsteady_json).unwrap().contains("\"wsel\""));
+
     }
 
     #[test]
@@ -71,7 +65,6 @@ mod tests {
         assert!(err.contains("Failed to parse CulvertRatingCurveInputs JSON"));
         let err = bridge_rating_curve_json("{").unwrap_err();
         assert!(err.contains("Failed to parse BridgeRatingCurveInputs JSON"));
-        let err = unsteady_result_json("{").unwrap_err();
-        assert!(err.contains("Failed to parse UnsteadyInputs JSON"));
+
     }
 }

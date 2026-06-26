@@ -92,23 +92,6 @@ pub fn compute_bridge_rating_curve_wasm(inputs_val: JsValue) -> Result<JsValue, 
         })
 }
 
-/// WebAssembly entrypoint to run an unsteady-state hydraulic routing simulation.
-/// Receives a serialized `UnsteadyInputs` JS object and returns an `UnsteadyResult` JS object.
-#[wasm_bindgen(js_name = solveUnsteady)]
-pub fn solve_unsteady_wasm(inputs_val: JsValue) -> Result<JsValue, JsValue> {
-    let inputs: crate::solvers::UnsteadyInputs = serde_wasm_bindgen::from_value(inputs_val)
-        .map_err(|e| JsValue::from_str(&format!("Failed to parse UnsteadyInputs: {}", e)))?;
-    let json = serde_json::to_string(&inputs)
-        .map_err(|e| JsValue::from_str(&format!("Failed to serialize UnsteadyInputs: {}", e)))?;
-    let out_json = json_api::unsteady_result_json(&json)
-        .map_err(|e| JsValue::from_str(&e))?;
-    serde_json::from_str(&out_json)
-        .map_err(|e| JsValue::from_str(&format!("Failed to parse UnsteadyResult: {}", e)))
-        .and_then(|v: serde_json::Value| {
-            serde_wasm_bindgen::to_value(&v)
-                .map_err(|e| JsValue::from_str(&format!("Failed to serialize UnsteadyResult: {}", e)))
-        })
-}
 
 #[cfg(test)]
 mod tests {

@@ -1,8 +1,8 @@
 # Python usage
 
-Install: see [README](../README.md#python). `SteadyInputs` / `UnsteadyInputs` field names match [`docs/wasm_api.types.ts`](../wasm_api.types.ts).
+Install: see [README](../README.md#python). `SteadyInputs` field names match [`docs/wasm_api.types.ts`](../wasm_api.types.ts).
 
-## Steady and unsteady examples
+## Steady example
 
 ```python
 import stream1d as st
@@ -48,22 +48,6 @@ inputs = st.SteadyInputs(
 # 3. Solve steady profile
 steady_results = st.solve_steady(inputs)
 print("Steady WSELs:", steady_results["wsel"])
-
-# 4. Configure and solve unsteady routing
-unsteady_inputs = st.UnsteadyInputs(
-    cross_sections=[xs1000, xs500, xs0],
-    initial_wsel=[2.0, 1.5, 1.0],
-    initial_q=[14.0, 14.0, 14.0],
-    dt=60.0,
-    num_steps=5,
-    upstream_q_hydrograph=[14.0] * 5,
-    downstream_wsel_hydrograph=[1.0] * 5,
-    theta=0.6,
-    num_slices=100
-)
-
-unsteady_results = st.solve_unsteady(unsteady_inputs)
-print("Unsteady final step WSELs:", unsteady_results["wsel"][-1])
 ```
 
 ## Culvert example
@@ -96,37 +80,7 @@ print("Culvert control:", results.get("culvert_control_types"))
 print("Diagnostics:", results.get("culvert_wsel_inlet"), results.get("culvert_q_barrels"))
 ```
 
-## Unsteady culvert
-
-```python
-unsteady_culvert = st.UnsteadyInputs(
-    cross_sections=[xs1000, xs500, xs0],
-    initial_wsel=[2.5, 2.0, 1.5],
-    initial_q=[20.0, 20.0, 20.0],
-    dt=60.0,
-    num_steps=3,
-    upstream_q_hydrograph=[20.0] * 3,
-    downstream_wsel_hydrograph=[1.5] * 3,
-    theta=0.6,
-    num_slices=50,
-    culvert_stations=[250.0],
-    culvert_shape_types=[st.CULVERT_SHAPE_CIRCULAR],
-    culvert_spans=[2.0],
-    culvert_rises=[2.0],
-    culvert_roughness_ns=[0.013],
-    culvert_lengths=[30.0],
-    culvert_entrance_loss_coeffs=[0.5],
-    culvert_exit_loss_coeffs=[1.0],
-    culvert_barrels=[1],
-    culvert_inlet_types=[1],
-)
-unsteady_res = st.solve_unsteady(unsteady_culvert)
-print(unsteady_res["wsel"][-1])
-print("Culvert control:", unsteady_res.get("culvert_control_types", [])[-1])
-print("Barrel Q:", unsteady_res.get("culvert_q_barrels", [])[-1])
-```
-
-`SteadyInputs` and `UnsteadyInputs` use the same culvert field names as the JSON schema. Unsteady culvert diagnostics match steady keys, shaped as `[time_step][culvert_index]`. Shape constants: `st.CULVERT_SHAPE_CIRCULAR` (0) through `st.CULVERT_SHAPE_HORSESHOE` (6).
+`SteadyInputs` uses the same culvert field names as the JSON schema. Shape constants: `st.CULVERT_SHAPE_CIRCULAR` (0) through `st.CULVERT_SHAPE_HORSESHOE` (6).
 
 ## Bridge abutments
 

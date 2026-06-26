@@ -1,5 +1,4 @@
 pub mod steady;
-pub mod unsteady;
 pub mod culvert;
 pub mod bridge;
 pub mod bridge_abutment;
@@ -21,4 +20,3 @@ pub use culvert::{
 };
 pub use bridge_validation::{validate_steady_inputs, SteadyValidationResult};
 pub use steady::{solve_steady, SteadyInputs, SteadyResult};
-pub use unsteady::{solve_unsteady, UnsteadyInputs, UnsteadyResult};

@@ -12,7 +12,6 @@ One canonical source per topic — link here instead of duplicating tables in RE
 | Physics & modifiers §H0–§H1 | [`reference/equations.md`](reference/equations.md) |
 | HEC-RAS scope & gaps | [`reference/hecras_parity.md`](reference/hecras_parity.md) |
 | Tests & verification | [`development/testing.md`](development/testing.md), [`../verification/`](../verification/) |
-| Unsteady structure coupling (modes 0–4) | [`development/unsteady_structure_coupling.md`](development/unsteady_structure_coupling.md) |
 | Bridge pier / deck / ice / reverse flow | [`development/bridge_extensions.md`](development/bridge_extensions.md) |
 | BU/BD interior cuts & opening frames | [`BRIDGE_INTERIOR_SECTIONS_API.md`](BRIDGE_INTERIOR_SECTIONS_API.md) |
 | Roadway embankment compose (v26) | [`development/roadway_embankment_unified.md`](development/roadway_embankment_unified.md) |

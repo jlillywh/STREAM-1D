@@ -3,7 +3,6 @@
 use crate::geometry::BlockedObstruction;
 use crate::solvers::bridge::BridgeSolveParams;
 use crate::solvers::steady::SteadyInputs;
-use crate::solvers::unsteady::UnsteadyBridgeInputs;
 
 /// Piecewise polyline in opening coordinates (stations monotonic increasing, ≥ 2 points).
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq)]
@@ -511,13 +510,7 @@ pub fn steady_composed_embankment_blocked(
     composed_embankment_blocked_for(&inputs.bridge_composed_embankment_blocked, b_idx).cloned()
 }
 
-/// Opening-frame blocked profiles for bridge `b_idx` after unsteady compose (if any).
-pub fn unsteady_composed_embankment_blocked(
-    bridge: &crate::solvers::unsteady::UnsteadyBridgeInputs,
-    b_idx: usize,
-) -> Option<ComposedEmbankmentBlocked> {
-    composed_embankment_blocked_for(&bridge.bridge_composed_embankment_blocked, b_idx).cloned()
-}
+
 
 /// Opening-frame blocked profiles after rating-curve compose (if any).
 pub fn rating_composed_embankment_blocked(
@@ -589,68 +582,7 @@ pub fn composed_steady_inputs(inputs: &SteadyInputs) -> SteadyInputs {
     c
 }
 
-pub fn needs_roadway_compose_unsteady(bridge: &UnsteadyBridgeInputs) -> bool {
-    bridge
-        .bridge_roadway_embankments
-        .as_ref()
-        .is_some_and(|v| v.iter().any(Option::is_some))
-}
 
-pub fn composed_unsteady_inputs(inputs: &crate::solvers::unsteady::UnsteadyInputs) -> crate::solvers::unsteady::UnsteadyInputs {
-    if !needs_roadway_compose_unsteady(&inputs.bridge) {
-        return inputs.clone();
-    }
-    let mut c = inputs.clone();
-    apply_roadway_embankment_compose_unsteady(&mut c.bridge);
-    c
-}
-
-pub fn apply_roadway_embankment_compose_unsteady(bridge: &mut UnsteadyBridgeInputs) {
-    let Some(embankments) = bridge.bridge_roadway_embankments.clone() else {
-        return;
-    };
-    let blocked_out = bridge
-        .bridge_composed_embankment_blocked
-        .get_or_insert_with(Vec::new);
-    for (b_idx, emb) in embankments.iter().enumerate() {
-        let Some(emb) = emb else { continue };
-        let composed = compose_one_bridge(
-            emb,
-            b_idx,
-            &mut bridge.bridge_deck_stations,
-            &mut bridge.bridge_deck_low_elevations,
-            &mut bridge.bridge_deck_high_elevations,
-            &mut bridge.bridge_low_chords,
-            &mut bridge.bridge_high_chords,
-            &mut bridge.bridge_abutment_left_widths,
-            &mut bridge.bridge_abutment_right_widths,
-            &mut bridge.bridge_abutment_left_stations,
-            &mut bridge.bridge_abutment_right_stations,
-            &mut bridge.bridge_abutment_left_top_elevations,
-            &mut bridge.bridge_abutment_right_top_elevations,
-            &mut bridge.bridge_abutment_left_top_profile_stations,
-            &mut bridge.bridge_abutment_left_top_profile_elevations,
-            &mut bridge.bridge_abutment_right_top_profile_stations,
-            &mut bridge.bridge_abutment_right_top_profile_elevations,
-            &mut bridge.bridge_ineffective_left_stations_upstream,
-            &mut bridge.bridge_ineffective_left_elevations_upstream,
-            &mut bridge.bridge_ineffective_right_stations_upstream,
-            &mut bridge.bridge_ineffective_right_elevations_upstream,
-            &mut bridge.bridge_ineffective_left_stations_downstream,
-            &mut bridge.bridge_ineffective_left_elevations_downstream,
-            &mut bridge.bridge_ineffective_right_stations_downstream,
-            &mut bridge.bridge_ineffective_right_elevations_downstream,
-            &mut bridge.bridge_ineffective_left_stations,
-            &mut bridge.bridge_ineffective_left_elevations,
-            &mut bridge.bridge_ineffective_right_stations,
-            &mut bridge.bridge_ineffective_right_elevations,
-        );
-        ensure_bridge_index(blocked_out, b_idx, None);
-        if composed.left.is_some() || composed.right.is_some() {
-            blocked_out[b_idx] = Some(composed);
-        }
-    }
-}
 
 fn params_ineffective_nested(stations: &Option<Vec<f64>>, scalar: Option<f64>) -> Option<Vec<Vec<f64>>> {
     if let Some(v) = stations.as_ref().filter(|v| !v.is_empty()) {
@@ -1247,40 +1179,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn unsteady_compose_matches_steady_flat_fields() {
-        use crate::solvers::unsteady::UnsteadyBridgeInputs;
 
-        let emb = Some(sample_embankment());
-        let mut steady = SteadyInputs {
-            bridge_stations: Some(vec![500.0]),
-            bridge_roadway_embankments: Some(vec![emb.clone()]),
-            ..Default::default()
-        };
-        apply_roadway_embankment_compose_steady(&mut steady);
-
-        let mut bridge = UnsteadyBridgeInputs {
-            bridge_stations: Some(vec![500.0]),
-            bridge_roadway_embankments: Some(vec![emb]),
-            ..Default::default()
-        };
-        apply_roadway_embankment_compose_unsteady(&mut bridge);
-
-        assert_eq!(
-            steady.bridge_deck_stations, bridge.bridge_deck_stations,
-            "deck stations"
-        );
-        assert_eq!(
-            steady.bridge_ineffective_left_stations_upstream,
-            bridge.bridge_ineffective_left_stations_upstream,
-            "upstream ineffective"
-        );
-        assert_eq!(
-            steady.bridge_composed_embankment_blocked,
-            bridge.bridge_composed_embankment_blocked,
-            "composed blocked cache"
-        );
-    }
 
     #[test]
     fn rating_curve_params_compose() {

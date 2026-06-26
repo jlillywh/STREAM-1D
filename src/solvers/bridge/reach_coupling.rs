@@ -1,4 +1,4 @@
-//! Shared bridge reach coupling helpers (steady + unsteady DRY).
+//! Shared bridge reach coupling helpers (DRY).
 
 use crate::geometry::{CrossSection, GeometryTable, IneffectiveFlowAreas};
 use crate::solvers::bridge_abutment::abutment_user_input_from_steady;
@@ -14,8 +14,7 @@ use super::ice_debris::ice_debris_params_for_bridge;
 use super::section::BridgeFrictionWeighting;
 use super::types::BridgeCouplingParams;
 
-/// Per-bridge array fields shared between [`SteadyInputs`](crate::solvers::steady::SteadyInputs)
-/// and [`UnsteadyBridgeInputs`](crate::solvers::unsteady::UnsteadyBridgeInputs).
+/// Per-bridge array fields.
 pub struct BridgeReachFields<'a> {
     pub low_chords: &'a Option<Vec<f64>>,
     pub high_chords: &'a Option<Vec<f64>>,

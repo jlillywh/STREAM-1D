@@ -15,14 +15,13 @@ This repository is the **stateless solve core** (geometry arrays in, profile arr
 | Cross-sections | Polylines, composite *n*, overbank subdivision, blocked obstructions, ineffective flow, guide banks |
 | Culverts | FHWA inlet/outlet, 7 shape families, multi-barrel, skew, overtopping, blockage |
 | Bridges | Class A/B/C, Yarnell/momentum/energy/WSPRO, pressure/weir, deck profiles, abutments, BU/BD cuts, piers (v27–v29), ice/debris (v32), reverse rating (v31) |
-| Unsteady | Single reach, Preissmann; inline culverts/bridges; coupling modes 0–4 (mode **4** for culvert backwater) |
 
 ## Major gaps
 
 | HEC-RAS | STREAM-1D |
 |---------|-----------|
 | 2D / coupled 1D–2D | **1D only** |
-| Multi-reach unsteady networks | **Single reach** |
+| Multi-reach networks | Single reach; one tributary junction |
 | Storage, pumps, gates, lateral structures | Not modeled |
 | Standalone inline weirs | Bridge/culvert roadway weir only |
 | Culvert reverse flow | Not modeled |
@@ -44,9 +43,6 @@ HEC pier editor → flat JSON. Full field list: [`bridge_extensions.md`](develop
 
 Not modeled: per-pier shape, fenders, wing walls.
 
-## Unsteady structure coupling
-
-Default mode **0** (post-step). Mode **2** hybrid implicit; mode **4** quasi-steady particular for culvert pools. Details: [`development/unsteady_structure_coupling.md`](development/unsteady_structure_coupling.md), [README § Unsteady flow](../README.md#unsteady-flow-and-water-surface-elevation).
 
 ## High-flow bridge deltas
 
@@ -56,10 +52,7 @@ Intentional remaining differences vs HEC: [`development/pressure_weir_combined_f
 
 | Scenario | Gate |
 |----------|------|
-| `reach_mild_unsteady_linked` | Open channel vs committed reference |
 | `conspan_steady_linked` | ±0.04 ft |
-| `conspan_unsteady_ramp_matrix_mode4` | Overall max \|Δ\| ≤ 0.12 ft vs HEC |
-| `beaver_unsteady_linked` | Diagnostic restart — layered mapping/steady/unsteady; HDF required for certification |
 
 See [`verification/oracle/README.md`](../verification/oracle/README.md).
 
@@ -67,6 +60,5 @@ See [`verification/oracle/README.md`](../verification/oracle/README.md).
 
 - Supply reach geometry as `cross_sections` arrays; map HEC projects in the host app or oracle mappers.
 - Set `densify_reach_modifier_policy: 1` when reach ineffective flow must apply on `max_spacing` interior nodes ([`equations.md`](reference/equations.md) §H1).
-- For culvert unsteady ramps with approach backwater, use `unsteady_structure_coupling_mode: 4`.
 
 Host architecture: [`development/tech_spec.md`](development/tech_spec.md).

@@ -11,7 +11,7 @@ mod python_bindings;
 
 pub use wasm_bindings::{
     compute_bridge_rating_curve_wasm, compute_culvert_rating_curve_wasm, get_engine_version_wasm,
-    get_wasm_api_metadata_wasm, solve_steady_wasm, solve_unsteady_wasm, validate_steady_inputs_wasm,
+    get_wasm_api_metadata_wasm, solve_steady_wasm, validate_steady_inputs_wasm,
 };
 
 #[cfg(feature = "python")]

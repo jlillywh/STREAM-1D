@@ -1145,16 +1145,7 @@ fn bridge_length_user_steady(inputs: &crate::solvers::steady::SteadyInputs, b_id
         .unwrap_or(0.0)
 }
 
-fn bridge_length_user_unsteady(
-    b: &crate::solvers::unsteady::UnsteadyBridgeInputs,
-    b_idx: usize,
-) -> f64 {
-    b.bridge_lengths
-        .as_ref()
-        .and_then(|v| v.get(b_idx))
-        .copied()
-        .unwrap_or(0.0)
-}
+
 
 /// Insert BU/BD/internal nodes and return bridge interval index per bridge (`None` if unmatched).
 pub fn apply_bridge_reach_layout_steady(
@@ -1215,73 +1206,7 @@ pub fn apply_bridge_reach_layout_steady(
         .collect()
 }
 
-pub fn apply_bridge_reach_layout_unsteady(
-    inputs: &crate::solvers::unsteady::UnsteadyInputs,
-    raw_units: UnitSystem,
-    num_slices: usize,
-    stations: &mut Vec<f64>,
-    tables: &mut Vec<GeometryTable>,
-    z_mins: &mut Vec<f64>,
-    xs: &mut Vec<CrossSection>,
-    y_current: &mut Vec<f64>,
-    q_current: &mut Vec<f64>,
-) -> Vec<Option<usize>> {
-    let b = &inputs.bridge;
-    let Some(ref centers) = b.bridge_stations else {
-        return vec![];
-    };
-    let mut all_cuts = Vec::new();
-    let mut face_list = Vec::with_capacity(centers.len());
 
-    for (b_idx, &center) in centers.iter().enumerate() {
-        let interior = interior_from_unsteady(b, b_idx);
-        let faces = resolve_bridge_face_stations_metric(
-            center,
-            raw_units,
-            interior.bu.as_ref(),
-            interior.bd.as_ref(),
-            bridge_length_user_unsteady(b, b_idx),
-        );
-        face_list.push(faces);
-        all_cuts.extend(layout_cuts_for_bridge(
-            &interior,
-            faces,
-            raw_units,
-            crate::solvers::unsteady::bridge_ineffective_upstream_for(inputs, b_idx),
-            crate::solvers::unsteady::bridge_ineffective_downstream_for(inputs, b_idx),
-            crate::solvers::bridge_roadway_compose::composed_embankment_blocked_for(
-                &b.bridge_composed_embankment_blocked,
-                b_idx,
-            ),
-        ));
-    }
-
-    let densify_policy =
-        DensifyReachModifierPolicy::from_option(inputs.densify_reach_modifier_policy);
-    let mut xs_opt: Vec<Option<CrossSection>> = xs.iter().cloned().map(Some).collect();
-    insert_reach_layout_cuts(
-        stations,
-        tables,
-        z_mins,
-        &mut xs_opt,
-        &all_cuts,
-        num_slices,
-        densify_policy,
-        raw_units,
-        &mut [y_current, q_current],
-    );
-    xs.clear();
-    xs.extend(xs_opt.into_iter().enumerate().map(|(idx, opt)| {
-        let mut section = opt.expect("unsteady reach grid requires a cross-section at every node");
-        section.station = stations[idx];
-        section
-    }));
-
-    face_list
-        .iter()
-        .map(|faces| find_bridge_face_interval(*faces, stations))
-        .collect()
-}
 
 /// Re-map original cross-section indices after layout nodes are inserted.
 pub fn refresh_original_to_densified(
@@ -1310,75 +1235,7 @@ pub fn bridge_intervals_from_faces(
         .collect()
 }
 
-pub fn interior_from_unsteady(
-    b: &crate::solvers::unsteady::UnsteadyBridgeInputs,
-    b_idx: usize,
-) -> BridgeInteriorInput {
-    BridgeInteriorInput {
-        bu: b
-            .bridge_upstream_cross_sections
-            .as_ref()
-            .and_then(|v| v.get(b_idx))
-            .cloned(),
-        bd: b
-            .bridge_downstream_cross_sections
-            .as_ref()
-            .and_then(|v| v.get(b_idx))
-            .cloned(),
-        internal: b
-            .bridge_internal_cross_sections
-            .as_ref()
-            .and_then(|v| v.get(b_idx))
-            .cloned()
-            .unwrap_or_default(),
-        opening_reach_station_origin: b
-            .bridge_opening_reach_station_origins
-            .as_ref()
-            .and_then(|v| v.get(b_idx))
-            .copied(),
-        opening_anchor_mode: b
-            .bridge_opening_anchor_modes
-            .as_ref()
-            .and_then(|v| v.get(b_idx))
-            .copied()
-            .map(BridgeOpeningAnchorMode::from_i32),
-        opening_anchor_reach_station: b
-            .bridge_opening_anchor_reach_stations
-            .as_ref()
-            .and_then(|v| v.get(b_idx))
-            .copied(),
-        approach: b
-            .bridge_approach_cross_sections
-            .as_ref()
-            .and_then(|v| v.get(b_idx))
-            .cloned(),
-        departure: b
-            .bridge_departure_cross_sections
-            .as_ref()
-            .and_then(|v| v.get(b_idx))
-            .cloned(),
-        approach_reach_station: b
-            .bridge_approach_reach_stations
-            .as_ref()
-            .and_then(|v| v.get(b_idx))
-            .copied(),
-        departure_reach_station: b
-            .bridge_departure_reach_stations
-            .as_ref()
-            .and_then(|v| v.get(b_idx))
-            .copied(),
-        approach_guide_banks: b
-            .bridge_approach_guide_banks
-            .as_ref()
-            .and_then(|v| v.get(b_idx))
-            .cloned(),
-        departure_guide_banks: b
-            .bridge_departure_guide_banks
-            .as_ref()
-            .and_then(|v| v.get(b_idx))
-            .cloned(),
-    }
-}
+
 
 #[cfg(test)]
 mod tests {
@@ -2009,28 +1866,7 @@ mod tests {
         assert_eq!(gb_app.unwrap().left_toe.unwrap().station, 60.0);
     }
 
-    #[test]
-    fn interior_from_unsteady_carries_guide_bank_fields() {
-        use crate::geometry::{GuideBankToe, GuideBanks};
-        use crate::solvers::unsteady::UnsteadyBridgeInputs;
-        let bridge = UnsteadyBridgeInputs {
-            bridge_departure_guide_banks: Some(vec![GuideBanks {
-                right_toe: Some(GuideBankToe {
-                    station: 90.0,
-                    elevation: 0.0,
-                }),
-                ..Default::default()
-            }]),
-            bridge_departure_reach_stations: Some(vec![45.0]),
-            ..UnsteadyBridgeInputs::default()
-        };
-        let interior = interior_from_unsteady(&bridge, 0);
-        assert_eq!(
-            interior.departure_guide_banks.unwrap().right_toe.unwrap().station,
-            90.0
-        );
-        assert_eq!(interior.departure_reach_station, Some(45.0));
-    }
+
 
     #[test]
     fn interior_from_steady_carries_guide_bank_fields() {
@@ -2374,74 +2210,7 @@ mod tests {
         assert!(stations.len() > 2);
     }
 
-    #[test]
-    fn apply_bridge_reach_layout_unsteady_interpolates_state() {
-        use crate::solvers::unsteady::UnsteadyInputs;
 
-        let mut up = box_xs(0.0, 10.0, 0.0, 5.0);
-        up.station = 200.0;
-        let mut down = box_xs(0.0, 10.0, 0.0, 5.0);
-        down.station = 0.0;
-        let mut stations = vec![200.0, 0.0];
-        let mut tables = vec![
-            up.generate_lookup_table(20),
-            down.generate_lookup_table(20),
-        ];
-        let mut z_mins = vec![
-            cross_section_min_bed(&up),
-            cross_section_min_bed(&down),
-        ];
-        let mut xs = vec![up.clone(), down];
-        let mut y = vec![2.0, 1.5];
-        let mut q = vec![10.0, 10.0];
-        let inputs = UnsteadyInputs {
-            cross_sections: xs.clone(),
-            initial_wsel: y.clone(),
-            initial_q: q.clone(),
-            dt: 10.0,
-            num_steps: 1,
-            upstream_q_hydrograph: vec![10.0],
-            downstream_wsel_hydrograph: vec![1.5],
-            theta: Some(0.6),
-            num_slices: Some(20),
-            max_spacing: None,
-            densify_reach_modifier_policy: None,
-            coeff_contraction: None,
-            coeff_expansion: None,
-            culvert: crate::solvers::unsteady::UnsteadyCulvertInputs::default(),
-            bridge: crate::solvers::unsteady::UnsteadyBridgeInputs {
-                bridge_stations: Some(vec![100.0]),
-                bridge_lengths: Some(vec![10.0]),
-                ..Default::default()
-            },
-            structure_coupling_order: None,
-            unsteady_structure_coupling_mode: None,
-            downstream_bc_type: None,
-            downstream_bc_slope: None,
-            downstream_bc_rating_q: None,
-            downstream_bc_rating_wsel: None,
-            upstream_wsel_hydrograph: None,
-            upstream_bc_type: None,
-            upstream_bc_slope: None,
-            upstream_bc_rating_q: None,
-            upstream_bc_rating_wsel: None,
-        };
-        let intervals = apply_bridge_reach_layout_unsteady(
-            &inputs,
-            UnitSystem::Metric,
-            20,
-            &mut stations,
-            &mut tables,
-            &mut z_mins,
-            &mut xs,
-            &mut y,
-            &mut q,
-        );
-        assert_eq!(intervals.len(), 1);
-        assert_eq!(xs.len(), stations.len());
-        assert_eq!(y.len(), stations.len());
-        assert_eq!(q.len(), stations.len());
-    }
 
     #[test]
     fn insert_updates_existing_station_with_explicit_bu() {

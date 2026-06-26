@@ -10,7 +10,6 @@ mod rating;
 pub mod reach_coupling;
 mod section;
 mod types;
-pub(crate) mod unsteady_coupling;
 
 pub use ice_debris::{ice_debris_params_for_bridge, BridgeIceDebrisParams};
 pub(crate) use geometry::build_bridge_geometry;

@@ -16,8 +16,8 @@ Full catalog: [`verification/README.md`](../../verification/README.md), [`verifi
 | Layer | Examples |
 |-------|----------|
 | Python | `python/test_stream1d.py`, `python/test_hecras_culvert_verification.py`, `python/test_issaquah01_bridge_parity.py` |
-| Verification notebook | `python/stream1d_verification.ipynb` — ConSpan, Issaquah01, **§6** simple_channel Q-ramp vs HEC-RAS |
-| Linked oracle | `reach_mild` + `simple_channel` open channel; ConSpan mode 4 ramp ≤0.12 ft overall max \|Δ\| vs HEC |
+| Verification notebook | `python/stream1d_verification.ipynb` — ConSpan and Issaquah01 vs HEC-RAS |
+| Linked oracle | ConSpan steady ±0.04 ft vs HEC-RAS |
 | JSON golden fixtures | ConSpan steady ±0.04 ft; bridge abutment/BU/BD/high-flow ±2 mm |
 | Rust unit/integration | Geometry modifiers, culvert/barrel hydraulics, bridge Class A/B/C and high flow |
 

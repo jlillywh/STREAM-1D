@@ -61,7 +61,6 @@ Do not duplicate pier blockage on BU/BD `blocked_obstructions` when pier fields 
 | Supported | Not supported |
 |-----------|---------------|
 | Negative `q_values` on `computeBridgeRatingCurve`; `tw_wsel_reverse` | Culvert reversal |
-| Steady `flow_rate < 0` with bridge mirror | Network / junction reversal |
-| Unsteady post-step bridge when section `Q < 0` | Infer direction from stages alone; `Q = 0` rating samples |
+| Steady `flow_rate < 0` with bridge mirror | Network / junction reversal; infer direction from stages alone; `Q = 0` rating samples |
 
 Sign convention: `Q > 0` downstream along the reach. When `Q < 0`, hydraulic upstream is **BD**, tailwater is **BU**; reach labels BU/BD do not swap.

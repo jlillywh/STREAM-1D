@@ -29,9 +29,6 @@ pub struct WasmApiMetadata {
     pub culvert_geometry_fields: CulvertGeometryFields,
     pub bridge_fields: BridgeFields,
     pub structure_coupling_orders: Vec<EnumEntry>,
-    pub unsteady_structure_coupling_modes: Vec<EnumEntry>,
-    /// Per-step `solve_unsteady` outputs when inline structures are present (API v34).
-    pub unsteady_structure_coupling_outputs: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -40,10 +37,8 @@ pub struct CulvertTier1Fields {
     pub outputs: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
 pub struct CulvertTier2aFields {
     pub steady_outputs: Vec<String>,
-    pub unsteady_outputs: Vec<String>,
     pub rating_curve_entry_point: String,
 }
 
@@ -52,10 +47,8 @@ pub struct CulvertGeometryFields {
     pub inputs: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
 pub struct BridgeFields {
     pub inputs: Vec<String>,
-    pub unsteady_outputs: Vec<String>,
     pub flow_regimes: Vec<String>,
     pub rating_curve_entry_point: String,
     /// Flattened `BridgeSolveParams` keys accepted by `computeBridgeRatingCurve` (not `bridge_*` prefixed).
@@ -70,7 +63,6 @@ pub fn build_api_metadata() -> WasmApiMetadata {
         entry_points: vec![
             "init".to_string(),
             "solveSteady".to_string(),
-            "solveUnsteady".to_string(),
             "getEngineVersion".to_string(),
             "getWasmApiMetadata".to_string(),
             "validateSteadyInputs".to_string(),
@@ -193,16 +185,6 @@ pub fn build_api_metadata() -> WasmApiMetadata {
                 "culvert_barrel_velocities".to_string(),
                 "culvert_barrel_froude".to_string(),
             ],
-            unsteady_outputs: vec![
-                "culvert_control_types".to_string(),
-                "culvert_wsel_inlet".to_string(),
-                "culvert_wsel_outlet".to_string(),
-                "culvert_q_barrels".to_string(),
-                "culvert_q_weirs".to_string(),
-                "culvert_barrel_depths".to_string(),
-                "culvert_barrel_velocities".to_string(),
-                "culvert_barrel_froude".to_string(),
-            ],
             rating_curve_entry_point: "computeCulvertRatingCurve".to_string(),
         },
         culvert_geometry_fields: CulvertGeometryFields {
@@ -293,12 +275,7 @@ pub fn build_api_metadata() -> WasmApiMetadata {
                 "bridge_departure_guide_banks".to_string(),
                 "bridge_roadway_embankments".to_string(),
             ],
-            unsteady_outputs: vec![
-                "bridge_flow_regimes".to_string(),
-                "bridge_wsel_upstream".to_string(),
-                "bridge_wsel_downstream".to_string(),
-                "bridge_head_losses".to_string(),
-            ],
+
             flow_regimes: vec![
                 "low_a".to_string(),
                 "low_b".to_string(),
@@ -403,45 +380,6 @@ pub fn build_api_metadata() -> WasmApiMetadata {
                 name: "BridgesFirst".to_string(),
                 description: "All bridges (downstream-first), then all culverts (downstream-first)".to_string(),
             },
-        ],
-        unsteady_structure_coupling_modes: vec![
-            EnumEntry {
-                code: 0,
-                name: "PostStepOnly".to_string(),
-                description: "Preissmann reach step only; structures corrected in post-step passes (default)".to_string(),
-            },
-            EnumEntry {
-                code: 1,
-                name: "ReachStructureReach".to_string(),
-                description: "Reserved: outer reach–structure–reach iteration per time step".to_string(),
-            },
-            EnumEntry {
-                code: 2,
-                name: "HybridImplicit".to_string(),
-                description: "Hybrid coupling: implicit Preissmann residuals where eligible; explicit post-step fallback elsewhere (production mode)".to_string(),
-            },
-            EnumEntry {
-                code: 3,
-                name: "MonolithicNewton".to_string(),
-                description: "Convergent monolithic Newton: culvert HW + approach backwater in Preissmann each step (experimental)".to_string(),
-            },
-            EnumEntry {
-                code: 4,
-                name: "QuasiSteadyParticular".to_string(),
-                description: "Quasi-steady particular + perturbation: steady profile re-anchor each step with hybrid implicit structure coupling".to_string(),
-            },
-        ],
-        unsteady_structure_coupling_outputs: vec![
-            "structure_coupling_converged".to_string(),
-            "structure_implicit_interval_count".to_string(),
-            "structure_explicit_fallback_count".to_string(),
-            "monolithic_newton_converged".to_string(),
-            "monolithic_newton_iterations".to_string(),
-            "monolithic_newton_initial_residual".to_string(),
-            "monolithic_newton_max_residual".to_string(),
-            "monolithic_newton_momentum_residual".to_string(),
-            "monolithic_newton_continuity_residual".to_string(),
-        ],
     }
 }
 
@@ -456,9 +394,6 @@ mod tests {
         assert!(json.contains("culvert_inlet_types"));
         assert!(json.contains("\"api_version\":37"));
         assert!(json.contains("structure_coupling_orders"));
-        assert!(json.contains("unsteady_structure_coupling_modes"));
-        assert!(json.contains("unsteady_structure_coupling_outputs"));
-        assert!(json.contains("structure_implicit_interval_count"));
     }
 
     #[test]
