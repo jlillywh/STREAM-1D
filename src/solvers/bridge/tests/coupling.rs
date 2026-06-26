@@ -1082,7 +1082,7 @@ fn test_approach_narrowing_vs_reach_only_contraction_coefficient() {
     );
 
     let wsel = hw_guided;
-    let a_bu = obstructed_hydraulics(&table_up, wsel, geom_guided.z_up_m, &geom_guided, true).a_eff;
+    let a_bu = obstructed_hydraulics(&table_up, wsel, geom_guided.z_up_m, &geom_guided, true, false).a_eff;
     let a_guided = reach_cut_flow_area(&geom_guided, true, wsel).expect("guided approach area");
     let opening_wsel = wsel.min(tw).min(geom_guided.low_chord_m);
     let (props_open, _) =
