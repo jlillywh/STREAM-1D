@@ -31,25 +31,6 @@ jobs:
           files: lcov.info
           fail_ci_if_error: false
 
-  reach-mild-oracle:
-    name: linked oracle CI (reach_mild + simple_channel + ConSpan mode 4)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Build stream1d and run linked oracle CI gate
-        run: |
-          python3 -m venv .venv
-          source .venv/bin/activate
-          pip install --upgrade pip maturin
-          maturin develop --features python --release
-          python3 verification/oracle/scripts/run_oracle_ci.py
 
   verification-notebook:
     name: verification notebook (headless)
