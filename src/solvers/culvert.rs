@@ -592,6 +592,12 @@ pub struct CulvertSolveParams {
     /// Custom shape table - top water width
     #[serde(default)]
     pub custom_shape_tbl_top_width: Option<Vec<f64>>,
+    /// Roadway profile stations (optional).
+    #[serde(default)]
+    pub roadway_stations: Option<Vec<f64>>,
+    /// Roadway profile elevations (optional).
+    #[serde(default)]
+    pub roadway_elevations: Option<Vec<f64>>,
 }
 
 fn default_num_barrels() -> i32 {
@@ -605,7 +611,7 @@ pub fn apply_barrel_skew(skew_deg: f64, span_ft: f64, len_ft: f64) -> (f64, f64)
     (span_ft * cos_s, len_ft / cos_s)
 }
 
-fn normalize_culvert_params(params: &mut CulvertSolveParams) {
+pub(crate) fn normalize_culvert_params(params: &mut CulvertSolveParams) {
     if params.manning_n_bottom == 0.0 {
         params.manning_n_bottom = params.roughness_n;
     }
@@ -676,7 +682,7 @@ fn estimate_max_barrel_q(params: &CulvertSolveParams) -> f64 {
     }
 }
 
-fn barrel_q_for_wsel(params: &CulvertSolveParams, target_wsel: f64) -> f64 {
+pub(crate) fn barrel_q_for_wsel(params: &CulvertSolveParams, target_wsel: f64) -> f64 {
     if target_wsel <= params.tw_wsel + 1e-9 {
         return 0.0;
     }
@@ -694,7 +700,7 @@ fn barrel_q_for_wsel(params: &CulvertSolveParams, target_wsel: f64) -> f64 {
     0.5 * (low + high)
 }
 
-fn default_weir_length_user(params: &CulvertSolveParams) -> f64 {
+pub(crate) fn default_weir_length_user(params: &CulvertSolveParams) -> f64 {
     let geoms = resolve_barrel_geometries(params);
     if params.units == UnitSystem::Metric {
         geoms
@@ -1307,7 +1313,7 @@ fn bradley_weir_submergence_factor(submergence_ratio: f64) -> f64 {
     0.0
 }
 
-fn weir_flow_us(cw: f64, length_ft: f64, wsel_ft: f64, crest_ft: f64, tw_ft: f64) -> f64 {
+pub(crate) fn weir_flow_us(cw: f64, length_ft: f64, wsel_ft: f64, crest_ft: f64, tw_ft: f64) -> f64 {
     let head = (wsel_ft - crest_ft).max(0.0);
     if head < 1e-9 || length_ft < 1e-9 {
         return 0.0;
@@ -1316,6 +1322,37 @@ fn weir_flow_us(cw: f64, length_ft: f64, wsel_ft: f64, crest_ft: f64, tw_ft: f64
     let submergence_ratio = (tail_above / head).clamp(0.0, 1.0);
     let factor = bradley_weir_submergence_factor(submergence_ratio);
     cw * length_ft * head.powf(1.5) * factor
+}
+
+pub(crate) fn roadway_profile_weir_flow(
+    cw_us: f64,
+    wsel_ft: f64,
+    tw_ft: f64,
+    stations_ft: &[f64],
+    elevations_ft: &[f64],
+    skew_deg: f64,
+) -> f64 {
+    if stations_ft.len() < 2 || elevations_ft.len() != stations_ft.len() {
+        return 0.0;
+    }
+    let skew_cos = skew_deg.clamp(0.0, 59.0).to_radians().cos().max(0.52);
+    let mut total_q = 0.0;
+    for i in 0..stations_ft.len().saturating_sub(1) {
+        let w = (stations_ft[i + 1] - stations_ft[i]) * skew_cos;
+        if w <= 0.0 {
+            continue;
+        }
+        let crest_ft = 0.5 * (elevations_ft[i] + elevations_ft[i + 1]);
+        let head = (wsel_ft - crest_ft).max(0.0);
+        if head < 1e-9 {
+            continue;
+        }
+        let tail_above = (tw_ft - crest_ft).max(0.0);
+        let submergence_ratio = (tail_above / head).clamp(0.0, 1.0);
+        let factor = bradley_weir_submergence_factor(submergence_ratio);
+        total_q += cw_us * w * head.powf(1.5) * factor;
+    }
+    total_q
 }
 
 fn solve_wsel_weir_only(
@@ -1361,7 +1398,33 @@ pub fn solve_culvert(params: &CulvertSolveParams) -> CulvertSolveResult {
     normalize_culvert_params(&mut params);
     let q_total = params.q;
 
-    let crest_user = match params.crest_elev {
+    let roadway_stations_ft: Option<Vec<f64>> = params.roadway_stations.as_ref().map(|v| {
+        if params.units == UnitSystem::Metric {
+            v.iter().map(|&x| x / FT_TO_M).collect()
+        } else {
+            v.clone()
+        }
+    });
+    let roadway_elevations_ft: Option<Vec<f64>> = params.roadway_elevations.as_ref().map(|v| {
+        if params.units == UnitSystem::Metric {
+            v.iter().map(|&y| y / FT_TO_M).collect()
+        } else {
+            v.clone()
+        }
+    });
+    let has_profile = roadway_stations_ft.is_some() && roadway_elevations_ft.is_some();
+
+    let profile_min_elev_user = if let (Some(ref sts), Some(ref els)) = (&params.roadway_stations, &params.roadway_elevations) {
+        if !els.is_empty() && els.len() == sts.len() {
+            Some(els.iter().copied().fold(f64::INFINITY, f64::min))
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let crest_user = match params.crest_elev.or(profile_min_elev_user) {
         Some(c) => c,
         None => {
             let barrel = solve_culvert_barrels(&params, q_total);
@@ -1381,7 +1444,7 @@ pub fn solve_culvert(params: &CulvertSolveParams) -> CulvertSolveResult {
     } else {
         params.tw_wsel
     };
-    let (crest_ft, cw_us, length_ft) = if params.units == UnitSystem::Metric {
+    let (mut crest_ft, cw_us, length_ft) = if params.units == UnitSystem::Metric {
         (
             crest_user / FT_TO_M,
             if params.weir_coeff > 0.0 {
@@ -1411,6 +1474,20 @@ pub fn solve_culvert(params: &CulvertSolveParams) -> CulvertSolveResult {
         )
     };
 
+    if let Some(ref elevs_ft) = roadway_elevations_ft {
+        if !elevs_ft.is_empty() {
+            crest_ft = elevs_ft.iter().copied().fold(f64::INFINITY, f64::min);
+        }
+    }
+
+    let get_q_weir_cfs = |wsel_f: f64| -> f64 {
+        if let (Some(ref sts), Some(ref els)) = (&roadway_stations_ft, &roadway_elevations_ft) {
+            roadway_profile_weir_flow(cw_us, wsel_f, tw_ft, sts, els, params.skew_deg)
+        } else {
+            weir_flow_us(cw_us, length_ft, wsel_f, crest_ft, tw_ft)
+        }
+    };
+
     let mut q_barrel_total = q_total;
     let mut last_barrel = solve_culvert_barrels(&params, q_barrel_total);
     let mut last_control = barrel_control_type(&last_barrel);
@@ -1426,7 +1503,7 @@ pub fn solve_culvert(params: &CulvertSolveParams) -> CulvertSolveResult {
             return assemble_culvert_result(&params, &last_barrel, q_barrel_total, 0.0, last_control);
         }
 
-        let q_weir_cfs = weir_flow_us(cw_us, length_ft, wsel_ft, crest_ft, tw_ft);
+        let q_weir_cfs = get_q_weir_cfs(wsel_ft);
         let q_weir = if params.units == UnitSystem::Metric {
             q_weir_cfs * CFS_TO_CMS
         } else {
@@ -1434,8 +1511,33 @@ pub fn solve_culvert(params: &CulvertSolveParams) -> CulvertSolveResult {
         };
 
         if q_weir >= q_total - 1e-6 {
-            let wsel_overtopping =
-                solve_wsel_weir_only(&params, cw_us, length_ft, crest_ft, q_total);
+            let wsel_overtopping = if has_profile {
+                let mut low = crest_ft;
+                let mut high = crest_ft + 50.0;
+                let mut best = high;
+                let q_target_cfs = if params.units == UnitSystem::Metric {
+                    q_total / CFS_TO_CMS
+                } else {
+                    q_total
+                };
+                for _ in 0..50 {
+                    let mid = 0.5 * (low + high);
+                    let q_mid = get_q_weir_cfs(mid);
+                    if q_mid < q_target_cfs {
+                        low = mid;
+                    } else {
+                        high = mid;
+                    }
+                    best = mid;
+                }
+                if params.units == UnitSystem::Metric {
+                    best * FT_TO_M
+                } else {
+                    best
+                }
+            } else {
+                solve_wsel_weir_only(&params, cw_us, length_ft, crest_ft, q_total)
+            };
             return overtopping_only_result(wsel_overtopping, q_total);
         }
 
@@ -1459,7 +1561,7 @@ pub fn solve_culvert(params: &CulvertSolveParams) -> CulvertSolveResult {
     } else {
         last_barrel.wsel
     };
-    let q_weir_cfs = weir_flow_us(cw_us, length_ft, wsel_ft, crest_ft, tw_ft);
+    let q_weir_cfs = get_q_weir_cfs(wsel_ft);
     let q_weir = if params.units == UnitSystem::Metric {
         q_weir_cfs * CFS_TO_CMS
     } else {
@@ -1613,6 +1715,8 @@ pub fn solve_culvert_wsel(
         custom_shape_tbl_area: None,
         custom_shape_tbl_perimeter: None,
         custom_shape_tbl_top_width: None,
+        roadway_stations: None,
+        roadway_elevations: None,
     };
     solve_culvert(&params).wsel
 }
@@ -1809,6 +1913,8 @@ mod tests {
             custom_shape_tbl_area: None,
             custom_shape_tbl_perimeter: None,
             custom_shape_tbl_top_width: None,
+            roadway_stations: None,
+            roadway_elevations: None,
         }
     }
 
@@ -2029,6 +2135,8 @@ mod tests {
             custom_shape_tbl_area: None,
             custom_shape_tbl_perimeter: None,
             custom_shape_tbl_top_width: None,
+            roadway_stations: None,
+            roadway_elevations: None,
         };
         let legacy = solve_culvert(&base).wsel;
         let mut projecting = base.clone();
@@ -2070,6 +2178,8 @@ mod tests {
             custom_shape_tbl_area: None,
             custom_shape_tbl_perimeter: None,
             custom_shape_tbl_top_width: None,
+            roadway_stations: None,
+            roadway_elevations: None,
         };
         let bed = CulvertSolveParams {
             z_up: 10.0,
@@ -2113,6 +2223,8 @@ mod tests {
             custom_shape_tbl_area: None,
             custom_shape_tbl_perimeter: None,
             custom_shape_tbl_top_width: None,
+            roadway_stations: None,
+            roadway_elevations: None,
         };
         let result = solve_culvert(&params);
         assert!(result.wsel > 14.0);
@@ -2152,6 +2264,8 @@ mod tests {
             custom_shape_tbl_area: None,
             custom_shape_tbl_perimeter: None,
             custom_shape_tbl_top_width: None,
+            roadway_stations: None,
+            roadway_elevations: None,
         };
         assert_eq!(solve_culvert(&params).control_type, "inlet");
 
@@ -2233,6 +2347,8 @@ mod tests {
             custom_shape_tbl_area: None,
             custom_shape_tbl_perimeter: None,
             custom_shape_tbl_top_width: None,
+            roadway_stations: None,
+            roadway_elevations: None,
         };
         let result = solve_culvert(&params);
         assert!(result.wsel < 20.0);
@@ -2272,6 +2388,8 @@ mod tests {
             custom_shape_tbl_area: None,
             custom_shape_tbl_perimeter: None,
             custom_shape_tbl_top_width: None,
+            roadway_stations: None,
+            roadway_elevations: None,
         };
         let result = solve_culvert(&params);
         assert_eq!(result.control_type, "inlet");
@@ -2317,6 +2435,8 @@ mod tests {
             custom_shape_tbl_area: None,
             custom_shape_tbl_perimeter: None,
             custom_shape_tbl_top_width: None,
+            roadway_stations: None,
+            roadway_elevations: None,
         };
         let flat = CulvertSolveParams {
             z_down: 10.0,
@@ -2377,6 +2497,8 @@ mod tests {
                 custom_shape_tbl_area: None,
                 custom_shape_tbl_perimeter: None,
                 custom_shape_tbl_top_width: None,
+                roadway_stations: None,
+                roadway_elevations: None,
             },
         };
         let curve = compute_culvert_rating_curve(&inputs);
@@ -2419,6 +2541,8 @@ mod tests {
             custom_shape_tbl_area: None,
             custom_shape_tbl_perimeter: None,
             custom_shape_tbl_top_width: None,
+            roadway_stations: None,
+            roadway_elevations: None,
         };
         let result = solve_culvert(&params);
         assert_eq!(result.control_type, "overtopping");
@@ -2469,6 +2593,8 @@ mod tests {
             custom_shape_tbl_area: None,
             custom_shape_tbl_perimeter: None,
             custom_shape_tbl_top_width: None,
+            roadway_stations: None,
+            roadway_elevations: None,
         };
         let mut skewed = base.clone();
         skewed.skew_deg = 30.0;
@@ -2511,6 +2637,8 @@ mod tests {
             custom_shape_tbl_area: None,
             custom_shape_tbl_perimeter: None,
             custom_shape_tbl_top_width: None,
+            roadway_stations: None,
+            roadway_elevations: None,
         };
         let mut blocked = base.clone();
         blocked.active_barrels = 1;
@@ -2550,6 +2678,8 @@ mod tests {
             custom_shape_tbl_area: None,
             custom_shape_tbl_perimeter: None,
             custom_shape_tbl_top_width: None,
+            roadway_stations: None,
+            roadway_elevations: None,
         };
         let equal_small = CulvertSolveParams {
             barrel_spans: None,
@@ -2558,6 +2688,8 @@ mod tests {
             custom_shape_tbl_area: None,
             custom_shape_tbl_perimeter: None,
             custom_shape_tbl_top_width: None,
+            roadway_stations: None,
+            roadway_elevations: None,
             ..small_only.clone()
         };
         let hw_mixed = solve_culvert(&small_only).wsel;
@@ -2603,6 +2735,8 @@ mod tests {
             custom_shape_tbl_area: None,
             custom_shape_tbl_perimeter: None,
             custom_shape_tbl_top_width: None,
+            roadway_stations: None,
+            roadway_elevations: None,
         };
         let explicit = CulvertSolveParams {
             barrel_spans: Some(vec![5.0, 5.0]),
@@ -2611,6 +2745,8 @@ mod tests {
             custom_shape_tbl_area: None,
             custom_shape_tbl_perimeter: None,
             custom_shape_tbl_top_width: None,
+            roadway_stations: None,
+            roadway_elevations: None,
             ..uniform.clone()
         };
         let hw_uniform = solve_culvert(&uniform).wsel;
@@ -2993,6 +3129,8 @@ mod tests {
             custom_shape_tbl_area: None,
             custom_shape_tbl_perimeter: None,
             custom_shape_tbl_top_width: None,
+            roadway_stations: None,
+            roadway_elevations: None,
         };
         let result = solve_culvert(&params);
         assert!(result.wsel > 1.2);
@@ -3084,6 +3222,8 @@ mod tests {
             custom_shape_tbl_area: None,
             custom_shape_tbl_perimeter: None,
             custom_shape_tbl_top_width: None,
+            roadway_stations: None,
+            roadway_elevations: None,
         };
 
         let mut custom_params = box_params.clone();
@@ -3167,5 +3307,64 @@ mod tests {
         zero_perims.custom_shape_tbl_perimeter = Some(vec![0.0; 41]);
         let geom_zero_p = CulvertGeometry::new(&zero_perims, 6.0, 4.0);
         assert_eq!(geom_zero_p.composite_n(2.0, 0.0, 0.013, 0.015, 1.0), 0.013);
+    }
+
+    #[test]
+    fn test_roadway_profile_weir_flow_unit() {
+        let stations = vec![0.0, 50.0, 100.0];
+        let elevations = vec![10.0, 8.0, 10.0];
+
+        // 1. Invalid inputs
+        assert_eq!(roadway_profile_weir_flow(2.6, 12.0, 5.0, &vec![0.0], &vec![10.0], 0.0), 0.0);
+        assert_eq!(roadway_profile_weir_flow(2.6, 12.0, 5.0, &stations, &vec![10.0], 0.0), 0.0);
+
+        // 2. Normal flow (unsubmerged)
+        let q_unsub = roadway_profile_weir_flow(2.6, 11.0, 5.0, &stations, &elevations, 0.0);
+        assert!(q_unsub > 0.0);
+
+        // 3. Submerged flow (Bradley reduction)
+        let q_sub = roadway_profile_weir_flow(2.6, 11.0, 10.8, &stations, &elevations, 0.0);
+        assert!(q_sub < q_unsub);
+
+        // 4. Skewed flow
+        let q_skew = roadway_profile_weir_flow(2.6, 11.0, 5.0, &stations, &elevations, 30.0);
+        assert!(q_skew < q_unsub);
+
+        // 5. Head below crest
+        assert_eq!(roadway_profile_weir_flow(2.6, 7.0, 5.0, &stations, &elevations, 0.0), 0.0);
+    }
+
+    #[test]
+    fn test_solve_culvert_with_roadway_profile_unit() {
+        // 1. US Customary with profile
+        let mut params = us_circular_baseline();
+        params.q = 150.0;
+        params.roadway_stations = Some(vec![0.0, 50.0, 100.0]);
+        params.roadway_elevations = Some(vec![15.0, 12.0, 15.0]);
+        params.weir_coeff = 2.6;
+        let res_us = solve_culvert(&params);
+        assert!(res_us.wsel > 12.0);
+
+        // 2. Metric with profile
+        let mut params_metric = us_circular_baseline();
+        params_metric.units = UnitSystem::Metric;
+        params_metric.q = 5.0; // cms
+        params_metric.span = 1.5; // m
+        params_metric.rise = 1.5; // m
+        params_metric.length = 30.0; // m
+        params_metric.z_down = 3.0; // m
+        params_metric.z_up = 3.3; // m
+        params_metric.tw_wsel = 4.0; // m
+        params_metric.roadway_stations = Some(vec![0.0, 15.0, 30.0]);
+        params_metric.roadway_elevations = Some(vec![5.0, 4.2, 5.0]);
+        params_metric.weir_coeff = 1.44;
+        let res_metric = solve_culvert(&params_metric);
+        assert!(res_metric.wsel > 4.2);
+
+        // 3. Overtopping only case (weir only overtopping bisection)
+        let mut params_overtop = params.clone();
+        params_overtop.active_barrels = 0; // force all flow through weir
+        let res_overtop = solve_culvert(&params_overtop);
+        assert_eq!(res_overtop.control_type, "overtopping");
     }
 }
