@@ -37,6 +37,7 @@ pub struct CulvertTier1Fields {
     pub outputs: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
 pub struct CulvertTier2aFields {
     pub steady_outputs: Vec<String>,
     pub rating_curve_entry_point: String,
@@ -47,6 +48,7 @@ pub struct CulvertGeometryFields {
     pub inputs: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
 pub struct BridgeFields {
     pub inputs: Vec<String>,
     pub flow_regimes: Vec<String>,
@@ -380,6 +382,7 @@ pub fn build_api_metadata() -> WasmApiMetadata {
                 name: "BridgesFirst".to_string(),
                 description: "All bridges (downstream-first), then all culverts (downstream-first)".to_string(),
             },
+        ],
     }
 }
 
