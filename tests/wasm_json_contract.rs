@@ -67,6 +67,8 @@ fn wasm_culvert_rating_curve_contract() {
             custom_shape_tbl_area: None,
             custom_shape_tbl_perimeter: None,
             custom_shape_tbl_top_width: None,
+            roadway_stations: None,
+            roadway_elevations: None,
         },
     };
     let curve = compute_culvert_rating_curve(&inputs);
