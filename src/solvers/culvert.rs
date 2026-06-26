@@ -605,7 +605,7 @@ pub fn apply_barrel_skew(skew_deg: f64, span_ft: f64, len_ft: f64) -> (f64, f64)
     (span_ft * cos_s, len_ft / cos_s)
 }
 
-fn normalize_culvert_params(params: &mut CulvertSolveParams) {
+pub(crate) fn normalize_culvert_params(params: &mut CulvertSolveParams) {
     if params.manning_n_bottom == 0.0 {
         params.manning_n_bottom = params.roughness_n;
     }
@@ -676,7 +676,7 @@ fn estimate_max_barrel_q(params: &CulvertSolveParams) -> f64 {
     }
 }
 
-fn barrel_q_for_wsel(params: &CulvertSolveParams, target_wsel: f64) -> f64 {
+pub(crate) fn barrel_q_for_wsel(params: &CulvertSolveParams, target_wsel: f64) -> f64 {
     if target_wsel <= params.tw_wsel + 1e-9 {
         return 0.0;
     }
@@ -694,7 +694,7 @@ fn barrel_q_for_wsel(params: &CulvertSolveParams, target_wsel: f64) -> f64 {
     0.5 * (low + high)
 }
 
-fn default_weir_length_user(params: &CulvertSolveParams) -> f64 {
+pub(crate) fn default_weir_length_user(params: &CulvertSolveParams) -> f64 {
     let geoms = resolve_barrel_geometries(params);
     if params.units == UnitSystem::Metric {
         geoms
@@ -1307,7 +1307,7 @@ fn bradley_weir_submergence_factor(submergence_ratio: f64) -> f64 {
     0.0
 }
 
-fn weir_flow_us(cw: f64, length_ft: f64, wsel_ft: f64, crest_ft: f64, tw_ft: f64) -> f64 {
+pub(crate) fn weir_flow_us(cw: f64, length_ft: f64, wsel_ft: f64, crest_ft: f64, tw_ft: f64) -> f64 {
     let head = (wsel_ft - crest_ft).max(0.0);
     if head < 1e-9 || length_ft < 1e-9 {
         return 0.0;
