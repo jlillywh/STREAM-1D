@@ -105,6 +105,8 @@ class SteadyInputs:
         culvert_depth_bottom_ns: Optional[List[float]] = None,
         culvert_depth_blockeds: Optional[List[float]] = None,
         culvert_inlet_types: Optional[List[int]] = None,
+        culvert_chart_numbers: Optional[List[int]] = None,
+        culvert_scale_numbers: Optional[List[int]] = None,
         culvert_z_ups: Optional[List[float]] = None,
         culvert_z_downs: Optional[List[float]] = None,
         culvert_crest_elevs: Optional[List[float]] = None,
@@ -212,6 +214,8 @@ class SteadyInputs:
         self.culvert_depth_bottom_ns = culvert_depth_bottom_ns or []
         self.culvert_depth_blockeds = culvert_depth_blockeds or []
         self.culvert_inlet_types = culvert_inlet_types or []
+        self.culvert_chart_numbers = culvert_chart_numbers or []
+        self.culvert_scale_numbers = culvert_scale_numbers or []
         self.culvert_z_ups = culvert_z_ups or []
         self.culvert_z_downs = culvert_z_downs or []
         self.culvert_crest_elevs = culvert_crest_elevs or []
@@ -318,6 +322,8 @@ class SteadyInputs:
             'culvert_depth_bottom_ns': self.culvert_depth_bottom_ns,
             'culvert_depth_blockeds': self.culvert_depth_blockeds,
             'culvert_inlet_types': self.culvert_inlet_types,
+            'culvert_chart_numbers': self.culvert_chart_numbers,
+            'culvert_scale_numbers': self.culvert_scale_numbers,
             'culvert_z_ups': self.culvert_z_ups,
             'culvert_z_downs': self.culvert_z_downs,
             'culvert_crest_elevs': self.culvert_crest_elevs,

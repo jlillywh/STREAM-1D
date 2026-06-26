@@ -142,6 +142,22 @@ def test_steady_inputs_culvert_tier1_serialization():
     assert d['culvert_weir_coeffs'] == [2.6]
     assert d['culvert_weir_lengths'] == [20.0]
 
+def test_steady_inputs_culvert_chart_scale_serialization():
+    xs = st.CrossSection(100.0, [0.0, 10.0], [1.0, 1.0], [0.0], [0.035], "USCustomary")
+    inputs = st.SteadyInputs(
+        cross_sections=[xs],
+        flow_rate=50.0,
+        culvert_stations=[50.0],
+        culvert_shape_types=[0],
+        culvert_spans=[5.0],
+        culvert_rises=[5.0],
+        culvert_chart_numbers=[1],
+        culvert_scale_numbers=[2],
+    )
+    d = inputs.to_dict()
+    assert d['culvert_chart_numbers'] == [1]
+    assert d['culvert_scale_numbers'] == [2]
+
 def _culvert_channel_us():
     xs200 = st.CrossSection(200.0, [0.0, 0.0, 10.0, 10.0], [12.0, 2.0, 2.0, 12.0], [0.0], [0.02], "USCustomary")
     xs100 = st.CrossSection(100.0, [0.0, 0.0, 10.0, 10.0], [11.0, 1.0, 1.0, 11.0], [0.0], [0.02], "USCustomary")

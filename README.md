@@ -104,11 +104,67 @@ More verification scenarios: [`verification/README.md`](verification/README.md).
 
 **Cross sections** — river station; (*x*, *y*) polyline; Manning *n* zones; optional `is_overbank`, `blocked_obstructions`, `ineffective_flow_areas`, `guide_banks`. Modifier semantics: [`docs/reference/equations.md`](docs/reference/equations.md) §H0.
 
-**Steady** — `flow_rate`, `regime` (0 subcritical, 1 supercritical, 2 mixed), downstream boundary (`downstream_wsel`, normal depth, rating curve, etc.), optional `max_spacing` and `densify_reach_modifier_policy` (0 none, 1 upstream, 2 downstream, 3 nearest). Structure fields: `culvert_*`, `bridge_*`. Pier, deck vent, ice, reverse-flow extensions: [`docs/development/bridge_extensions.md`](docs/development/bridge_extensions.md).
+**Steady** — `flow_rate`, `regime` (0 subcritical, 1 supercritical, 2 mixed), downstream boundary (`downstream_wsel`, normal depth, rating curve, etc.), optional `max_spacing` and `densify_reach_modifier_policy` (0 none, 1 upstream, 2 downstream, 3 nearest). Structure fields: `culvert_*` (including direct FHWA HDS-5 `culvert_chart_numbers` and `culvert_scale_numbers`), `bridge_*`. Pier, deck vent, ice, reverse-flow extensions: [`docs/development/bridge_extensions.md`](docs/development/bridge_extensions.md).
 
 **Results** — `wsel`, `velocity` as lists of floats (one value per cross section). With culverts: control type, inlet/outlet HW, barrel and weir discharge. With bridges: flow regime, head loss.
 
 Field reference: [`python/stream1d/__init__.py`](python/stream1d/__init__.py), [`docs/reference/api_changelog.md`](docs/reference/api_changelog.md). Equations: [`docs/reference/equations.md`](docs/reference/equations.md).
+
+
+## Culverts
+
+STREAM-1D includes a comprehensive FHWA-compliant culvert solver supporting multiple barrel configurations, skew angles, custom shapes, and roadway overtopping weirs.
+
+### Direct FHWA HDS-5 Chart and Scale Selection
+
+You can configure culvert inlet control by directly specifying the FHWA HDS-5 chart and scale numbers. This matches HDS-5 inlet control nomograph coefficients and equations without relying on simplified mapping.
+
+*   `culvert_chart_numbers` — List of integers specifying the HDS-5 Chart number for each culvert.
+*   `culvert_scale_numbers` — List of integers specifying the HDS-5 Scale number for each culvert.
+
+#### Supported Nomographs
+
+| Chart | Scale | Description | Equation |
+|---|---|---|---|
+| **1** | 1, 2, 3 | Circular Concrete Pipe (Square edge / Groove end / Beveled) | Form 1 |
+| **2** | 1, 2, 3 | Circular Corrugated Metal Pipe (Projecting / Mitered / Headwall) | Form 1 |
+| **3** | 1, 2 | Circular Pipe with Beveled Ring Entrance | Form 1 |
+| **8** | 1, 2, 3 | Rectangular Box (Flared wingwalls 30-75° / 90° headwall / 0° wingwalls) | Form 1 |
+| **9** | 1, 2 | Rectangular Box (Flared wingwalls & top edge bevel) | **Form 2** |
+| **10** | 1, 2, 3 | Rectangular Box (90° headwall, chamfered/beveled edges) | **Form 2** |
+| **11** | 1, 2, 3, 4 | Rectangular Box (Skewed headwall) | **Form 2** |
+| **12** | 1, 2, 3 | Rectangular Box (Non-offset flared wingwalls, chamfered top) | **Form 2** |
+| **13** | 1, 2, 3 | Rectangular Box (Offset flared wingwalls, beveled top) | **Form 2** |
+| **14** | 1, 2, 3 | Corrugated Metal Box | Form 1 |
+| **15** | 1, 2, 3 | Horizontal Ellipse Concrete | Form 1 |
+| **16** | 1, 2, 3 | Vertical Ellipse Concrete | Form 1 |
+| **29** | 1, 2, 3 | Oval Concrete Pipe Horizontal | Form 1 |
+| **30** | 1, 2, 3 | Oval Concrete Pipe Vertical | Form 1 |
+| **34** | 1, 2, 3 | CMP Pipe Arch | Form 1 |
+| **35** | 1, 2, 3 | Structural Plate CMP Pipe Arch | Form 1 |
+
+#### Inlet Control Formulations
+
+The solver computes the inlet control headwater-to-depth ratio ($HW/D$) using one of two FHWA forms based on the selected nomograph:
+
+*   **Form 1 (Standard)**: Used by circular, arch, and some box/CMP charts.
+    *   *Unsubmerged* ($F \le 3.0$):
+        $$ \frac{HW}{D} = \frac{H_c}{D} + K \left[ \frac{Q}{A D^{0.5}} \right]^M - 0.5 S_0 $$
+        *   Effective headwater: $HW = \max\left( \frac{HW}{D} \cdot D, H_c \right)$ where $H_c$ is the specific head at critical depth above the effective invert.
+*   **Form 2 (Orifice-like Unsubmerged)**: Used by box charts 9, 10, 11, 12, and 13.
+    *   *Unsubmerged* ($F \le 3.0$):
+        $$ \frac{HW}{D} = K \left[ \frac{Q}{A D^{0.5}} \right]^M $$
+        *   Effective headwater: $HW = \frac{HW}{D} \cdot D$ (does not take maximum with $H_c$ and omits slope correction).
+*   **Submerged Flow** (Both forms, $F \ge 4.0$):
+    $$ \frac{HW}{D} = c \left[ \frac{Q}{A D^{0.5}} \right]^2 + Y - 0.5 S_0 $$
+*   **Transition Range** ($3.0 < F < 4.0$):
+    Linear interpolation between the unsubmerged and submerged ratios.
+
+*Where $Q$ is discharge, $A$ is full area, $D$ is culvert rise, $S_0$ is barrel slope, and $K, M, c, Y$ are nomograph coefficients.*
+
+#### Backwards Compatibility & Legacy Fallback
+
+If `culvert_chart_numbers` and `culvert_scale_numbers` are omitted, or contain `None` / `0` values, the solver automatically falls back to the legacy `culvert_inlet_types` and `culvert_entrance_loss_coeffs` mapping to determine nomograph coefficients.
 
 
 ## Bridge high flow

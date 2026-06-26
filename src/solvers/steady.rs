@@ -119,6 +119,12 @@ pub struct SteadyInputs {
     /// Roadway profile elevations per culvert (optional).
     #[serde(default)]
     pub culvert_roadway_elevations: Option<Vec<Vec<f64>>>,
+    /// FHWA HDS-5 chart number per culvert (optional).
+    #[serde(default)]
+    pub culvert_chart_numbers: Option<Vec<i32>>,
+    /// FHWA HDS-5 scale number per culvert (optional).
+    #[serde(default)]
+    pub culvert_scale_numbers: Option<Vec<i32>>,
 
     /// Inline structure stations (optional)
     #[serde(default)]
@@ -1344,6 +1350,8 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                     let depth_blocked = inputs.culvert_depth_blockeds.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
                     let inlet_type = inputs.culvert_inlet_types.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0);
                     let crest_elev = inputs.culvert_crest_elevs.as_ref().and_then(|v| v.get(c_idx)).copied();
+                    let chart_number = inputs.culvert_chart_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
+                    let scale_number = inputs.culvert_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
                     let weir_coeff = inputs.culvert_weir_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
                     let weir_length = inputs.culvert_weir_lengths.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
                     let num_barrels = inputs.culvert_barrels.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(1).max(1);
@@ -1484,6 +1492,8 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                                 custom_shape_tbl_top_width,
                                 roadway_stations,
                                 roadway_elevations,
+                                chart_number,
+                                scale_number,
                             },
                         );
                         wsel_up_user = culvert_result.wsel;
@@ -1562,6 +1572,8 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                         let depth_blocked = inputs.culvert_depth_blockeds.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
                         let inlet_type = inputs.culvert_inlet_types.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0);
                         let crest_elev = inputs.culvert_crest_elevs.as_ref().and_then(|v| v.get(c_idx)).copied();
+                        let chart_number = inputs.culvert_chart_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
+                        let scale_number = inputs.culvert_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
                         let weir_coeff = inputs.culvert_weir_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
                         let weir_length = inputs.culvert_weir_lengths.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
                         let num_barrels = inputs.culvert_barrels.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(1).max(1);
@@ -1613,6 +1625,8 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                             custom_shape_tbl_top_width,
                             roadway_stations,
                             roadway_elevations,
+                            chart_number,
+                            scale_number,
                         };
                         crate::solvers::culvert::normalize_culvert_params(&mut p);
                         compound_params.push(p);
@@ -2036,6 +2050,8 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                     let depth_blocked = inputs.culvert_depth_blockeds.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
                     let inlet_type = inputs.culvert_inlet_types.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0);
                     let crest_elev = inputs.culvert_crest_elevs.as_ref().and_then(|v| v.get(c_idx)).copied();
+                    let chart_number = inputs.culvert_chart_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
+                    let scale_number = inputs.culvert_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
                     let weir_coeff = inputs.culvert_weir_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
                     let weir_length = inputs.culvert_weir_lengths.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
                     let num_barrels = inputs.culvert_barrels.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(1).max(1);
@@ -2156,6 +2172,8 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                             custom_shape_tbl_top_width,
                             roadway_stations,
                             roadway_elevations,
+                            chart_number,
+                            scale_number,
                         };
                         let (tw_new, res) =
                             crate::solvers::culvert::solve_culvert_from_headwater(&culvert_params, hw_wsel_user);
@@ -2236,6 +2254,8 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                         let depth_blocked = inputs.culvert_depth_blockeds.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
                         let inlet_type = inputs.culvert_inlet_types.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0);
                         let crest_elev = inputs.culvert_crest_elevs.as_ref().and_then(|v| v.get(c_idx)).copied();
+                        let chart_number = inputs.culvert_chart_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
+                        let scale_number = inputs.culvert_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
                         let weir_coeff = inputs.culvert_weir_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
                         let weir_length = inputs.culvert_weir_lengths.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
                         let num_barrels = inputs.culvert_barrels.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(1).max(1);
@@ -2287,6 +2307,8 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                             custom_shape_tbl_top_width,
                             roadway_stations,
                             roadway_elevations,
+                            chart_number,
+                            scale_number,
                         };
                         crate::solvers::culvert::normalize_culvert_params(&mut p);
                         compound_params.push(p);
@@ -5201,6 +5223,91 @@ mod tests {
         // must be lower than in the flat crest case (crest at 8.0 ft).
         assert!(res_profile.wsel[1] < res_flat.wsel[1]);
         assert!(res_profile.wsel[1] > 6.0); // should be above minimum overtopping crest
+    }
+
+    #[test]
+    fn test_steady_culvert_chart_scale_selection() {
+        let xs200 = CrossSection {
+            station: 200.0,
+            x: vec![-50.0, -50.0, 50.0, 50.0],
+            y: vec![20.0, 0.0, 0.0, 20.0],
+            n_stations: vec![-50.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let xs100 = CrossSection {
+            station: 100.0,
+            x: vec![-50.0, -50.0, 50.0, 50.0],
+            y: vec![20.0, 0.0, 0.0, 20.0],
+            n_stations: vec![-50.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let xs0 = CrossSection {
+            station: 0.0,
+            x: vec![-50.0, -50.0, 50.0, 50.0],
+            y: vec![20.0, 0.0, 0.0, 20.0],
+            n_stations: vec![-50.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+
+        // Solve with legacy inlet_type = 1 (circular concrete pipe, square edge)
+        let inputs_legacy = SteadyInputs {
+            cross_sections: vec![xs200.clone(), xs100.clone(), xs0.clone()],
+            flow_rate: 80.0,
+            num_slices: Some(50),
+            regime: 0,
+            downstream_wsel: Some(3.0),
+            culvert_stations: Some(vec![50.0]),
+            culvert_shape_types: Some(vec![0]), // Circular
+            culvert_spans: Some(vec![4.0]),
+            culvert_rises: Some(vec![4.0]),
+            culvert_lengths: Some(vec![100.0]),
+            culvert_inlet_types: Some(vec![1]),
+            ..Default::default()
+        };
+        let res_legacy = solve_steady(&inputs_legacy);
+
+        // Solve with Chart 1 Scale 1 (circular concrete pipe, square edge)
+        let inputs_direct = SteadyInputs {
+            cross_sections: vec![xs200, xs100, xs0],
+            flow_rate: 80.0,
+            num_slices: Some(50),
+            regime: 0,
+            downstream_wsel: Some(3.0),
+            culvert_stations: Some(vec![50.0]),
+            culvert_shape_types: Some(vec![0]), // Circular
+            culvert_spans: Some(vec![4.0]),
+            culvert_rises: Some(vec![4.0]),
+            culvert_lengths: Some(vec![100.0]),
+            culvert_inlet_types: Some(vec![0]), // Omit
+            culvert_chart_numbers: Some(vec![1]),
+            culvert_scale_numbers: Some(vec![1]),
+            ..Default::default()
+        };
+        let res_direct = solve_steady(&inputs_direct);
+
+        // Results should match exactly
+        assert!((res_legacy.wsel[1] - res_direct.wsel[1]).abs() < 1e-3);
     }
 
     #[test]
