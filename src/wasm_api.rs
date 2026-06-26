@@ -430,6 +430,9 @@ mod tests {
             culvert_barrel_depths: Some(vec![3.0]),
             culvert_barrel_velocities: Some(vec![5.0]),
             culvert_barrel_froude: Some(vec![0.8]),
+            inline_structure_wsel_inlet: None,
+            inline_structure_wsel_outlet: None,
+            inline_structure_q_weirs: None,
         })
         .unwrap();
         assert!(result_json.contains("culvert_control_types"));
