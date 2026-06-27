@@ -1432,18 +1432,12 @@ fn solve_culvert_barrel_internal(params: &CulvertSolveParams, q: f64) -> BarrelS
     let d_eff = (rise_ft - db_ft).max(0.01);
     let a_full_eff = geom.effective_area(rise_ft, db_ft);
 
-    let ds_vel_ft = if params.units == UnitSystem::Metric {
-        params.ds_velocity / FT_TO_M
-    } else {
-        params.ds_velocity
-    };
     let us_vel_ft = if params.units == UnitSystem::Metric {
         params.us_velocity / FT_TO_M
     } else {
         params.us_velocity
     };
     // Apply velocity distribution coefficient alpha (~1.3 for contracted sections near culverts)
-    let ds_vel_hd = (ds_vel_ft * ds_vel_ft) / (2.0 * G_ENGLISH) * 1.3;
     let us_vel_hd = (us_vel_ft * us_vel_ft) / (2.0 * G_ENGLISH) * 1.3;
 
     // 1. INLET CONTROL CALCULATIONS
@@ -1519,8 +1513,7 @@ fn solve_culvert_barrel_internal(params: &CulvertSolveParams, q: f64) -> BarrelS
     };
 
     let he = params.entrance_loss_coeff * (v_barrel * v_barrel) / (2.0 * G_ENGLISH);
-    let ho =
-        params.exit_loss_coeff * ((v_barrel * v_barrel) / (2.0 * G_ENGLISH) - ds_vel_hd).max(0.0);
+    let ho = params.exit_loss_coeff * (v_barrel * v_barrel) / (2.0 * G_ENGLISH);
 
     // Friction loss (hf = L * Sf) using composite n and effective geometry
     let p_barrel = geom.effective_perimeter(y_barrel, db_ft);
@@ -1543,8 +1536,8 @@ fn solve_culvert_barrel_internal(params: &CulvertSolveParams, q: f64) -> BarrelS
     };
     let hf = len_ft * sf;
 
-    // Total head loss / energy equation
-    let eg_outlet = tw_ft + ds_vel_hd + he + hf + ho;
+    // Total head loss / energy equation (FHWA HDS-5 standard formulation)
+    let eg_outlet = tw_ft + he + hf + ho;
     let wsel_outlet = eg_outlet - us_vel_hd;
 
     let wsel_up_ft = wsel_inlet.max(wsel_outlet);
