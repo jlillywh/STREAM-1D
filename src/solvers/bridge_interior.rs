@@ -1113,6 +1113,29 @@ pub fn insert_reach_layout_cuts(
     }
 }
 
+pub fn remove_internal_nodes_inside_bounds(
+    stations: &mut Vec<f64>,
+    tables: &mut Vec<GeometryTable>,
+    z_mins: &mut Vec<f64>,
+    xs: &mut Vec<Option<CrossSection>>,
+    us_station_m: f64,
+    ds_station_m: f64,
+) {
+    let tol = 1e-5;
+    let mut k = 0;
+    while k < stations.len() {
+        let s = stations[k];
+        if s > ds_station_m + tol && s < us_station_m - tol {
+            stations.remove(k);
+            tables.remove(k);
+            z_mins.remove(k);
+            xs.remove(k);
+        } else {
+            k += 1;
+        }
+    }
+}
+
 /// Interval `i` spans BU (`stations[i]`) → BD (`stations[i+1]`).
 pub fn find_bridge_face_interval(
     faces: BridgeFaceStations,
@@ -1200,9 +1223,45 @@ pub fn apply_bridge_reach_layout_steady(
         &mut [],
     );
 
+    for faces in &face_list {
+        remove_internal_nodes_inside_bounds(
+            stations,
+            tables,
+            z_mins,
+            xs,
+            faces.bu_station_m,
+            faces.bd_station_m,
+        );
+    }
+
     face_list
         .iter()
         .map(|faces| find_bridge_face_interval(*faces, stations))
+        .collect()
+}
+
+pub fn re_resolve_bridge_intervals(
+    inputs: &crate::solvers::steady::SteadyInputs,
+    raw_units: UnitSystem,
+    stations: &[f64],
+) -> Vec<Option<usize>> {
+    let Some(ref centers) = inputs.bridge_stations else {
+        return vec![];
+    };
+    centers
+        .iter()
+        .enumerate()
+        .map(|(b_idx, &center)| {
+            let interior = interior_from_steady(inputs, b_idx);
+            let faces = resolve_bridge_face_stations_metric(
+                center,
+                raw_units,
+                interior.bu.as_ref(),
+                interior.bd.as_ref(),
+                bridge_length_user_steady(inputs, b_idx),
+            );
+            find_bridge_face_interval(faces, stations)
+        })
         .collect()
 }
 

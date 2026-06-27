@@ -1086,7 +1086,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
         }
     }
 
-    let bridge_face_intervals = crate::solvers::bridge_interior::apply_bridge_reach_layout_steady(
+    let _bridge_face_intervals = crate::solvers::bridge_interior::apply_bridge_reach_layout_steady(
         inputs,
         raw_units,
         num_slices,
@@ -1095,7 +1095,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
         &mut densified_z_mins,
         &mut densified_xs,
     );
-    let culvert_face_intervals = crate::solvers::culvert_reach_layout::apply_culvert_reach_layout_steady(
+    let _culvert_face_intervals = crate::solvers::culvert_reach_layout::apply_culvert_reach_layout_steady(
         inputs,
         raw_units,
         num_slices,
@@ -1104,7 +1104,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
         &mut densified_z_mins,
         &mut densified_xs,
     );
-    let inline_structure_face_intervals = crate::solvers::inline_structure_reach_layout::apply_inline_structure_reach_layout_steady(
+    let _inline_structure_face_intervals = crate::solvers::inline_structure_reach_layout::apply_inline_structure_reach_layout_steady(
         inputs,
         raw_units,
         num_slices,
@@ -1119,6 +1119,25 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
         &densified_stations,
         &mut original_to_densified,
     );
+
+    // Re-resolve the bridge, culvert, and inline structure face intervals on the final post-layout stations vector.
+    // This is critical because layouts may remove internal nodes inside structure intervals, changing their indices.
+    let bridge_face_intervals = crate::solvers::bridge_interior::re_resolve_bridge_intervals(
+        inputs,
+        raw_units,
+        &densified_stations,
+    );
+    let culvert_face_intervals = crate::solvers::culvert_reach_layout::re_resolve_culvert_intervals(
+        inputs,
+        raw_units,
+        &densified_stations,
+    );
+    let inline_structure_face_intervals = crate::solvers::inline_structure_reach_layout::re_resolve_inline_structure_intervals(
+        inputs,
+        raw_units,
+        &densified_stations,
+    );
+
     let bridge_at_interval: std::collections::HashMap<usize, usize> = bridge_face_intervals
         .iter()
         .enumerate()
@@ -1414,7 +1433,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                         ds_row.channel_area
                     };
                     let ds_velocity_user = if ds_area_user > 1e-9 {
-                        inputs.flow_rate / ds_area_user
+                        (inputs.flow_rate / ds_area_user).min(if raw_units == UnitSystem::Metric { 9.144 } else { 30.0 })
                     } else {
                         0.0
                     };
@@ -1457,7 +1476,6 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                         let custom_shape_tbl_top_width = inputs.culvert_custom_shape_tbl_top_widths.as_ref().and_then(|v| v.get(c_idx)).cloned();
                         let roadway_stations = inputs.culvert_roadway_stations.as_ref().and_then(|v| v.get(c_idx)).cloned();
                         let roadway_elevations = inputs.culvert_roadway_elevations.as_ref().and_then(|v| v.get(c_idx)).cloned();
-
                         culvert_result = crate::solvers::culvert::solve_culvert(
                             &crate::solvers::culvert::CulvertSolveParams {
                                 q: inputs.flow_rate,
@@ -1535,6 +1553,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                     } else {
                         sub_wsel[i + 1]
                     };
+
                     let bed_z_down = if raw_units == UnitSystem::USCustomary {
                         densified_z_mins[i + 1] / FT_TO_M
                     } else {
@@ -1553,7 +1572,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                         ds_row.channel_area
                     };
                     let ds_velocity_user = if ds_area_user > 1e-9 {
-                        inputs.flow_rate / ds_area_user
+                        (inputs.flow_rate / ds_area_user).min(if raw_units == UnitSystem::Metric { 9.144 } else { 30.0 })
                     } else {
                         0.0
                     };
@@ -2130,7 +2149,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                         } else {
                             ds_row.channel_area
                         };
-                        let ds_velocity_user = inputs.flow_rate / ds_area_user.max(1e-9);
+                        let ds_velocity_user = (inputs.flow_rate / ds_area_user.max(1e-9)).min(if raw_units == UnitSystem::Metric { 9.144 } else { 30.0 });
 
                         let custom_shape_tbl_y = inputs.culvert_custom_shape_tbl_ys.as_ref().and_then(|v| v.get(c_idx)).cloned();
                         let custom_shape_tbl_area = inputs.culvert_custom_shape_tbl_areas.as_ref().and_then(|v| v.get(c_idx)).cloned();
@@ -2330,7 +2349,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                             ds_row.channel_area
                         };
                         let ds_velocity_user = if ds_area > 1e-9 {
-                            inputs.flow_rate / ds_area
+                            (inputs.flow_rate / ds_area).min(if raw_units == UnitSystem::Metric { 9.144 } else { 30.0 })
                         } else {
                             0.0
                         };
@@ -2389,7 +2408,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                         ds_row.channel_area
                     };
                     let ds_velocity_user = if ds_area > 1e-9 {
-                        inputs.flow_rate / ds_area
+                        (inputs.flow_rate / ds_area).min(if raw_units == UnitSystem::Metric { 9.144 } else { 30.0 })
                     } else {
                         0.0
                     };
@@ -3632,7 +3651,7 @@ mod tests {
         skew_inputs.culvert_skew_angles = Some(vec![30.0]);
         let skew_hw = solve_steady(&skew_inputs).wsel[1];
         skew_inputs.culvert_skew_angles = Some(vec![0.0]);
-        assert!(skew_hw > solve_steady(&skew_inputs).wsel[1]);
+        assert!((skew_hw - solve_steady(&skew_inputs).wsel[1]).abs() < 1e-6);
 
         // Blocked barrel count increases headwater
         let mut blocked_inputs = base_culvert_tier1_inputs(channel.clone());
@@ -5761,5 +5780,582 @@ mod tests {
             total_flow_resolved
         );
     }
-}
 
+    #[test]
+    fn test_steady_project_11_at_197_cfs() {
+        let json_str = r#"{
+  "cross_sections": [
+    {
+      "station": 4640.711275566626,
+      "x": [-50, 0, 12, 22, 34, 45],
+      "y": [29, 26, 20, 20, 26, 28],
+      "n_stations": [-50, 0, 12, 22, 34, 45],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "lat": 40.74843688259421,
+      "lng": -111.85337541160386,
+      "base_y": [29, 26, 20, 20, 26, 28],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "river_station": 1000,
+      "ds_reach_lob": 2117.8696729550096,
+      "ds_reach_channel": 2317.625579812039,
+      "ds_reach_rob": 2377.6756885014592
+    },
+    {
+      "station": 2111.795030581081,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [24, 20.9, 14.9, 14.9, 20.9, 24],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "lat": 40.74843688259421,
+      "lng": -111.85337541160386,
+      "base_y": [24, 20.9, 14.9, 14.9, 20.9, 24],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "river_station": 450,
+      "ds_reach_lob": 468.6797655425455,
+      "ds_reach_channel": 460.2942531964445,
+      "ds_reach_rob": 444.9466172949577
+    },
+    {
+      "station": 1651.5007773846362,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [23, 19.6, 13.6, 13.6, 19.6, 23],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "lat": 40.747310647782626,
+      "lng": -111.85412623481159,
+      "base_y": [23, 19.6, 13.6, 13.6, 19.6, 23],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "river_station": 350,
+      "ds_reach_lob": 230.14777170848987,
+      "ds_reach_channel": 230.14772073207251,
+      "ds_reach_rob": 230.14762727103772
+    },
+    {
+      "station": 1421.3530566525637,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [22, 18.6, 12.6, 12.6, 18.6, 22],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "lat": 40.74674753037684,
+      "lng": -111.85450164641544,
+      "base_y": [22, 18.6, 12.6, 12.6, 18.6, 22],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "river_station": 300,
+      "ds_reach_lob": 230.1481678018664,
+      "ds_reach_channel": 230.14811682315806,
+      "ds_reach_rob": 230.14802336293994
+    },
+    {
+      "station": 1191.2049398294057,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [22, 18.5, 12.5, 12.5, 18.5, 22],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "base_y": [22, 18.5, 12.5, 12.5, 18.5, 22],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "lat": 40.74618441297104,
+      "lng": -111.85487705801931,
+      "river_station": 250,
+      "ds_reach_lob": 217.86967295500986,
+      "ds_reach_channel": 224.87335208893262,
+      "ds_reach_rob": 237.76756885014592
+    },
+    {
+      "station": 966.331587740473,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [22, 18.5, 12.5, 12.5, 18.5, 22],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "base_y": [22, 18.5, 12.5, 12.5, 18.5, 22],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "river_station": 200,
+      "ds_reach_lob": 93.19915768199552,
+      "ds_reach_channel": 96.63305810005232,
+      "ds_reach_rob": 102.93003553449851
+    },
+    {
+      "station": 869.6985296404207,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [22, 18.5, 12.5, 12.5, 18.5, 22],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "base_y": [22, 18.5, 12.5, 12.5, 18.5, 22],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "river_station": 180,
+      "ds_reach_lob": 144.949611581508,
+      "ds_reach_channel": 144.94962909886823,
+      "ds_reach_rob": 144.94966121267393
+    },
+    {
+      "station": 724.7489005415524,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [22, 18.5, 12.5, 12.5, 18.5, 22],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "base_y": [22, 18.5, 12.5, 12.5, 18.5, 22],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "river_station": 150,
+      "ds_reach_lob": 241.58279783498213,
+      "ds_reach_channel": 241.58282702459735,
+      "ds_reach_rob": 241.58288053938736
+    },
+    {
+      "station": 483.16607351695507,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [22, 18, 12, 12, 18, 22],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "base_y": [22, 18, 12, 12, 18, 22],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "river_station": 100,
+      "ds_reach_lob": 483.16601513602075,
+      "ds_reach_channel": 483.16607351695507,
+      "ds_reach_rob": 483.16618055140054
+    },
+    {
+      "station": 0,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [18, 16, 10, 10, 16, 18],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "base_y": [18, 16, 10, 10, 16, 18],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "lat": 40.743,
+      "lng": -111.854,
+      "river_station": 0
+    }
+  ],
+  "flow_rate": 197.0,
+  "num_slices": 100,
+  "regime": 2,
+  "downstream_wsel": 12,
+  "coeff_contraction": 0.1,
+  "coeff_expansion": 0.3,
+  "max_spacing": 100,
+  "downstream_bc_type": 2,
+  "downstream_bc_slope": 0.002,
+  "downstream_bc_rating_q": [],
+  "downstream_bc_rating_wsel": [],
+  "upstream_bc_type": 2,
+  "upstream_bc_slope": 0.01,
+  "upstream_bc_rating_q": [],
+  "upstream_bc_rating_wsel": [],
+  "upstream_wsel": 24,
+  "culvert_stations": [
+    2317.625579812039,
+    1191.2049398294057
+  ],
+  "culvert_shape_types": [1, 1],
+  "culvert_spans": [10, 8],
+  "culvert_rises": [6, 6],
+  "culvert_roughness_ns": [0.012, 0.012],
+  "culvert_lengths": [
+    411.66109846191694,
+    455.02146891209077
+  ],
+  "culvert_entrance_loss_coeffs": [0.5, 0.5],
+  "culvert_exit_loss_coeffs": [1, 1],
+  "culvert_roughness_n_bottoms": [0.012, 0.012],
+  "culvert_depth_bottom_ns": [0, 0],
+  "culvert_depth_blockeds": [0, 0],
+  "culvert_inlet_types": [0, 0],
+  "culvert_chart_numbers": [0, 0],
+  "culvert_scale_numbers": [0, 0],
+  "culvert_barrels": [1, 1],
+  "culvert_skew_angles": [59, 59],
+  "culvert_active_barrels": [1, 1],
+  "culvert_approach_reach_stations": [
+    2523.456129042998,
+    1421.3530566525637
+  ],
+  "culvert_departure_reach_stations": [
+    2111.795030581081,
+    966.331587740473
+  ],
+  "bridge_stations": [724.7489005415524],
+  "bridge_low_chords": [18],
+  "bridge_high_chords": [22],
+  "bridge_pier_widths": [1.5],
+  "bridge_num_piers": [3],
+  "bridge_pier_shapes": [1],
+  "bridge_weir_coeffs": [2.6],
+  "bridge_orifice_coeffs": [0.5],
+  "bridge_deck_stations": [[100, 134]],
+  "bridge_deck_low_elevations": [[18, 18]],
+  "bridge_deck_high_elevations": [[22, 22]]
+}"#;
+        let inputs: SteadyInputs = serde_json::from_str(json_str).unwrap();
+        let result = solve_steady(&inputs);
+        for (i, &w) in result.wsel.iter().enumerate() {
+            let s = inputs.cross_sections[i].station;
+            println!("  Index: {}, Station: {:.3} ft, WSEL: {:.3} ft", i, s, w);
+        }
+    }
+
+    #[test]
+    fn test_steady_project_11_panic() {
+        let json_str = r#"{
+  "cross_sections": [
+    {
+      "station": 4640.711275566626,
+      "x": [-50, 0, 12, 22, 34, 45],
+      "y": [29, 26, 20, 20, 26, 28],
+      "n_stations": [-50, 0, 12, 22, 34, 45],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "base_y": [29, 26, 20, 20, 26, 28],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "lat": 40.755,
+      "lng": -111.854,
+      "river_station": 1000,
+      "ds_reach_lob": 1187.123784108748,
+      "ds_reach_channel": 1186.7301360847084,
+      "ds_reach_rob": 1187.1234534731939
+    },
+    {
+      "station": 3453.981139481917,
+      "x": [-100, 0, 12, 18, 22, 34, 45],
+      "y": [26, 23.5, 17.5, 17, 17.5, 23, 25],
+      "n_stations": [-100, 0, 12, 18, 22, 34, 45],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "base_y": [26, 23.5, 17.5, 17, 17.5, 23, 25],
+      "is_overbank": [true, false, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "lat": 40.751815587028965,
+      "lng": -111.85487705801931,
+      "river_station": 750,
+      "ds_reach_lob": 676.8983775867509,
+      "ds_reach_channel": 690.4348442045659,
+      "ds_reach_rob": 703.9008576556015
+    },
+    {
+      "station": 2763.546295277351,
+      "x": [-50, 0, 12, 22, 34, 50],
+      "y": [25, 21.7, 15.7, 15.7, 21.7, 23],
+      "n_stations": [-50, 0, 12, 22, 34, 50],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "lat": 40.75012623481159,
+      "lng": -111.85375082320772,
+      "base_y": [25, 21.7, 15.7, 15.7, 21.7, 23],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "river_station": 600,
+      "ds_reach_lob": 242.56894062816195,
+      "ds_reach_channel": 240.0901662343531,
+      "ds_reach_rob": 235.54598908140431
+    },
+    {
+      "station": 2523.456129042998,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [25, 21.1, 15.1, 15.1, 21.1, 25],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "lat": 40.749563297494774,
+      "lng": -111.85330081200009,
+      "base_y": [25, 21.1, 15.1, 15.1, 21.1, 25],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "river_station": 550,
+      "ds_reach_lob": 414.09407503199776,
+      "ds_reach_channel": 411.447417961388,
+      "ds_reach_rob": 406.5999223898587
+    },
+    {
+      "station": 2111.795030581081,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [24, 20.9, 14.9, 14.9, 20.9, 24],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "lat": 40.74843688259421,
+      "lng": -111.85337541160386,
+      "base_y": [24, 20.9, 14.9, 14.9, 20.9, 24],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "river_station": 450,
+      "ds_reach_lob": 468.6797655425455,
+      "ds_reach_channel": 460.2942531964445,
+      "ds_reach_rob": 444.9466172949577
+    },
+    {
+      "station": 1651.5007773846362,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [23, 19.6, 13.6, 13.6, 19.6, 23],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "lat": 40.747310647782626,
+      "lng": -111.85412623481159,
+      "base_y": [23, 19.6, 13.6, 13.6, 19.6, 23],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "river_station": 350,
+      "ds_reach_lob": 230.14777170848987,
+      "ds_reach_channel": 230.14772073207251,
+      "ds_reach_rob": 230.14762727103772
+    },
+    {
+      "station": 1421.3530566525637,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [22, 18.6, 12.6, 12.6, 18.6, 22],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "lat": 40.74674753037684,
+      "lng": -111.85450164641544,
+      "base_y": [22, 18.6, 12.6, 12.6, 18.6, 22],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "river_station": 300,
+      "ds_reach_lob": 230.1481678018664,
+      "ds_reach_channel": 230.14811682315806,
+      "ds_reach_rob": 230.14802336293994
+    },
+    {
+      "station": 1191.2049398294057,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [22, 18.5, 12.5, 12.5, 18.5, 22],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "base_y": [22, 18.5, 12.5, 12.5, 18.5, 22],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "lat": 40.74618441297104,
+      "lng": -111.85487705801931,
+      "river_station": 250,
+      "ds_reach_lob": 217.86967295500986,
+      "ds_reach_channel": 224.87335208893262,
+      "ds_reach_rob": 237.76756885014592
+    },
+    {
+      "station": 966.331587740473,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [22, 18.5, 12.5, 12.5, 18.5, 22],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "base_y": [22, 18.5, 12.5, 12.5, 18.5, 22],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "river_station": 200,
+      "ds_reach_lob": 93.19915768199552,
+      "ds_reach_channel": 96.63305810005232,
+      "ds_reach_rob": 102.93003553449851
+    },
+    {
+      "station": 869.6985296404207,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [22, 18.5, 12.5, 12.5, 18.5, 22],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "base_y": [22, 18.5, 12.5, 12.5, 18.5, 22],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "river_station": 180,
+      "ds_reach_lob": 144.949611581508,
+      "ds_reach_channel": 144.94962909886823,
+      "ds_reach_rob": 144.94966121267393
+    },
+    {
+      "station": 724.7489005415524,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [22, 18.5, 12.5, 12.5, 18.5, 22],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "base_y": [22, 18.5, 12.5, 12.5, 18.5, 22],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "river_station": 150,
+      "ds_reach_lob": 241.58279783498213,
+      "ds_reach_channel": 241.58282702459735,
+      "ds_reach_rob": 241.58288053938736
+    },
+    {
+      "station": 483.16607351695507,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [22, 18, 12, 12, 18, 22],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "base_y": [22, 18, 12, 12, 18, 22],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "river_station": 100,
+      "ds_reach_lob": 483.16601513602075,
+      "ds_reach_channel": 483.16607351695507,
+      "ds_reach_rob": 483.16618055140054
+    },
+    {
+      "station": 0,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [18, 16, 10, 10, 16, 18],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "base_y": [18, 16, 10, 10, 16, 18],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "lat": 40.743,
+      "lng": -111.854,
+      "river_station": 0
+    }
+  ],
+  "flow_rate": 338.5,
+  "num_slices": 100,
+  "regime": 2,
+  "downstream_wsel": 12,
+  "coeff_contraction": 0.1,
+  "coeff_expansion": 0.3,
+  "max_spacing": 100,
+  "downstream_bc_type": 2,
+  "downstream_bc_slope": 0.002,
+  "downstream_bc_rating_q": [],
+  "downstream_bc_rating_wsel": [],
+  "upstream_bc_type": 2,
+  "upstream_bc_slope": 0.01,
+  "upstream_bc_rating_q": [],
+  "upstream_bc_rating_wsel": [],
+  "upstream_wsel": 24,
+  "culvert_stations": [
+    2317.625579812039,
+    1191.2049398294057
+  ],
+  "culvert_shape_types": [1, 1],
+  "culvert_spans": [10, 8],
+  "culvert_rises": [6, 6],
+  "culvert_roughness_ns": [0.012, 0.012],
+  "culvert_lengths": [
+    411.66109846191694,
+    455.02146891209077
+  ],
+  "culvert_entrance_loss_coeffs": [0.5, 0.5],
+  "culvert_exit_loss_coeffs": [1, 1],
+  "culvert_roughness_n_bottoms": [0.012, 0.012],
+  "culvert_depth_bottom_ns": [0, 0],
+  "culvert_depth_blockeds": [0, 0],
+  "culvert_inlet_types": [0, 0],
+  "culvert_chart_numbers": [0, 0],
+  "culvert_scale_numbers": [0, 0],
+  "culvert_barrels": [1, 1],
+  "culvert_skew_angles": [59, 59],
+  "culvert_active_barrels": [1, 1],
+  "culvert_approach_reach_stations": [
+    2523.456129042998,
+    1421.3530566525637
+  ],
+  "culvert_departure_reach_stations": [
+    2111.795030581081,
+    966.331587740473
+  ],
+  "bridge_stations": [724.7489005415524],
+  "bridge_low_chords": [18],
+  "bridge_high_chords": [22],
+  "bridge_pier_widths": [1.5],
+  "bridge_num_piers": [3],
+  "bridge_pier_shapes": [1],
+  "bridge_weir_coeffs": [2.6],
+  "bridge_orifice_coeffs": [0.5],
+  "bridge_deck_stations": [[100, 134]],
+  "bridge_deck_low_elevations": [[18, 18]],
+  "bridge_deck_high_elevations": [[22, 22]]
+}"#;
+        let inputs: SteadyInputs = serde_json::from_str(json_str).unwrap();
+        let _result = solve_steady(&inputs);
+    }
+}

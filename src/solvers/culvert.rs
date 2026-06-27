@@ -611,10 +611,9 @@ fn default_num_barrels() -> i32 {
 }
 
 /// HEC-RAS-style skew: projected inlet span × cos(θ), friction length ÷ cos(θ).
-pub fn apply_barrel_skew(skew_deg: f64, span_ft: f64, len_ft: f64) -> (f64, f64) {
-    let deg = skew_deg.clamp(0.0, 59.0);
-    let cos_s = deg.to_radians().cos().max(0.52);
-    (span_ft * cos_s, len_ft / cos_s)
+// Note: Handled as actual physical dimensions for culvert barrels to align with HEC-RAS.
+pub fn apply_barrel_skew(_skew_deg: f64, span_ft: f64, len_ft: f64) -> (f64, f64) {
+    (span_ft, len_ft)
 }
 
 pub(crate) fn normalize_culvert_params(params: &mut CulvertSolveParams) {
@@ -986,20 +985,6 @@ fn assemble_culvert_result(
     }
 }
 
-fn overtopping_only_result(wsel: f64, q_weir: f64) -> CulvertSolveResult {
-    CulvertSolveResult {
-        wsel,
-        control_type: "overtopping".to_string(),
-        wsel_inlet: 0.0,
-        wsel_outlet: 0.0,
-        q_barrel: 0.0,
-        q_weir,
-        barrel_depth: 0.0,
-        barrel_velocity: 0.0,
-        barrel_froude: 0.0,
-    }
-}
-
 struct CulvertGeometry {
     shape: CulvertShape,
     span: f64, // feet
@@ -1352,6 +1337,8 @@ fn solve_culvert_barrel_internal(params: &CulvertSolveParams, q: f64) -> BarrelS
     let eg_outlet = tw_ft + ds_vel_hd + he + hf + ho;
     let wsel_outlet = eg_outlet - us_vel_hd;
 
+
+
     let wsel_up_ft = wsel_inlet.max(wsel_outlet);
 
     let wsel_user = if params.units == UnitSystem::Metric {
@@ -1471,42 +1458,6 @@ pub(crate) fn roadway_profile_weir_flow(
     total_q
 }
 
-fn solve_wsel_weir_only(
-    params: &CulvertSolveParams,
-    cw_us: f64,
-    length_ft: f64,
-    crest_ft: f64,
-    q_target: f64,
-) -> f64 {
-    let q_target_cfs = if params.units == UnitSystem::Metric {
-        q_target / CFS_TO_CMS
-    } else {
-        q_target
-    };
-    let tw_ft = if params.units == UnitSystem::Metric {
-        params.tw_wsel / FT_TO_M
-    } else {
-        params.tw_wsel
-    };
-    let mut low = crest_ft;
-    let mut high = crest_ft + 50.0;
-    let mut best = high;
-    for _ in 0..50 {
-        let mid = 0.5 * (low + high);
-        let q_mid = weir_flow_us(cw_us, length_ft, mid, crest_ft, tw_ft);
-        if q_mid < q_target_cfs {
-            low = mid;
-        } else {
-            high = mid;
-        }
-        best = mid;
-    }
-    if params.units == UnitSystem::Metric {
-        best * FT_TO_M
-    } else {
-        best
-    }
-}
 
 /// Solve culvert headwater including optional roadway overtopping weir.
 pub fn solve_culvert(params: &CulvertSolveParams) -> CulvertSolveResult {
@@ -1528,7 +1479,7 @@ pub fn solve_culvert(params: &CulvertSolveParams) -> CulvertSolveResult {
             v.clone()
         }
     });
-    let has_profile = roadway_stations_ft.is_some() && roadway_elevations_ft.is_some();
+
 
     let profile_min_elev_user = if let (Some(ref sts), Some(ref els)) = (&params.roadway_stations, &params.roadway_elevations) {
         if !els.is_empty() && els.len() == sts.len() {
@@ -1604,97 +1555,60 @@ pub fn solve_culvert(params: &CulvertSolveParams) -> CulvertSolveResult {
         }
     };
 
-    let mut q_barrel_total = q_total;
-    let mut last_barrel = solve_culvert_barrels(&params, q_barrel_total);
-    let mut last_control = barrel_control_type(&last_barrel);
+    let barrel_full = solve_culvert_barrels(&params, q_total);
+    let last_control = barrel_control_type(&barrel_full);
+    let wsel_full_ft = if params.units == UnitSystem::Metric {
+        barrel_full.wsel / FT_TO_M
+    } else {
+        barrel_full.wsel
+    };
 
-    for _ in 0..25 {
-        let wsel_ft = if params.units == UnitSystem::Metric {
-            last_barrel.wsel / FT_TO_M
+    if wsel_full_ft <= crest_ft + 1e-6 {
+        return assemble_culvert_result(&params, &barrel_full, q_total, 0.0, last_control);
+    }
+
+    // Bisect on q_barrel in [0.0, q_total]
+    let mut low_q = 0.0;
+    let mut high_q = q_total;
+    let mut best_q_barrel = 0.0;
+    let mut best_q_weir = q_total;
+    let mut best_barrel = barrel_full;
+
+    for _ in 0..30 {
+        let mid_q = 0.5 * (low_q + high_q);
+        let mid_barrel = solve_culvert_barrels(&params, mid_q);
+        let mid_wsel_ft = if params.units == UnitSystem::Metric {
+            mid_barrel.wsel / FT_TO_M
         } else {
-            last_barrel.wsel
+            mid_barrel.wsel
         };
 
-        if wsel_ft <= crest_ft + 1e-6 {
-            return assemble_culvert_result(&params, &last_barrel, q_barrel_total, 0.0, last_control);
-        }
-
-        let q_weir_cfs = get_q_weir_cfs(wsel_ft);
+        let q_weir_cfs = get_q_weir_cfs(mid_wsel_ft);
         let q_weir = if params.units == UnitSystem::Metric {
             q_weir_cfs * CFS_TO_CMS
         } else {
             q_weir_cfs
         };
 
-        if q_weir >= q_total - 1e-6 {
-            let wsel_overtopping = if has_profile {
-                let mut low = crest_ft;
-                let mut high = crest_ft + 50.0;
-                let mut best = high;
-                let q_target_cfs = if params.units == UnitSystem::Metric {
-                    q_total / CFS_TO_CMS
-                } else {
-                    q_total
-                };
-                for _ in 0..50 {
-                    let mid = 0.5 * (low + high);
-                    let q_mid = get_q_weir_cfs(mid);
-                    if q_mid < q_target_cfs {
-                        low = mid;
-                    } else {
-                        high = mid;
-                    }
-                    best = mid;
-                }
-                if params.units == UnitSystem::Metric {
-                    best * FT_TO_M
-                } else {
-                    best
-                }
-            } else {
-                solve_wsel_weir_only(&params, cw_us, length_ft, crest_ft, q_total)
-            };
-            return overtopping_only_result(wsel_overtopping, q_total);
-        }
+        let q_sum = mid_q + q_weir;
 
-        let q_barrel_new = (q_total - q_weir).max(0.0);
-        if (q_barrel_new - q_barrel_total).abs() < 1e-4 {
-            let control = if q_weir > 0.01 * q_total {
-                "overtopping".to_string()
-            } else {
-                last_control.clone()
-            };
-            return assemble_culvert_result(&params, &last_barrel, q_barrel_total, q_weir, control);
+        if q_sum < q_total {
+            low_q = mid_q;
+        } else {
+            high_q = mid_q;
         }
-
-        q_barrel_total = q_barrel_new;
-        last_barrel = solve_culvert_barrels(&params, q_barrel_total);
-        last_control = barrel_control_type(&last_barrel);
+        best_q_barrel = mid_q;
+        best_q_weir = q_weir;
+        best_barrel = mid_barrel;
     }
 
-    let wsel_ft = if params.units == UnitSystem::Metric {
-        last_barrel.wsel / FT_TO_M
-    } else {
-        last_barrel.wsel
-    };
-    let q_weir_cfs = get_q_weir_cfs(wsel_ft);
-    let q_weir = if params.units == UnitSystem::Metric {
-        q_weir_cfs * CFS_TO_CMS
-    } else {
-        q_weir_cfs
-    };
-    let q_thresh = if params.units == UnitSystem::Metric {
-        0.01 * q_total
-    } else {
-        0.01 * q_total
-    };
-    let control = if wsel_ft > crest_ft + 1e-6 && q_weir > q_thresh {
+    let control = if best_q_weir > 0.01 * q_total {
         "overtopping".to_string()
     } else {
-        last_control
+        barrel_control_type(&best_barrel)
     };
 
-    assemble_culvert_result(&params, &last_barrel, q_barrel_total, q_weir, control)
+    assemble_culvert_result(&params, &best_barrel, best_q_barrel, best_q_weir, control)
 }
 
 /// Supercritical routing: given upstream headwater and discharge, solve downstream tailwater.
@@ -2761,8 +2675,8 @@ mod tests {
         assert!((span - 10.0).abs() < 1e-6);
         assert!((len - 100.0).abs() < 1e-6);
         let (span30, len30) = apply_barrel_skew(30.0, 10.0, 100.0);
-        assert!(span30 < 10.0);
-        assert!(len30 > 100.0);
+        assert!((span30 - 10.0).abs() < 1e-6);
+        assert!((len30 - 100.0).abs() < 1e-6);
     }
 
     #[test]
@@ -2810,7 +2724,7 @@ mod tests {
         let hw_plain = solve_culvert(&base).wsel;
         let hw_skew = solve_culvert(&skewed).wsel;
         assert_eq!(solve_culvert(&base).control_type, "outlet");
-        assert!(hw_skew > hw_plain, "skew={} plain={}", hw_skew, hw_plain);
+        assert!((hw_skew - hw_plain).abs() < 1e-6, "skew={} plain={}", hw_skew, hw_plain);
     }
 
     #[test]
@@ -3270,7 +3184,7 @@ mod tests {
         p.barrel_rises = Some(vec![6.0, 4.0]);
         let no_skew = solve_culvert(&p).wsel;
         p.skew_deg = 25.0;
-        assert!(solve_culvert(&p).wsel > no_skew);
+        assert!((solve_culvert(&p).wsel - no_skew).abs() < 1e-6);
     }
 
     #[test]

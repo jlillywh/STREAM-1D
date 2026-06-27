@@ -219,6 +219,19 @@ pub fn apply_culvert_reach_layout_steady(
         );
     }
 
+    for (c_idx, faces) in face_list.iter().enumerate() {
+        if culvert_has_explicit_bounds_steady(inputs, c_idx) {
+            crate::solvers::bridge_interior::remove_internal_nodes_inside_bounds(
+                stations,
+                tables,
+                z_mins,
+                xs,
+                faces.us_station_m,
+                faces.ds_station_m,
+            );
+        }
+    }
+
     face_list
         .iter()
         .enumerate()
@@ -227,6 +240,34 @@ pub fn apply_culvert_reach_layout_steady(
                 find_culvert_face_interval(*faces, stations)
             } else {
                 fallback_culvert_interval(*faces, centers[c_idx], raw_units, stations)
+            }
+        })
+        .collect()
+}
+
+pub fn re_resolve_culvert_intervals(
+    inputs: &crate::solvers::steady::SteadyInputs,
+    raw_units: UnitSystem,
+    stations: &[f64],
+) -> Vec<Option<usize>> {
+    let Some(ref centers) = inputs.culvert_stations else {
+        return vec![];
+    };
+    centers
+        .iter()
+        .enumerate()
+        .map(|(c_idx, &center)| {
+            let faces = resolve_culvert_face_stations_metric(
+                center,
+                raw_units,
+                approach_reach_user_steady(inputs, c_idx),
+                departure_reach_user_steady(inputs, c_idx),
+                culvert_length_user_steady(inputs, c_idx),
+            );
+            if culvert_has_explicit_bounds_steady(inputs, c_idx) {
+                find_culvert_face_interval(faces, stations)
+            } else {
+                fallback_culvert_interval(faces, center, raw_units, stations)
             }
         })
         .collect()

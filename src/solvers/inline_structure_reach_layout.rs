@@ -170,6 +170,23 @@ pub fn apply_inline_structure_reach_layout_steady(
         );
     }
 
+    for (is_idx, faces) in face_list.iter().enumerate() {
+        let approach = inputs.inline_structure_approach_reach_stations.as_ref().and_then(|v| v.get(is_idx)).copied();
+        let departure = inputs.inline_structure_departure_reach_stations.as_ref().and_then(|v| v.get(is_idx)).copied();
+        let length = inputs.inline_structure_lengths.as_ref().and_then(|v| v.get(is_idx)).copied().unwrap_or(0.0);
+        let has_explicit = approach.is_some() || departure.is_some() || length > 0.0;
+        if has_explicit {
+            crate::solvers::bridge_interior::remove_internal_nodes_inside_bounds(
+                stations,
+                tables,
+                z_mins,
+                xs,
+                faces.us_station_m,
+                faces.ds_station_m,
+            );
+        }
+    }
+
     face_list
         .iter()
         .enumerate()
@@ -183,6 +200,38 @@ pub fn apply_inline_structure_reach_layout_steady(
                 find_inline_structure_face_interval(*faces, stations)
             } else {
                 fallback_inline_structure_interval(*faces, centers[is_idx], raw_units, stations)
+            }
+        })
+        .collect()
+}
+
+pub fn re_resolve_inline_structure_intervals(
+    inputs: &crate::solvers::steady::SteadyInputs,
+    raw_units: UnitSystem,
+    stations: &[f64],
+) -> Vec<Option<usize>> {
+    let Some(ref centers) = inputs.inline_structure_stations else {
+        return vec![];
+    };
+    centers
+        .iter()
+        .enumerate()
+        .map(|(is_idx, &center)| {
+            let approach = inputs.inline_structure_approach_reach_stations.as_ref().and_then(|v| v.get(is_idx)).copied();
+            let departure = inputs.inline_structure_departure_reach_stations.as_ref().and_then(|v| v.get(is_idx)).copied();
+            let length = inputs.inline_structure_lengths.as_ref().and_then(|v| v.get(is_idx)).copied().unwrap_or(0.0);
+            let faces = resolve_inline_structure_face_stations_metric(
+                center,
+                raw_units,
+                approach,
+                departure,
+                length,
+            );
+            let has_explicit = approach.is_some() || departure.is_some() || length > 0.0;
+            if has_explicit {
+                find_inline_structure_face_interval(faces, stations)
+            } else {
+                fallback_inline_structure_interval(faces, center, raw_units, stations)
             }
         })
         .collect()

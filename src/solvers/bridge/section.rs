@@ -1,8 +1,8 @@
 use crate::geometry::{CrossSection, GuideBanks, IneffectiveFlowAreas};
 use crate::solvers::deck_vent_geometry::DeckVentUserInput;
 use crate::solvers::pier_geometry::{PierAttachmentsUserInput, PierWidthUserInput};
-use crate::solvers::culvert::apply_barrel_skew;
 use crate::utils::{UnitSystem, CFS_TO_CMS};
+
 
 /// Cross-section context for bridge-adjacent ineffective flow areas.
 #[derive(Debug, Clone, Default)]
@@ -136,5 +136,7 @@ pub(crate) fn hydraulic_hw_tw_reach(
 
 /// HEC-RAS-style bridge skew: projected opening width × cos(θ), friction length ÷ cos(θ).
 pub fn apply_bridge_skew(skew_deg: f64, width_m: f64, length_m: f64) -> (f64, f64) {
-    apply_barrel_skew(skew_deg, width_m, length_m)
+    let deg = skew_deg.clamp(0.0, 59.0);
+    let cos_s = deg.to_radians().cos().max(0.52);
+    (width_m * cos_s, length_m / cos_s)
 }
