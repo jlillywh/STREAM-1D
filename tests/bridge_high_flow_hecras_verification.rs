@@ -90,9 +90,10 @@ fn coupling_for_case(case: &BenchmarkCase) -> BridgeCouplingParams {
 
 #[test]
 fn bridge_high_flow_hecras_benchmarks() {
-    let file: BenchmarkFile =
-        serde_json::from_str(include_str!("../verification/fixtures/bridge_high_flow_hecras.json"))
-            .expect("bridge high-flow benchmark JSON");
+    let file: BenchmarkFile = serde_json::from_str(include_str!(
+        "../verification/fixtures/bridge_high_flow_hecras.json"
+    ))
+    .expect("bridge high-flow benchmark JSON");
     assert!(
         file.cases.len() >= 5,
         "acceptance requires ≥5 HEC-RAS bridge regression cases, got {}",
@@ -143,9 +144,10 @@ fn bridge_high_flow_hecras_benchmarks() {
 
 #[test]
 fn bridge_high_flow_hecras_case_count() {
-    let file: BenchmarkFile =
-        serde_json::from_str(include_str!("../verification/fixtures/bridge_high_flow_hecras.json"))
-            .expect("bridge high-flow benchmark JSON");
+    let file: BenchmarkFile = serde_json::from_str(include_str!(
+        "../verification/fixtures/bridge_high_flow_hecras.json"
+    ))
+    .expect("bridge high-flow benchmark JSON");
     assert!(
         file.cases.len() >= 5,
         "Phase 4 acceptance: ≥5 HEC-RAS bridge high-flow regression cases"

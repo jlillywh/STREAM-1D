@@ -31,7 +31,9 @@ fn wasm_fixture_deserializes_and_solves() {
 
 #[test]
 fn wasm_culvert_rating_curve_contract() {
-    use stream1d::solvers::{compute_culvert_rating_curve, CulvertRatingCurveInputs, CulvertSolveParams};
+    use stream1d::solvers::{
+        compute_culvert_rating_curve, CulvertRatingCurveInputs, CulvertSolveParams,
+    };
     use stream1d::utils::UnitSystem;
 
     let inputs = CulvertRatingCurveInputs {
@@ -169,13 +171,17 @@ fn wasm_bridge_rating_curve_bidirectional_qmax_fixture() {
     bridge.manning_n = case["manning_n"].as_f64().unwrap();
     let curve = compute_bridge_rating_curve(&BridgeRatingCurveInputs { q_values, bridge });
     assert_eq!(curve.q.len(), 6);
-    assert!(curve.wsel.iter().zip(&curve.wsel_down).all(|(hw, tw)| hw > tw));
+    assert!(curve
+        .wsel
+        .iter()
+        .zip(&curve.wsel_down)
+        .all(|(hw, tw)| hw > tw));
 }
 
 #[test]
 fn steady_validation_bridge_opening_width_warning() {
-    use stream1d::solvers::{validate_steady_inputs, SteadyInputs};
     use stream1d::geometry::CrossSection;
+    use stream1d::solvers::{validate_steady_inputs, SteadyInputs};
     use stream1d::utils::UnitSystem;
 
     let parent = CrossSection {
@@ -247,9 +253,18 @@ fn wasm_api_metadata_version() {
     let meta = build_api_metadata();
     assert_eq!(meta.api_version, API_VERSION);
     assert_eq!(API_VERSION, 38);
-    assert!(meta.culvert_tier1_fields.inputs.contains(&"culvert_inlet_types".to_string()));
-    assert!(meta.culvert_tier1_fields.inputs.contains(&"culvert_chart_numbers".to_string()));
-    assert!(meta.culvert_tier1_fields.inputs.contains(&"culvert_scale_numbers".to_string()));
+    assert!(meta
+        .culvert_tier1_fields
+        .inputs
+        .contains(&"culvert_inlet_types".to_string()));
+    assert!(meta
+        .culvert_tier1_fields
+        .inputs
+        .contains(&"culvert_chart_numbers".to_string()));
+    assert!(meta
+        .culvert_tier1_fields
+        .inputs
+        .contains(&"culvert_scale_numbers".to_string()));
     assert_eq!(
         meta.bridge_fields.rating_curve_entry_point,
         "computeBridgeRatingCurve"
@@ -383,8 +398,6 @@ fn wasm_bridge_roadway_embankment_deserializes_and_composes() {
     assert_eq!(us_left, vec![-3.0, 0.0]);
     assert!(steady_composed_embankment_blocked(&inputs, 0).is_some());
 }
-
-
 
 #[test]
 fn wasm_rating_curve_roadway_embankment_deserializes_and_composes() {
@@ -673,9 +686,15 @@ fn bridge_abutment_per_side_fields_deserialize() {
     }"#;
     let inputs: SteadyInputs = serde_json::from_str(json).expect("per-side abutment fields");
     assert_eq!(inputs.bridge_abutment_left_widths.as_ref().unwrap()[0], 1.0);
-    assert_eq!(inputs.bridge_abutment_right_widths.as_ref().unwrap()[0], 4.0);
     assert_eq!(
-        inputs.bridge_abutment_right_top_elevations.as_ref().unwrap()[0],
+        inputs.bridge_abutment_right_widths.as_ref().unwrap()[0],
+        4.0
+    );
+    assert_eq!(
+        inputs
+            .bridge_abutment_right_top_elevations
+            .as_ref()
+            .unwrap()[0],
         2.5
     );
     let profiles = inputs
@@ -698,8 +717,6 @@ fn bridge_abutment_per_side_fields_deserialize() {
         inputs.bridge_abutment_right_top_elevations
     );
 }
-
-
 
 #[test]
 fn bridge_ineffective_nested_arrays_roundtrip() {
@@ -740,7 +757,9 @@ fn bridge_ineffective_nested_arrays_roundtrip() {
 
 #[test]
 fn wasm_tapered_pier_fields_deserialize_and_solve() {
-    use stream1d::solvers::bridge::{compute_bridge_rating_curve, BridgeRatingCurveInputs, BridgeSolveParams};
+    use stream1d::solvers::bridge::{
+        compute_bridge_rating_curve, BridgeRatingCurveInputs, BridgeSolveParams,
+    };
 
     let steady_json = r#"{
         "cross_sections": [
@@ -796,7 +815,9 @@ fn wasm_tapered_pier_fields_deserialize_and_solve() {
 
 #[test]
 fn wasm_pier_width_profile_deserializes_and_solves() {
-    use stream1d::solvers::bridge::{compute_bridge_rating_curve, BridgeRatingCurveInputs, BridgeSolveParams};
+    use stream1d::solvers::bridge::{
+        compute_bridge_rating_curve, BridgeRatingCurveInputs, BridgeSolveParams,
+    };
 
     let steady_json = r#"{
         "cross_sections": [
@@ -850,11 +871,11 @@ fn wasm_pier_width_profile_deserializes_and_solves() {
     assert!(curve.wsel[0] > 2.5);
 }
 
-
-
 #[test]
 fn wasm_footing_nosing_rating_hw_exceeds_shaft_only() {
-    use stream1d::solvers::bridge::{compute_bridge_rating_curve, BridgeRatingCurveInputs, BridgeSolveParams};
+    use stream1d::solvers::bridge::{
+        compute_bridge_rating_curve, BridgeRatingCurveInputs, BridgeSolveParams,
+    };
 
     let mut shaft = BridgeSolveParams::default();
     shaft.low_chord = 4.0;
@@ -895,7 +916,9 @@ fn wasm_footing_nosing_rating_hw_exceeds_shaft_only() {
 
 #[test]
 fn wasm_pier_footing_nosing_deserialize_and_solve() {
-    use stream1d::solvers::bridge::{compute_bridge_rating_curve, BridgeRatingCurveInputs, BridgeSolveParams};
+    use stream1d::solvers::bridge::{
+        compute_bridge_rating_curve, BridgeRatingCurveInputs, BridgeSolveParams,
+    };
 
     let steady_json = r#"{
         "cross_sections": [
@@ -924,7 +947,8 @@ fn wasm_pier_footing_nosing_deserialize_and_solve() {
         "bridge_deck_low_elevations": [[4, 4]],
         "bridge_deck_high_elevations": [[6, 6]]
     }"#;
-    let inputs: SteadyInputs = serde_json::from_str(steady_json).expect("footing/nosing steady JSON");
+    let inputs: SteadyInputs =
+        serde_json::from_str(steady_json).expect("footing/nosing steady JSON");
     assert_eq!(
         inputs.bridge_pier_footing_widths.as_ref().unwrap()[0],
         vec![3.0]
@@ -962,5 +986,3 @@ fn wasm_pier_footing_nosing_deserialize_and_solve() {
     assert_eq!(curve.wsel.len(), 1);
     assert!(curve.wsel[0] > 2.5);
 }
-
-

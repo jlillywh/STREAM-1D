@@ -137,8 +137,16 @@ fn test_bridge_rating_curve_bidirectional_qmax_sweep() {
         );
     }
 
-    let idx_pos_20 = curve.q.iter().position(|&q| (q - 20.0).abs() < 1e-6).unwrap();
-    let idx_neg_20 = curve.q.iter().position(|&q| (q + 20.0).abs() < 1e-6).unwrap();
+    let idx_pos_20 = curve
+        .q
+        .iter()
+        .position(|&q| (q - 20.0).abs() < 1e-6)
+        .unwrap();
+    let idx_neg_20 = curve
+        .q
+        .iter()
+        .position(|&q| (q + 20.0).abs() < 1e-6)
+        .unwrap();
     assert!(
         (curve.head_losses[idx_pos_20] - curve.head_losses[idx_neg_20]).abs() < 0.02,
         "symmetric |Q|=20 head loss: forward {} reverse {}",

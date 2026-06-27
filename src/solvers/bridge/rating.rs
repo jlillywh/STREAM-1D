@@ -1,6 +1,4 @@
-use crate::geometry::{
-    CrossSection, GeometryTable, IneffectiveFlowAreas,
-};
+use crate::geometry::{CrossSection, GeometryTable, IneffectiveFlowAreas};
 use crate::solvers::bridge_abutment::BridgeAbutmentUserInput;
 use crate::utils::{UnitSystem, FT_TO_M};
 
@@ -9,8 +7,7 @@ use super::ice_debris::{clamp_opening_blockage_factor, BridgeIceDebrisParams};
 use super::coupling::{solve_bridge_coupled, BridgeSolveResult};
 use super::geometry::build_bridge_deck_profile;
 use super::section::{
-    hydraulic_hw_tw_reach, BridgeFlowDirection, BridgeFrictionWeighting,
-    BridgeSectionContext,
+    hydraulic_hw_tw_reach, BridgeFlowDirection, BridgeFrictionWeighting, BridgeSectionContext,
 };
 use super::types::{
     BridgeCouplingParams, BridgeRatingCurveInputs, BridgeRatingCurveResult, BridgeSolveParams,
@@ -40,7 +37,7 @@ pub(crate) fn rectangular_channel_cross_section(
         is_overbank: None,
         blocked_obstructions: None,
         ineffective_flow_areas: None,
-    guide_banks: None,
+        guide_banks: None,
         coeff_contraction: None,
         coeff_expansion: None,
     }
@@ -126,7 +123,9 @@ pub(crate) fn ineffective_face_blocks(
     (stations, elevations)
 }
 
-pub(crate) fn ineffective_upstream_from_params(params: &BridgeSolveParams) -> Option<IneffectiveFlowAreas> {
+pub(crate) fn ineffective_upstream_from_params(
+    params: &BridgeSolveParams,
+) -> Option<IneffectiveFlowAreas> {
     let (left_s, left_e) = ineffective_face_blocks(
         params.ineffective_left_stations_upstream.as_ref(),
         params.ineffective_left_elevations_upstream.as_ref(),
@@ -150,7 +149,9 @@ pub(crate) fn ineffective_upstream_from_params(params: &BridgeSolveParams) -> Op
     IneffectiveFlowAreas::from_block_pairs(&left_s, &left_e, &right_s, &right_e)
 }
 
-pub(crate) fn ineffective_downstream_from_params(params: &BridgeSolveParams) -> Option<IneffectiveFlowAreas> {
+pub(crate) fn ineffective_downstream_from_params(
+    params: &BridgeSolveParams,
+) -> Option<IneffectiveFlowAreas> {
     let (left_s, left_e) = ineffective_face_blocks(
         params.ineffective_left_stations_downstream.as_ref(),
         params.ineffective_left_elevations_downstream.as_ref(),
@@ -216,28 +217,22 @@ pub(crate) fn geometry_tables_from_params(
     };
 
     let (xs_up, xs_down) = if params.xs_up.is_some() || params.xs_down.is_some() {
-        let up = params
-            .xs_up
-            .clone()
-            .unwrap_or_else(|| {
-                rectangular_channel_cross_section(
-                    params.channel_width.max(1e-3),
-                    params.z_up,
-                    manning_n,
-                    params.units,
-                )
-            });
-        let down = params
-            .xs_down
-            .clone()
-            .unwrap_or_else(|| {
-                rectangular_channel_cross_section(
-                    params.channel_width.max(1e-3),
-                    params.z_down,
-                    manning_n,
-                    params.units,
-                )
-            });
+        let up = params.xs_up.clone().unwrap_or_else(|| {
+            rectangular_channel_cross_section(
+                params.channel_width.max(1e-3),
+                params.z_up,
+                manning_n,
+                params.units,
+            )
+        });
+        let down = params.xs_down.clone().unwrap_or_else(|| {
+            rectangular_channel_cross_section(
+                params.channel_width.max(1e-3),
+                params.z_down,
+                manning_n,
+                params.units,
+            )
+        });
         (up, down)
     } else {
         (
@@ -271,13 +266,9 @@ pub fn solve_bridge_from_params(params: &BridgeSolveParams) -> BridgeSolveResult
     let mut params = params.clone();
     crate::solvers::bridge_roadway_compose::apply_roadway_embankment_compose_params(&mut params);
     let (_table_up, _table_down, mut xs_up, mut xs_down) = geometry_tables_from_params(&params);
-    let opening_origin = params
-        .opening_reach_station_origin
-        .or_else(|| {
-            Some(crate::solvers::bridge_interior::infer_opening_reach_station_origin(
-                &xs_up,
-            ))
-        });
+    let opening_origin = params.opening_reach_station_origin.or_else(|| {
+        Some(crate::solvers::bridge_interior::infer_opening_reach_station_origin(&xs_up))
+    });
     if let Some(blocked) = params.composed_embankment_blocked.as_ref() {
         crate::solvers::bridge_roadway_compose::merge_embankment_blocked_into_section(
             &mut xs_up,

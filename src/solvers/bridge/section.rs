@@ -3,7 +3,6 @@ use crate::solvers::deck_vent_geometry::DeckVentUserInput;
 use crate::solvers::pier_geometry::{PierAttachmentsUserInput, PierWidthUserInput};
 use crate::utils::{UnitSystem, CFS_TO_CMS};
 
-
 /// Cross-section context for bridge-adjacent ineffective flow areas.
 #[derive(Debug, Clone, Default)]
 pub struct BridgeSectionContext {
@@ -104,7 +103,10 @@ pub fn mirror_bridge_section_context(ctx: &BridgeSectionContext) -> BridgeSectio
     let mut mirrored = ctx.clone();
     std::mem::swap(&mut mirrored.ineffective_up, &mut mirrored.ineffective_down);
     std::mem::swap(&mut mirrored.xs_approach, &mut mirrored.xs_departure);
-    std::mem::swap(&mut mirrored.guide_banks_approach, &mut mirrored.guide_banks_departure);
+    std::mem::swap(
+        &mut mirrored.guide_banks_approach,
+        &mut mirrored.guide_banks_departure,
+    );
     mirrored.friction_lengths = BridgeFrictionLengths {
         weighting: ctx.friction_lengths.weighting,
         opening_m: ctx.friction_lengths.opening_m,

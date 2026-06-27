@@ -3,8 +3,8 @@
 use crate::geometry::{CrossSection, GeometryTable, IneffectiveFlowAreas};
 use crate::solvers::bridge_abutment::abutment_user_input_from_steady;
 use crate::solvers::bridge_interior::{
-    resolve_approach_departure_sections, resolve_bridge_face_solve_geometry, BridgeFaceSolveGeometry,
-    BridgeFaceSolveParams, BridgeInteriorInput,
+    resolve_approach_departure_sections, resolve_bridge_face_solve_geometry,
+    BridgeFaceSolveGeometry, BridgeFaceSolveParams, BridgeInteriorInput,
 };
 use crate::solvers::bridge_roadway_compose::ComposedEmbankmentBlocked;
 use crate::utils::{UnitSystem, FT_TO_M};
@@ -104,7 +104,12 @@ fn face_blocks(
         .and_then(|v| v.get(b_idx))
         .filter(|blocks| !blocks.is_empty())
         .cloned()
-        .or_else(|| legacy_elevations.as_ref().and_then(|v| v.get(b_idx)).cloned())
+        .or_else(|| {
+            legacy_elevations
+                .as_ref()
+                .and_then(|v| v.get(b_idx))
+                .cloned()
+        })
         .unwrap_or_default();
     (stations, elevations)
 }

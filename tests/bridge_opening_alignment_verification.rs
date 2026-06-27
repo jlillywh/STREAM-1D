@@ -83,7 +83,9 @@ fn skew_offset_inputs(
     inputs
 }
 
-fn face_geometry_for(inputs: &SteadyInputs) -> stream1d::solvers::bridge_interior::BridgeFaceSolveGeometry {
+fn face_geometry_for(
+    inputs: &SteadyInputs,
+) -> stream1d::solvers::bridge_interior::BridgeFaceSolveGeometry {
     let interior = interior_from_steady(inputs, 0);
     let bu = interior.bu.as_ref().unwrap();
     let bd = interior.bd.as_ref().unwrap();
@@ -117,7 +119,10 @@ fn face_geometry_for(inputs: &SteadyInputs) -> stream1d::solvers::bridge_interio
 fn offset_origin_remaps_pier_stations_to_reach_frame() {
     let inputs = skew_offset_inputs(Some(ORIGIN_OFFSET_M), 0.0, Some(vec![10.0, 18.0]));
     let geo = face_geometry_for(&inputs);
-    assert_eq!(geo.sections.opening_reach_station_origin, Some(ORIGIN_OFFSET_M));
+    assert_eq!(
+        geo.sections.opening_reach_station_origin,
+        Some(ORIGIN_OFFSET_M)
+    );
     let piers = geo
         .sections
         .pier_stations
@@ -158,7 +163,11 @@ fn explicit_offset_origin_pier_positions_differ_from_bu_left_inference() {
 
 #[test]
 fn skew_with_offset_origin_increases_headwater_vs_no_skew() {
-    let plain = solve_steady(&skew_offset_inputs(Some(ORIGIN_OFFSET_M), 0.0, Some(vec![10.0, 18.0])));
+    let plain = solve_steady(&skew_offset_inputs(
+        Some(ORIGIN_OFFSET_M),
+        0.0,
+        Some(vec![10.0, 18.0]),
+    ));
     let skewed = solve_steady(&skew_offset_inputs(
         Some(ORIGIN_OFFSET_M),
         SKEW_DEG,

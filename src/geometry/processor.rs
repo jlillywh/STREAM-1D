@@ -1,4 +1,4 @@
-use crate::utils::{G_METRIC, UnitSystem, FT_TO_M};
+use crate::utils::{UnitSystem, FT_TO_M, G_METRIC};
 
 /// A raw cross-section definition.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -67,9 +67,7 @@ pub struct BlockedObstruction {
 impl BlockedObstruction {
     pub fn is_valid(&self) -> bool {
         let n = self.stations.len();
-        n >= 2
-            && n == self.elevations.len()
-            && self.stations.windows(2).all(|w| w[1] > w[0])
+        n >= 2 && n == self.elevations.len() && self.stations.windows(2).all(|w| w[1] > w[0])
     }
 
     /// Obstruction crest elevation at lateral station `x`, if `x` lies on this polyline.
@@ -87,7 +85,9 @@ impl BlockedObstruction {
                     return Some(self.elevations[i]);
                 }
                 let t = (x - self.stations[i]) / dx;
-                return Some(self.elevations[i] + t * (self.elevations[i + 1] - self.elevations[i]));
+                return Some(
+                    self.elevations[i] + t * (self.elevations[i + 1] - self.elevations[i]),
+                );
             }
         }
         Some(self.elevations[self.elevations.len() - 1])
@@ -111,11 +111,7 @@ fn effective_bed_elevation(ground: f64, obstruction_top: Option<f64>) -> f64 {
 }
 
 /// Parametric split points along a cross-section segment for blocked-obstruction boundaries.
-fn segment_blocked_t_splits(
-    x1: f64,
-    x2: f64,
-    blocked: Option<&[BlockedObstruction]>,
-) -> Vec<f64> {
+fn segment_blocked_t_splits(x1: f64, x2: f64, blocked: Option<&[BlockedObstruction]>) -> Vec<f64> {
     let mut splits = vec![0.0, 1.0];
     if (x2 - x1).abs() > 1e-9 {
         let (lo, hi) = if x1 < x2 { (x1, x2) } else { (x2, x1) };
@@ -181,10 +177,7 @@ impl IneffectiveFlowAreas {
         stations
             .iter()
             .zip(elevations.iter())
-            .map(|(&station, &elevation)| IneffectiveBlock {
-                station,
-                elevation,
-            })
+            .map(|(&station, &elevation)| IneffectiveBlock { station, elevation })
             .collect()
     }
 
@@ -201,7 +194,10 @@ impl IneffectiveFlowAreas {
             return None;
         }
         Some(Self {
-            left_blocks: Self::blocks_from_pairs(&left_stations[..left_len], &left_elevations[..left_len]),
+            left_blocks: Self::blocks_from_pairs(
+                &left_stations[..left_len],
+                &left_elevations[..left_len],
+            ),
             right_blocks: Self::blocks_from_pairs(
                 &right_stations[..right_len],
                 &right_elevations[..right_len],
@@ -322,9 +318,10 @@ impl CrossSection {
                 .blocked_obstructions
                 .as_ref()
                 .map(|blocks| blocks.iter().map(scale_blocked).collect()),
-            ineffective_flow_areas: self.ineffective_flow_areas.as_ref().map(|areas| {
-                areas.convert_units(self.unit_system, UnitSystem::Metric)
-            }),
+            ineffective_flow_areas: self
+                .ineffective_flow_areas
+                .as_ref()
+                .map(|areas| areas.convert_units(self.unit_system, UnitSystem::Metric)),
             guide_banks: self
                 .guide_banks
                 .as_ref()
@@ -498,12 +495,42 @@ impl CrossSection {
             sum_pn15: f64,
         }
 
-        let mut lob = ZoneProperties { area: 0.0, perimeter: 0.0, top_width: 0.0, sum_pn15: 0.0 };
-        let mut ch  = ZoneProperties { area: 0.0, perimeter: 0.0, top_width: 0.0, sum_pn15: 0.0 };
-        let mut rob = ZoneProperties { area: 0.0, perimeter: 0.0, top_width: 0.0, sum_pn15: 0.0 };
-        let mut lob_active = ZoneProperties { area: 0.0, perimeter: 0.0, top_width: 0.0, sum_pn15: 0.0 };
-        let mut ch_active  = ZoneProperties { area: 0.0, perimeter: 0.0, top_width: 0.0, sum_pn15: 0.0 };
-        let mut rob_active = ZoneProperties { area: 0.0, perimeter: 0.0, top_width: 0.0, sum_pn15: 0.0 };
+        let mut lob = ZoneProperties {
+            area: 0.0,
+            perimeter: 0.0,
+            top_width: 0.0,
+            sum_pn15: 0.0,
+        };
+        let mut ch = ZoneProperties {
+            area: 0.0,
+            perimeter: 0.0,
+            top_width: 0.0,
+            sum_pn15: 0.0,
+        };
+        let mut rob = ZoneProperties {
+            area: 0.0,
+            perimeter: 0.0,
+            top_width: 0.0,
+            sum_pn15: 0.0,
+        };
+        let mut lob_active = ZoneProperties {
+            area: 0.0,
+            perimeter: 0.0,
+            top_width: 0.0,
+            sum_pn15: 0.0,
+        };
+        let mut ch_active = ZoneProperties {
+            area: 0.0,
+            perimeter: 0.0,
+            top_width: 0.0,
+            sum_pn15: 0.0,
+        };
+        let mut rob_active = ZoneProperties {
+            area: 0.0,
+            perimeter: 0.0,
+            top_width: 0.0,
+            sum_pn15: 0.0,
+        };
 
         let mut is_subdivided = false;
         let mut left_bank_x = 0.0;
@@ -565,8 +592,7 @@ impl CrossSection {
                 let seg_height_a = elev - ya;
                 let seg_height_b = elev - yb;
 
-                let seg_wetted_len =
-                    (seg_width * seg_width + (yb - ya) * (yb - ya)).sqrt();
+                let seg_wetted_len = (seg_width * seg_width + (yb - ya) * (yb - ya)).sqrt();
                 let seg_area = 0.5 * (seg_height_a + seg_height_b) * seg_width;
                 let x_mid = 0.5 * (xa + xb);
                 let n_val = self.get_manning_n(x_mid);
@@ -582,15 +608,14 @@ impl CrossSection {
                     .unwrap_or(1.0);
                 let active_scale = if is_ineffective { 0.0 } else { guide_frac };
 
-                let add_active =
-                    |zone: &mut ZoneProperties, scale: f64| {
-                        if scale > 1e-9 {
-                            zone.area += seg_area * scale;
-                            zone.perimeter += seg_wetted_len * scale;
-                            zone.top_width += seg_width * scale;
-                            zone.sum_pn15 += sum_pn15_contrib * scale;
-                        }
-                    };
+                let add_active = |zone: &mut ZoneProperties, scale: f64| {
+                    if scale > 1e-9 {
+                        zone.area += seg_area * scale;
+                        zone.perimeter += seg_wetted_len * scale;
+                        zone.top_width += seg_width * scale;
+                        zone.sum_pn15 += sum_pn15_contrib * scale;
+                    }
+                };
 
                 if is_subdivided {
                     if x_mid < left_bank_x {
@@ -640,20 +665,20 @@ impl CrossSection {
                     // Edge is inside or right of channel bank — assign to ch or rob
                     if self.x[0] > right_bank_x {
                         rob.perimeter += wall_h;
-                        rob.sum_pn15  += wall_pn15;
+                        rob.sum_pn15 += wall_pn15;
                         rob_active.perimeter += wall_h;
-                        rob_active.sum_pn15  += wall_pn15;
+                        rob_active.sum_pn15 += wall_pn15;
                     } else {
                         ch.perimeter += wall_h;
-                        ch.sum_pn15  += wall_pn15;
+                        ch.sum_pn15 += wall_pn15;
                         ch_active.perimeter += wall_h;
-                        ch_active.sum_pn15  += wall_pn15;
+                        ch_active.sum_pn15 += wall_pn15;
                     }
                 } else {
                     lob.perimeter += wall_h;
-                    lob.sum_pn15  += wall_pn15;
+                    lob.sum_pn15 += wall_pn15;
                     lob_active.perimeter += wall_h;
-                    lob_active.sum_pn15  += wall_pn15;
+                    lob_active.sum_pn15 += wall_pn15;
                 }
             }
 
@@ -667,20 +692,20 @@ impl CrossSection {
                     // Edge is inside or left of channel bank — assign to ch or lob
                     if self.x[n_pts - 1] < left_bank_x {
                         lob.perimeter += wall_h;
-                        lob.sum_pn15  += wall_pn15;
+                        lob.sum_pn15 += wall_pn15;
                         lob_active.perimeter += wall_h;
-                        lob_active.sum_pn15  += wall_pn15;
+                        lob_active.sum_pn15 += wall_pn15;
                     } else {
                         ch.perimeter += wall_h;
-                        ch.sum_pn15  += wall_pn15;
+                        ch.sum_pn15 += wall_pn15;
                         ch_active.perimeter += wall_h;
-                        ch_active.sum_pn15  += wall_pn15;
+                        ch_active.sum_pn15 += wall_pn15;
                     }
                 } else {
                     rob.perimeter += wall_h;
-                    rob.sum_pn15  += wall_pn15;
+                    rob.sum_pn15 += wall_pn15;
                     rob_active.perimeter += wall_h;
-                    rob_active.sum_pn15  += wall_pn15;
+                    rob_active.sum_pn15 += wall_pn15;
                 }
             }
         }
@@ -714,7 +739,9 @@ impl CrossSection {
 
         let conveyance = if clip_active {
             if is_subdivided {
-                get_conveyance(&lob_active) + get_conveyance(&ch_active) + get_conveyance(&rob_active)
+                get_conveyance(&lob_active)
+                    + get_conveyance(&ch_active)
+                    + get_conveyance(&rob_active)
             } else {
                 get_conveyance(&ch_active)
             }
@@ -724,11 +751,7 @@ impl CrossSection {
             get_conveyance(&ch)
         };
 
-        let active_channel_area = if clip_active {
-            ch_active.area
-        } else {
-            ch.area
-        };
+        let active_channel_area = if clip_active { ch_active.area } else { ch.area };
 
         GeometryRow {
             elevation: elev,
@@ -827,12 +850,13 @@ pub fn row_at_elevation(
         .as_ref()
         .is_some_and(|b| b.iter().any(|poly| poly.is_valid()));
     if has_ineffective || has_blocked || guide.is_some() {
-        xs.to_metric().compute_properties_at_elevation_with_modifiers(
-            elev,
-            ineffective_ref,
-            xs.blocked_obstructions.as_deref(),
-            guide,
-        )
+        xs.to_metric()
+            .compute_properties_at_elevation_with_modifiers(
+                elev,
+                ineffective_ref,
+                xs.blocked_obstructions.as_deref(),
+                guide,
+            )
     } else {
         let row = table.interpolate(elev);
         GeometryRow {
@@ -932,10 +956,11 @@ pub fn conveyance_derivative_at_elevation(
     guide_banks: Option<&crate::geometry::GuideBanks>,
     dy: f64,
 ) -> f64 {
-    let k_plus =
-        geometry_row_at_elevation(table, xs, elev + dy, ineffective_override, guide_banks).conveyance;
+    let k_plus = geometry_row_at_elevation(table, xs, elev + dy, ineffective_override, guide_banks)
+        .conveyance;
     let k_minus =
-        geometry_row_at_elevation(table, xs, elev - dy, ineffective_override, guide_banks).conveyance;
+        geometry_row_at_elevation(table, xs, elev - dy, ineffective_override, guide_banks)
+            .conveyance;
     (k_plus - k_minus) / (2.0 * dy)
 }
 
@@ -1003,13 +1028,17 @@ impl GeometryTable {
         if target_elev >= self.rows[n_rows - 1].elevation {
             let last = self.rows[n_rows - 1];
             let dy = target_elev - last.elevation;
-            let new_area      = last.area + last.top_width * dy;
+            let new_area = last.area + last.top_width * dy;
             let new_perimeter = last.perimeter + 2.0 * dy; // vertical boundary-wall extension
-            // Scale conveyance using Manning: K ∝ A · R^(2/3)  where R = A/P
+                                                           // Scale conveyance using Manning: K ∝ A · R^(2/3)  where R = A/P
             let new_conveyance = if last.area > 1e-9 && last.perimeter > 1e-9 {
                 let last_r = last.area / last.perimeter;
-                let new_r  = new_area / new_perimeter;
-                let r_ratio = if last_r > 1e-9 { (new_r / last_r).powf(2.0 / 3.0) } else { 1.0 };
+                let new_r = new_area / new_perimeter;
+                let r_ratio = if last_r > 1e-9 {
+                    (new_r / last_r).powf(2.0 / 3.0)
+                } else {
+                    1.0
+                };
                 last.conveyance * (new_area / last.area) * r_ratio
             } else {
                 last.conveyance
@@ -1056,7 +1085,8 @@ impl GeometryTable {
             conveyance: r1.conveyance + t * (r2.conveyance - r1.conveyance),
             channel_area: r1.channel_area + t * (r2.channel_area - r1.channel_area),
             active_area: r1.active_area + t * (r2.active_area - r1.active_area),
-            active_channel_area: r1.active_channel_area + t * (r2.active_channel_area - r1.active_channel_area),
+            active_channel_area: r1.active_channel_area
+                + t * (r2.active_channel_area - r1.active_channel_area),
         }
     }
 
@@ -1078,11 +1108,7 @@ impl GeometryTable {
                 break;
             }
 
-            let h = if limit >= y2 {
-                y2 - y1
-            } else {
-                limit - y1
-            };
+            let h = if limit >= y2 { y2 - y1 } else { limit - y1 };
 
             let a1 = self.rows[i].area;
             let a2 = if limit >= y2 {
@@ -1138,7 +1164,8 @@ pub fn interpolate_geometry_table(
             conveyance: (1.0 - t) * row1.conveyance + t * row2.conveyance,
             channel_area: (1.0 - t) * row1.channel_area + t * row2.channel_area,
             active_area: (1.0 - t) * row1.active_area + t * row2.active_area,
-            active_channel_area: (1.0 - t) * row1.active_channel_area + t * row2.active_channel_area,
+            active_channel_area: (1.0 - t) * row1.active_channel_area
+                + t * row2.active_channel_area,
         });
     }
 
@@ -1161,8 +1188,8 @@ mod tests {
             unit_system: UnitSystem::Metric,
             is_overbank: None,
             blocked_obstructions: None,
-        ineffective_flow_areas: None,
-        guide_banks: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
             coeff_contraction: None,
             coeff_expansion: None,
         };
@@ -1178,15 +1205,16 @@ mod tests {
             unit_system: UnitSystem::Metric,
             is_overbank: None,
             blocked_obstructions: None,
-        ineffective_flow_areas: None,
-        guide_banks: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
             coeff_contraction: None,
             coeff_expansion: None,
         };
         let table2 = xs2.generate_lookup_table(10);
 
         // Interpolate at t = 0.5 (midpoint)
-        let (table_interp, z_interp) = interpolate_geometry_table(&table1, 1.0, &table2, 0.0, 0.5, 50);
+        let (table_interp, z_interp) =
+            interpolate_geometry_table(&table1, 1.0, &table2, 0.0, 0.5, 50);
 
         // Bed elevation should be 0.5m
         assert_eq!(z_interp, 0.5);
@@ -1195,8 +1223,16 @@ mod tests {
         // Expected width = 15m. Expected area = 15.0 m2. Expected perimeter = 15 + 1 + 1 = 17m.
         let row = table_interp.interpolate(1.5);
         assert!((row.area - 15.0).abs() < 1e-2, "Area was {}", row.area);
-        assert!((row.perimeter - 17.0).abs() < 1e-2, "Perimeter was {}", row.perimeter);
-        assert!((row.top_width - 15.0).abs() < 1e-2, "Top width was {}", row.top_width);
+        assert!(
+            (row.perimeter - 17.0).abs() < 1e-2,
+            "Perimeter was {}",
+            row.perimeter
+        );
+        assert!(
+            (row.top_width - 15.0).abs() < 1e-2,
+            "Top width was {}",
+            row.top_width
+        );
     }
 
     #[test]
@@ -1212,20 +1248,28 @@ mod tests {
             unit_system: UnitSystem::Metric,
             is_overbank: None,
             blocked_obstructions: None,
-        ineffective_flow_areas: None,
-        guide_banks: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
             coeff_contraction: None,
             coeff_expansion: None,
         };
 
         // Generating a table
         let table = xs.generate_lookup_table(10);
-        
+
         // At y = 2.0, area should be 20.0, perimeter should be 10 + 2 + 2 = 14.0, top width = 10.0
         let row = table.interpolate(2.0);
         assert!((row.area - 20.0).abs() < 1e-3, "Area was {}", row.area);
-        assert!((row.perimeter - 14.0).abs() < 1e-3, "Perimeter was {}", row.perimeter);
-        assert!((row.top_width - 10.0).abs() < 1e-3, "Top width was {}", row.top_width);
+        assert!(
+            (row.perimeter - 14.0).abs() < 1e-3,
+            "Perimeter was {}",
+            row.perimeter
+        );
+        assert!(
+            (row.top_width - 10.0).abs() < 1e-3,
+            "Top width was {}",
+            row.top_width
+        );
     }
 
     #[test]
@@ -1273,8 +1317,8 @@ mod tests {
                 false, false, false, false, true, true, true, true, true, true,
             ]),
             blocked_obstructions: None,
-        ineffective_flow_areas: None,
-        guide_banks: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
             coeff_contraction: None,
             coeff_expansion: None,
         };
@@ -1291,7 +1335,8 @@ mod tests {
         );
 
         let row_multi_high = xs.compute_properties_at_elevation_with_ineffective(3.6, Some(&multi));
-        let row_single_high = xs.compute_properties_at_elevation_with_ineffective(3.6, Some(&single));
+        let row_single_high =
+            xs.compute_properties_at_elevation_with_ineffective(3.6, Some(&single));
         assert!(
             row_multi_high.active_area >= row_single_high.active_area,
             "higher WSEL should activate additional overbank conveyance"
@@ -1346,8 +1391,7 @@ mod tests {
         let wsel = 2.0;
         let q = 25.0;
         let static_moment = table.calculate_area_moment(wsel);
-        let dynamic_moment =
-            super::area_moment_at_elevation(&table, Some(&xs), wsel, None, None);
+        let dynamic_moment = super::area_moment_at_elevation(&table, Some(&xs), wsel, None, None);
         assert!(
             (dynamic_moment - static_moment).abs() < 1e-2,
             "ineffective storage should match total area moment at low stage"
@@ -1436,8 +1480,8 @@ mod tests {
             unit_system: UnitSystem::Metric,
             is_overbank: Some(vec![false, false, false, false, true, true, true, true]),
             blocked_obstructions: None,
-        ineffective_flow_areas: None,
-        guide_banks: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
             coeff_contraction: None,
             coeff_expansion: None,
         };
@@ -1465,8 +1509,8 @@ mod tests {
             unit_system: UnitSystem::Metric,
             is_overbank: None,
             blocked_obstructions: None,
-        ineffective_flow_areas: None,
-        guide_banks: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
             coeff_contraction: None,
             coeff_expansion: None,
         };
@@ -1502,7 +1546,7 @@ mod tests {
                 elevations: vec![2.0, 2.0],
             }]),
             ineffective_flow_areas: None,
-        guide_banks: None,
+            guide_banks: None,
             coeff_contraction: None,
             coeff_expansion: None,
         };
@@ -1540,14 +1584,18 @@ mod tests {
             IneffectiveFlowAreas::from_block_pairs(&[], &[], &[30.0], &[3.0]).unwrap();
         let wsel = 2.5;
         let row_plain = base.compute_properties_at_elevation(wsel);
-        let row_ineff = base.compute_properties_at_elevation_with_ineffective(wsel, Some(&ineffective));
+        let row_ineff =
+            base.compute_properties_at_elevation_with_ineffective(wsel, Some(&ineffective));
         let row_blocked = blocked.compute_properties_at_elevation(wsel);
 
         // Plain: no clipping.
         assert!((row_plain.area - row_plain.active_area).abs() < 1e-3);
 
         // Ineffective: ponds storage, clips conveyance only.
-        assert!((row_ineff.area - row_plain.area).abs() < 1e-2, "ineffective retains storage");
+        assert!(
+            (row_ineff.area - row_plain.area).abs() < 1e-2,
+            "ineffective retains storage"
+        );
         assert!(row_ineff.active_area < row_ineff.area);
         assert!(row_ineff.conveyance < row_plain.conveyance);
 
@@ -1561,8 +1609,10 @@ mod tests {
         );
 
         // Bridge ineffective resolves to the same `IneffectiveFlowAreas` model.
-        let bridge_equiv = IneffectiveFlowAreas::from_block_pairs(&[], &[], &[30.0], &[3.0]).unwrap();
-        let row_bridge = base.compute_properties_at_elevation_with_ineffective(wsel, Some(&bridge_equiv));
+        let bridge_equiv =
+            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[30.0], &[3.0]).unwrap();
+        let row_bridge =
+            base.compute_properties_at_elevation_with_ineffective(wsel, Some(&bridge_equiv));
         assert!((row_bridge.area - row_ineff.area).abs() < 1e-6);
         assert!((row_bridge.active_area - row_ineff.active_area).abs() < 1e-6);
     }
@@ -1627,24 +1677,40 @@ mod tests {
             unit_system: UnitSystem::USCustomary,
             is_overbank: None,
             blocked_obstructions: None,
-        ineffective_flow_areas: None,
-        guide_banks: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
             coeff_contraction: None,
             coeff_expansion: None,
         };
 
         let table = xs.generate_lookup_table(50);
-        
+
         // Query at WSEL = 15 ft (which is 15 * FT_TO_M = 4.572 m)
         let row = table.interpolate(15.0 * FT_TO_M);
-        
+
         let expected_area_m2 = 150.0 * FT_TO_M * FT_TO_M;
-        let expected_perimeter_m = (20.0 + 2.0 * (5.0f64.powi(2) + 10.0f64.powi(2)).sqrt()) * FT_TO_M;
+        let expected_perimeter_m =
+            (20.0 + 2.0 * (5.0f64.powi(2) + 10.0f64.powi(2)).sqrt()) * FT_TO_M;
         let expected_top_width_m = 40.0 * FT_TO_M; // at y=15, width is 20 + 2 * 2 * 5 = 40 ft.
-        
-        assert!((row.area - expected_area_m2).abs() < 5e-3, "Area: expected {}, got {}", expected_area_m2, row.area);
-        assert!((row.perimeter - expected_perimeter_m).abs() < 1e-4, "Perimeter: expected {}, got {}", expected_perimeter_m, row.perimeter);
-        assert!((row.top_width - expected_top_width_m).abs() < 1e-4, "Top width: expected {}, got {}", expected_top_width_m, row.top_width);
+
+        assert!(
+            (row.area - expected_area_m2).abs() < 5e-3,
+            "Area: expected {}, got {}",
+            expected_area_m2,
+            row.area
+        );
+        assert!(
+            (row.perimeter - expected_perimeter_m).abs() < 1e-4,
+            "Perimeter: expected {}, got {}",
+            expected_perimeter_m,
+            row.perimeter
+        );
+        assert!(
+            (row.top_width - expected_top_width_m).abs() < 1e-4,
+            "Top width: expected {}, got {}",
+            expected_top_width_m,
+            row.top_width
+        );
     }
 
     #[test]
@@ -1679,9 +1745,7 @@ mod tests {
             n_stations: vec![0.0],
             n_values: vec![0.03],
             unit_system: UnitSystem::Metric,
-            is_overbank: Some(vec![
-                false, false, false, false, true, true, true, true,
-            ]),
+            is_overbank: Some(vec![false, false, false, false, true, true, true, true]),
             blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
@@ -1741,4 +1805,3 @@ mod tests {
         assert!((above.area - 10.0).abs() < 1e-9);
     }
 }
-

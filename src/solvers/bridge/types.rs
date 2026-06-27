@@ -5,7 +5,6 @@ use crate::utils::UnitSystem;
 use super::ice_debris::BridgeIceDebrisParams;
 use super::section::BridgeFrictionWeighting;
 
-
 /// Supported pier shape types (Yarnell $K$ and momentum $C_D$ per HEC-RAS 6.x low-flow tables).
 ///
 /// Values `0`–`3` are unchanged from API v1. Values `4`–`11` added in API v29

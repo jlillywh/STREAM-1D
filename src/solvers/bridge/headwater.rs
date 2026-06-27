@@ -32,7 +32,8 @@ pub(crate) fn solve_low_flow_tailwater(
     let mut best = low;
     for _ in 0..50 {
         let mid = 0.5 * (low + high);
-        let hw_calc = solve_bridge_headwater_metric(q_metric, mid, geom, table_up, table_down).wsel_m;
+        let hw_calc =
+            solve_bridge_headwater_metric(q_metric, mid, geom, table_up, table_down).wsel_m;
         if (hw_calc - hw_m).abs() < 1e-4 {
             return mid;
         }
@@ -45,5 +46,3 @@ pub(crate) fn solve_low_flow_tailwater(
     }
     best
 }
-
-
