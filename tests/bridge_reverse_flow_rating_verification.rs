@@ -117,14 +117,12 @@ fn bridge_reverse_flow_rating_bidirectional_sweep() {
         let hl_pos_20 = head_loss_at_q(&curve, 20.0);
         let hl_neg_20 = head_loss_at_q(&curve, -20.0);
         assert!(
-            (hl_pos_20 - case.expected_head_loss_at_abs_q20_cms).abs()
-                < file.tolerance_head_loss_m,
+            (hl_pos_20 - case.expected_head_loss_at_abs_q20_cms).abs() < file.tolerance_head_loss_m,
             "{}: |Q|=20 forward head loss",
             case.name
         );
         assert!(
-            (hl_neg_20 - case.expected_head_loss_at_abs_q20_cms).abs()
-                < file.tolerance_head_loss_m,
+            (hl_neg_20 - case.expected_head_loss_at_abs_q20_cms).abs() < file.tolerance_head_loss_m,
             "{}: |Q|=20 reverse head loss",
             case.name
         );

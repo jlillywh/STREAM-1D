@@ -32,10 +32,7 @@ pub fn resolve_inline_structure_face_stations_metric(
     let center_m = user_length_to_metric(center_station_user, raw_units);
     let length_m = user_length_to_metric(structure_length_user, raw_units);
 
-    let (us_m, ds_m) = match (
-        approach_reach_station_user,
-        departure_reach_station_user,
-    ) {
+    let (us_m, ds_m) = match (approach_reach_station_user, departure_reach_station_user) {
         (Some(us), Some(ds)) => {
             let us_m = user_length_to_metric(us, raw_units);
             let ds_m = user_length_to_metric(ds, raw_units);
@@ -136,16 +133,25 @@ pub fn apply_inline_structure_reach_layout_steady(
     let mut face_list = Vec::with_capacity(centers.len());
 
     for (is_idx, &center) in centers.iter().enumerate() {
-        let approach = inputs.inline_structure_approach_reach_stations.as_ref().and_then(|v| v.get(is_idx)).copied();
-        let departure = inputs.inline_structure_departure_reach_stations.as_ref().and_then(|v| v.get(is_idx)).copied();
-        let length = inputs.inline_structure_lengths.as_ref().and_then(|v| v.get(is_idx)).copied().unwrap_or(0.0);
+        let approach = inputs
+            .inline_structure_approach_reach_stations
+            .as_ref()
+            .and_then(|v| v.get(is_idx))
+            .copied();
+        let departure = inputs
+            .inline_structure_departure_reach_stations
+            .as_ref()
+            .and_then(|v| v.get(is_idx))
+            .copied();
+        let length = inputs
+            .inline_structure_lengths
+            .as_ref()
+            .and_then(|v| v.get(is_idx))
+            .copied()
+            .unwrap_or(0.0);
 
         let faces = resolve_inline_structure_face_stations_metric(
-            center,
-            raw_units,
-            approach,
-            departure,
-            length,
+            center, raw_units, approach, departure, length,
         );
         face_list.push(faces);
         let has_explicit = approach.is_some() || departure.is_some() || length > 0.0;
@@ -170,19 +176,103 @@ pub fn apply_inline_structure_reach_layout_steady(
         );
     }
 
+    for (is_idx, faces) in face_list.iter().enumerate() {
+        let approach = inputs
+            .inline_structure_approach_reach_stations
+            .as_ref()
+            .and_then(|v| v.get(is_idx))
+            .copied();
+        let departure = inputs
+            .inline_structure_departure_reach_stations
+            .as_ref()
+            .and_then(|v| v.get(is_idx))
+            .copied();
+        let length = inputs
+            .inline_structure_lengths
+            .as_ref()
+            .and_then(|v| v.get(is_idx))
+            .copied()
+            .unwrap_or(0.0);
+        let has_explicit = approach.is_some() || departure.is_some() || length > 0.0;
+        if has_explicit {
+            crate::solvers::bridge_interior::remove_internal_nodes_inside_bounds(
+                stations,
+                tables,
+                z_mins,
+                xs,
+                faces.us_station_m,
+                faces.ds_station_m,
+            );
+        }
+    }
+
     face_list
         .iter()
         .enumerate()
         .map(|(is_idx, faces)| {
-            let approach = inputs.inline_structure_approach_reach_stations.as_ref().and_then(|v| v.get(is_idx)).copied();
-            let departure = inputs.inline_structure_departure_reach_stations.as_ref().and_then(|v| v.get(is_idx)).copied();
-            let length = inputs.inline_structure_lengths.as_ref().and_then(|v| v.get(is_idx)).copied().unwrap_or(0.0);
+            let approach = inputs
+                .inline_structure_approach_reach_stations
+                .as_ref()
+                .and_then(|v| v.get(is_idx))
+                .copied();
+            let departure = inputs
+                .inline_structure_departure_reach_stations
+                .as_ref()
+                .and_then(|v| v.get(is_idx))
+                .copied();
+            let length = inputs
+                .inline_structure_lengths
+                .as_ref()
+                .and_then(|v| v.get(is_idx))
+                .copied()
+                .unwrap_or(0.0);
             let has_explicit = approach.is_some() || departure.is_some() || length > 0.0;
 
             if has_explicit {
                 find_inline_structure_face_interval(*faces, stations)
             } else {
                 fallback_inline_structure_interval(*faces, centers[is_idx], raw_units, stations)
+            }
+        })
+        .collect()
+}
+
+pub fn re_resolve_inline_structure_intervals(
+    inputs: &crate::solvers::steady::SteadyInputs,
+    raw_units: UnitSystem,
+    stations: &[f64],
+) -> Vec<Option<usize>> {
+    let Some(ref centers) = inputs.inline_structure_stations else {
+        return vec![];
+    };
+    centers
+        .iter()
+        .enumerate()
+        .map(|(is_idx, &center)| {
+            let approach = inputs
+                .inline_structure_approach_reach_stations
+                .as_ref()
+                .and_then(|v| v.get(is_idx))
+                .copied();
+            let departure = inputs
+                .inline_structure_departure_reach_stations
+                .as_ref()
+                .and_then(|v| v.get(is_idx))
+                .copied();
+            let length = inputs
+                .inline_structure_lengths
+                .as_ref()
+                .and_then(|v| v.get(is_idx))
+                .copied()
+                .unwrap_or(0.0);
+            let faces = resolve_inline_structure_face_stations_metric(
+                center, raw_units, approach, departure, length,
+            );
+            let has_explicit = approach.is_some() || departure.is_some() || length > 0.0;
+            if has_explicit {
+                find_inline_structure_face_interval(faces, stations)
+            } else {
+                fallback_inline_structure_interval(faces, center, raw_units, stations)
             }
         })
         .collect()
@@ -213,48 +303,102 @@ mod tests {
     #[test]
     fn test_resolve_face_stations() {
         // (Some, Some)
-        let f1 = resolve_inline_structure_face_stations_metric(50.0, UnitSystem::Metric, Some(55.0), Some(45.0), 10.0);
+        let f1 = resolve_inline_structure_face_stations_metric(
+            50.0,
+            UnitSystem::Metric,
+            Some(55.0),
+            Some(45.0),
+            10.0,
+        );
         assert_eq!(f1.us_station_m, 55.0);
         assert_eq!(f1.ds_station_m, 45.0);
 
         // (Some, None)
-        let f2 = resolve_inline_structure_face_stations_metric(50.0, UnitSystem::Metric, Some(55.0), None, 10.0);
+        let f2 = resolve_inline_structure_face_stations_metric(
+            50.0,
+            UnitSystem::Metric,
+            Some(55.0),
+            None,
+            10.0,
+        );
         assert_eq!(f2.us_station_m, 55.0);
         assert_eq!(f2.ds_station_m, 45.0);
 
-        let f2_zero = resolve_inline_structure_face_stations_metric(50.0, UnitSystem::Metric, Some(55.0), None, 0.0);
+        let f2_zero = resolve_inline_structure_face_stations_metric(
+            50.0,
+            UnitSystem::Metric,
+            Some(55.0),
+            None,
+            0.0,
+        );
         assert_eq!(f2_zero.us_station_m, 55.0);
         assert_eq!(f2_zero.ds_station_m, 55.0);
 
         // (None, Some)
-        let f3 = resolve_inline_structure_face_stations_metric(50.0, UnitSystem::Metric, None, Some(45.0), 10.0);
+        let f3 = resolve_inline_structure_face_stations_metric(
+            50.0,
+            UnitSystem::Metric,
+            None,
+            Some(45.0),
+            10.0,
+        );
         assert_eq!(f3.us_station_m, 55.0);
         assert_eq!(f3.ds_station_m, 45.0);
 
-        let f3_zero = resolve_inline_structure_face_stations_metric(50.0, UnitSystem::Metric, None, Some(45.0), 0.0);
+        let f3_zero = resolve_inline_structure_face_stations_metric(
+            50.0,
+            UnitSystem::Metric,
+            None,
+            Some(45.0),
+            0.0,
+        );
         assert_eq!(f3_zero.us_station_m, 45.0);
         assert_eq!(f3_zero.ds_station_m, 45.0);
 
         // (None, None)
-        let f4 = resolve_inline_structure_face_stations_metric(50.0, UnitSystem::Metric, None, None, 10.0);
+        let f4 = resolve_inline_structure_face_stations_metric(
+            50.0,
+            UnitSystem::Metric,
+            None,
+            None,
+            10.0,
+        );
         assert_eq!(f4.us_station_m, 55.0);
         assert_eq!(f4.ds_station_m, 45.0);
 
-        let f4_zero = resolve_inline_structure_face_stations_metric(50.0, UnitSystem::Metric, None, None, 0.0);
+        let f4_zero = resolve_inline_structure_face_stations_metric(
+            50.0,
+            UnitSystem::Metric,
+            None,
+            None,
+            0.0,
+        );
         assert_eq!(f4_zero.us_station_m, 50.0);
         assert_eq!(f4_zero.ds_station_m, 50.0);
 
         // USCustomary conversion
-        let f_us = resolve_inline_structure_face_stations_metric(50.0, UnitSystem::USCustomary, None, None, 10.0);
+        let f_us = resolve_inline_structure_face_stations_metric(
+            50.0,
+            UnitSystem::USCustomary,
+            None,
+            None,
+            10.0,
+        );
         assert!((f_us.us_station_m - 55.0 * FT_TO_M).abs() < 1e-6);
     }
 
     #[test]
     fn test_layout_cuts() {
-        let f_equal = InlineStructureFaceStations { us_station_m: 50.0, ds_station_m: 50.0 };
+        let f_equal = InlineStructureFaceStations {
+            us_station_m: 50.0,
+            ds_station_m: 50.0,
+        };
         assert!(layout_cuts_for_inline_structure(f_equal).is_empty());
 
-        let f_diff = InlineStructureFaceStations { us_station_m: 55.0, ds_station_m: 45.0 };
+        let f_diff = InlineStructureFaceStations {
+            us_station_m: 55.0,
+            ds_station_m: 45.0,
+        };
         let cuts = layout_cuts_for_inline_structure(f_diff);
         assert_eq!(cuts.len(), 2);
         assert_eq!(cuts[0].station_m, 55.0);
@@ -264,15 +408,20 @@ mod tests {
     #[test]
     fn test_fallback_interval() {
         let stations_exact = vec![100.0, 60.0, 40.0, 0.0];
-        let faces = InlineStructureFaceStations { us_station_m: 60.0, ds_station_m: 40.0 };
-        let res_exact = fallback_inline_structure_interval(faces, 50.0, UnitSystem::Metric, &stations_exact);
+        let faces = InlineStructureFaceStations {
+            us_station_m: 60.0,
+            ds_station_m: 40.0,
+        };
+        let res_exact =
+            fallback_inline_structure_interval(faces, 50.0, UnitSystem::Metric, &stations_exact);
         assert_eq!(res_exact, Some(1));
 
         let stations = vec![100.0, 50.0, 0.0];
         let res = fallback_inline_structure_interval(faces, 50.0, UnitSystem::Metric, &stations);
         assert!(res.is_some());
-        
-        let res_none = fallback_inline_structure_interval(faces, 150.0, UnitSystem::Metric, &stations);
+
+        let res_none =
+            fallback_inline_structure_interval(faces, 150.0, UnitSystem::Metric, &stations);
         assert_eq!(res_none, None);
     }
 
@@ -280,7 +429,10 @@ mod tests {
     fn test_apply_layout_empty() {
         let inputs = crate::solvers::steady::SteadyInputs::default();
         let mut stations = vec![100.0, 0.0];
-        let mut tables = vec![GeometryTable { rows: vec![] }, GeometryTable { rows: vec![] }];
+        let mut tables = vec![
+            GeometryTable { rows: vec![] },
+            GeometryTable { rows: vec![] },
+        ];
         let mut z_mins = vec![0.0, 0.0];
         let mut xs = vec![None, None];
         let res = apply_inline_structure_reach_layout_steady(

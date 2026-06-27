@@ -79,7 +79,12 @@ fn solve_low_flow_tailwater_pinned(
     for _ in 0..50 {
         let mid = 0.5 * (low + high);
         let hw_calc = solve_low_flow_headwater_pinned(
-            q_metric, mid, geom, table_hyd_us, table_hyd_ds, pinned,
+            q_metric,
+            mid,
+            geom,
+            table_hyd_us,
+            table_hyd_ds,
+            pinned,
         );
         if (hw_calc - hw_m).abs() < 1e-4 {
             return mid;
@@ -354,10 +359,9 @@ mod tests {
         let pinned = bridge_implicit_pin_class(q, tw_m, &geom, &table, &table).expect("low_a");
         let solved = solve_bridge_headwater_metric(q, tw_m, &geom, &table, &table);
         assert_eq!(pinned, LowFlowClass::A);
-        let residual = bridge_headwater_implicit_rhs(
-            solved.wsel_m, tw_m, q, pinned, &geom, &table, &table,
-        )
-        .expect("residual");
+        let residual =
+            bridge_headwater_implicit_rhs(solved.wsel_m, tw_m, q, pinned, &geom, &table, &table)
+                .expect("residual");
         assert!(residual.r.abs() < 0.01, "R={}", residual.r);
     }
 
@@ -366,7 +370,9 @@ mod tests {
         let table = metric_channel_table();
         let geom = pier_geom(0);
         let pinned = LowFlowClass::A;
-        assert!(bridge_headwater_implicit_rhs(6.0, 5.5, 15.0, pinned, &geom, &table, &table).is_none());
+        assert!(
+            bridge_headwater_implicit_rhs(6.0, 5.5, 15.0, pinned, &geom, &table, &table).is_none()
+        );
         assert!(bridge_implicit_pin_class(15.0, 5.5, &geom, &table, &table).is_none());
     }
 
@@ -378,10 +384,9 @@ mod tests {
         let tw_m = 1.2;
         let pinned = bridge_implicit_pin_class(q, tw_m, &geom, &table, &table).expect("class");
         let solved = solve_bridge_headwater_metric(q, tw_m, &geom, &table, &table);
-        let residual = bridge_headwater_implicit_rhs(
-            solved.wsel_m, tw_m, q, pinned, &geom, &table, &table,
-        )
-        .expect("energy residual");
+        let residual =
+            bridge_headwater_implicit_rhs(solved.wsel_m, tw_m, q, pinned, &geom, &table, &table)
+                .expect("energy residual");
         assert!(residual.r.abs() < 0.02);
     }
 }

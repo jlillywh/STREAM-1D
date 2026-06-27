@@ -15,7 +15,11 @@ use super::geometry::{
     opening_station_bounds_from_deck, scale_base_area_for_ice, BridgeGeometry,
 };
 
-pub(crate) fn pier_floating_debris_obstruction_m2(geom: &BridgeGeometry, wsel: f64, z_bed: f64) -> f64 {
+pub(crate) fn pier_floating_debris_obstruction_m2(
+    geom: &BridgeGeometry,
+    wsel: f64,
+    z_bed: f64,
+) -> f64 {
     let z_eff = effective_z_bed_m(z_bed, geom);
     let depth = (wsel - z_eff).max(0.0);
     if depth < 1e-9 {
@@ -46,7 +50,10 @@ pub(crate) fn pier_floating_debris_obstruction_m2(geom: &BridgeGeometry, wsel: f
     total
 }
 
-pub(crate) fn ineffective_for_side(geom: &BridgeGeometry, is_upstream: bool) -> Option<&IneffectiveFlowAreas> {
+pub(crate) fn ineffective_for_side(
+    geom: &BridgeGeometry,
+    is_upstream: bool,
+) -> Option<&IneffectiveFlowAreas> {
     if is_upstream {
         geom.ineffective_up.as_ref()
     } else {
@@ -84,8 +91,8 @@ pub(crate) fn base_flow_area(
     ineffective: Option<&IneffectiveFlowAreas>,
     guide_banks: Option<&GuideBanks>,
 ) -> f64 {
-    let has_ineffective = ineffective.filter(|i| i.is_configured()).is_some()
-        || row.active_area + 1e-6 < row.area;
+    let has_ineffective =
+        ineffective.filter(|i| i.is_configured()).is_some() || row.active_area + 1e-6 < row.area;
     let has_guide = guide_banks.filter(|g| g.is_configured()).is_some();
     if has_ineffective && !has_guide {
         return flow_area_for_row(row);
@@ -121,7 +128,10 @@ pub(crate) fn guide_banks_configured_on_side(geom: &BridgeGeometry, is_approach:
     }
 }
 
-pub(crate) fn approach_departure_cut_modifiers_active(geom: &BridgeGeometry, is_approach: bool) -> bool {
+pub(crate) fn approach_departure_cut_modifiers_active(
+    geom: &BridgeGeometry,
+    is_approach: bool,
+) -> bool {
     if guide_banks_configured_on_side(geom, is_approach) {
         return true;
     }
@@ -134,7 +144,11 @@ pub(crate) fn approach_departure_cut_modifiers_active(geom: &BridgeGeometry, is_
 }
 
 /// Active flow area on approach or departure cut (guide banks and/or ineffective on that cut).
-pub(crate) fn reach_cut_flow_area(geom: &BridgeGeometry, is_approach: bool, wsel: f64) -> Option<f64> {
+pub(crate) fn reach_cut_flow_area(
+    geom: &BridgeGeometry,
+    is_approach: bool,
+    wsel: f64,
+) -> Option<f64> {
     if !approach_departure_cut_modifiers_active(geom, is_approach) {
         return None;
     }
@@ -159,7 +173,10 @@ pub(crate) fn reach_cut_flow_area(geom: &BridgeGeometry, is_approach: bool, wsel
     Some(base_flow_area(&row, ineffective, guide_banks))
 }
 
-pub(crate) fn section_xs<'a>(geom: &'a BridgeGeometry, is_upstream: bool) -> Option<&'a CrossSection> {
+pub(crate) fn section_xs<'a>(
+    geom: &'a BridgeGeometry,
+    is_upstream: bool,
+) -> Option<&'a CrossSection> {
     if is_upstream {
         geom.xs_up.as_ref()
     } else {
@@ -194,14 +211,7 @@ pub(crate) fn legacy_resolved_piers(geom: &BridgeGeometry) -> Vec<ResolvedPier> 
                 .unwrap_or(geom.low_chord_m)
         })
         .collect();
-    resolve_pier_width_specs(
-        geom.pier_width_m,
-        &stations,
-        z_bed,
-        &z_tops,
-        None,
-        None,
-    )
+    resolve_pier_width_specs(geom.pier_width_m, &stations, z_bed, &z_tops, None, None)
 }
 
 pub(crate) fn active_resolved_piers(geom: &BridgeGeometry) -> Vec<ResolvedPier> {
@@ -240,12 +250,7 @@ pub(crate) fn total_pier_flow_width_at_wsel_m(geom: &BridgeGeometry, wsel: f64, 
 pub(crate) fn pier_submerged_area_at_wsel(geom: &BridgeGeometry, wsel: f64, z_bed: f64) -> f64 {
     let z_eff = effective_z_bed_m(z_bed, geom);
     let piers = active_resolved_piers(geom);
-    crate::solvers::pier_geometry::total_submerged_pier_area_m2(
-        &piers,
-        wsel,
-        z_eff,
-        geom.skew_cos,
-    )
+    crate::solvers::pier_geometry::total_submerged_pier_area_m2(&piers, wsel, z_eff, geom.skew_cos)
 }
 
 /// Downstream flow area for Yarnell: base area minus per-side abutments, before pier blockage.
@@ -362,12 +367,8 @@ pub(crate) fn obstructed_hydraulics(
         None,
         wsel,
     );
-    let a_base = scale_base_area_for_ice(
-        base_flow_area(&row, ineffective, None),
-        wsel,
-        z_bed,
-        geom,
-    );
+    let a_base =
+        scale_base_area_for_ice(base_flow_area(&row, ineffective, None), wsel, z_bed, geom);
     let z_eff = effective_z_bed_m(z_bed, geom);
     let depth = (wsel - z_eff).max(0.0);
     let a_piers = pier_submerged_area_at_wsel(geom, wsel, z_bed);
@@ -401,11 +402,9 @@ pub(crate) fn obstructed_hydraulics(
     } else {
         0.0
     };
-    let top_width = (t_base
-        - total_pier_flow_width_at_wsel_m(geom, wsel, z_bed)
-        - abut_width_at_wsel
-        - w_deck)
-        .max(1e-3);
+    let top_width =
+        (t_base - total_pier_flow_width_at_wsel_m(geom, wsel, z_bed) - abut_width_at_wsel - w_deck)
+            .max(1e-3);
 
     ObstructedHydraulics {
         a_eff,
@@ -437,7 +436,13 @@ pub(crate) fn obstructed_conveyance(
     is_upstream: bool,
 ) -> f64 {
     let ineffective = ineffective_for_side(geom, is_upstream);
-    let row = lookup_row(table, section_xs(geom, is_upstream), ineffective, None, wsel);
+    let row = lookup_row(
+        table,
+        section_xs(geom, is_upstream),
+        ineffective,
+        None,
+        wsel,
+    );
     let a_base = base_flow_area(&row, ineffective, None);
     let props = obstructed_hydraulics(table, wsel, z_bed, geom, is_upstream, false);
     if a_base > 1e-6 {
@@ -524,7 +529,8 @@ pub(crate) fn bridge_energy_friction_loss(
     table_up: &GeometryTable,
     table_down: &GeometryTable,
 ) -> f64 {
-    let hf_opening = bridge_opening_friction_loss(q_metric, wsel_up, tw_m, geom, table_up, table_down);
+    let hf_opening =
+        bridge_opening_friction_loss(q_metric, wsel_up, tw_m, geom, table_up, table_down);
     if geom.friction_weighting == BridgeFrictionWeighting::OpeningOnly {
         return hf_opening;
     }
@@ -533,12 +539,8 @@ pub(crate) fn bridge_energy_friction_loss(
     let mut hf = hf_opening;
     if geom.friction_approach_m > 1e-6 {
         if let (Some(xs), Some(table)) = (geom.xs_approach.as_ref(), geom.table_approach.as_ref()) {
-            let k_ap = cut_conveyance_at_wsel(
-                xs,
-                table,
-                geom.guide_banks_approach.as_ref(),
-                wsel_up,
-            );
+            let k_ap =
+                cut_conveyance_at_wsel(xs, table, geom.guide_banks_approach.as_ref(), wsel_up);
             if k_ap > 1e-6 {
                 hf += friction_loss(q_metric, k_bu, k_ap, geom.friction_approach_m);
             }

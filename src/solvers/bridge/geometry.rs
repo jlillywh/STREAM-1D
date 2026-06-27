@@ -1,7 +1,4 @@
-use crate::geometry::{
-    CrossSection, GeometryTable, GuideBanks,
-    IneffectiveFlowAreas,
-};
+use crate::geometry::{CrossSection, GeometryTable, GuideBanks, IneffectiveFlowAreas};
 use crate::solvers::bridge_abutment::{resolve_abutments, BridgeAbutments};
 use crate::solvers::deck_vent_geometry::{resolve_deck_vents, ResolvedDeckVent};
 use crate::solvers::pier_geometry::{
@@ -15,7 +12,6 @@ use super::section::{
     apply_bridge_skew, BridgeFrictionLengths, BridgeFrictionWeighting, BridgeSectionContext,
 };
 use super::types::{BridgeCouplingParams, HighFlowMethod, LowFlowMethod, PierShape};
-
 
 /// Piecewise-linear deck geometry across the bridge opening (HEC-RAS deck/roadway profiles).
 #[derive(Debug, Clone, Default)]
@@ -172,7 +168,11 @@ pub(crate) fn profile_opening_area_factor(geom: &BridgeGeometry) -> f64 {
     }
 }
 
-pub(crate) fn effective_weir_length_m(geom: &BridgeGeometry, e_upstream: f64, fallback: f64) -> f64 {
+pub(crate) fn effective_weir_length_m(
+    geom: &BridgeGeometry,
+    e_upstream: f64,
+    fallback: f64,
+) -> f64 {
     let deck = match &geom.deck {
         Some(d) if d.is_valid() => d,
         _ => return fallback,
@@ -186,11 +186,7 @@ pub(crate) fn effective_weir_length_m(geom: &BridgeGeometry, e_upstream: f64, fa
         let s_mid = 0.5 * (deck.stations_m[i] + deck.stations_m[i + 1]);
         let high_mid = effective_deck_crest_m(
             geom,
-            interpolate_profile(
-                &deck.stations_m,
-                &deck.high_elevations_m,
-                s_mid,
-            ),
+            interpolate_profile(&deck.stations_m, &deck.high_elevations_m, s_mid),
         );
         if e_upstream > high_mid {
             len += w;
@@ -366,7 +362,12 @@ pub(crate) fn apply_opening_blockage(a_eff: f64, geom: &BridgeGeometry) -> f64 {
     a_eff * clamp_opening_blockage_factor(geom.opening_blockage_factor)
 }
 
-pub(crate) fn scale_base_area_for_ice(a_base: f64, wsel: f64, z_bed: f64, geom: &BridgeGeometry) -> f64 {
+pub(crate) fn scale_base_area_for_ice(
+    a_base: f64,
+    wsel: f64,
+    z_bed: f64,
+    geom: &BridgeGeometry,
+) -> f64 {
     let ice = capped_ice_thickness_m(geom, z_bed);
     if ice <= 1e-9 || wsel <= z_bed + 1e-9 {
         return a_base;
@@ -375,7 +376,10 @@ pub(crate) fn scale_base_area_for_ice(a_base: f64, wsel: f64, z_bed: f64, geom: 
     let h_flow = (wsel - effective_z_bed_m(z_bed, geom)).max(0.0);
     a_base * (h_flow / h_total).min(1.0)
 }
-pub(crate) fn pier_width_user_to_metric(user: &PierWidthUserInput, units: UnitSystem) -> PierWidthUserInput {
+pub(crate) fn pier_width_user_to_metric(
+    user: &PierWidthUserInput,
+    units: UnitSystem,
+) -> PierWidthUserInput {
     let to_m = |v: f64| {
         if units == UnitSystem::USCustomary {
             v * FT_TO_M
@@ -383,7 +387,8 @@ pub(crate) fn pier_width_user_to_metric(user: &PierWidthUserInput, units: UnitSy
             v
         }
     };
-    let to_m_vec = |v: &Option<Vec<f64>>| v.as_ref().map(|xs| xs.iter().map(|x| to_m(*x)).collect());
+    let to_m_vec =
+        |v: &Option<Vec<f64>>| v.as_ref().map(|xs| xs.iter().map(|x| to_m(*x)).collect());
     let to_m_mat = |v: &Option<Vec<Vec<f64>>>| {
         v.as_ref().map(|rows| {
             rows.iter()
@@ -412,7 +417,8 @@ pub(crate) fn pier_attachments_user_to_metric(
             v
         }
     };
-    let to_m_vec = |v: &Option<Vec<f64>>| v.as_ref().map(|xs| xs.iter().map(|x| to_m(*x)).collect());
+    let to_m_vec =
+        |v: &Option<Vec<f64>>| v.as_ref().map(|xs| xs.iter().map(|x| to_m(*x)).collect());
     PierAttachmentsUserInput {
         footing_top_elevations: to_m_vec(&user.footing_top_elevations),
         footing_widths: to_m_vec(&user.footing_widths),
@@ -494,8 +500,7 @@ pub(crate) fn build_bridge_geometry(
     let (_, length_m) = apply_bridge_skew(skew_deg, 1.0, opening_base_m);
     let (_, friction_opening_m) = apply_bridge_skew(skew_deg, 1.0, opening_base_m);
     let (_, friction_approach_m) = apply_bridge_skew(skew_deg, 1.0, friction_lengths.approach_m);
-    let (_, friction_departure_m) =
-        apply_bridge_skew(skew_deg, 1.0, friction_lengths.departure_m);
+    let (_, friction_departure_m) = apply_bridge_skew(skew_deg, 1.0, friction_lengths.departure_m);
     let friction_weighting = coupling.friction_weighting;
     let skew_cos = {
         let deg = skew_deg.clamp(0.0, 59.0);
@@ -537,7 +542,10 @@ pub(crate) fn build_bridge_geometry(
     });
     let abutment_input = opening_origin_user
         .map(|origin| {
-            crate::solvers::bridge_abutment::remap_abutment_input_to_reach(&coupling.abutment, origin)
+            crate::solvers::bridge_abutment::remap_abutment_input_to_reach(
+                &coupling.abutment,
+                origin,
+            )
         })
         .unwrap_or_else(|| coupling.abutment.clone());
     let to_metric_ineffective = |i: &IneffectiveFlowAreas| {
@@ -626,7 +634,13 @@ pub(crate) fn build_bridge_geometry(
         .map(|xs| xs.generate_lookup_table(APPROACH_DEPARTURE_TABLE_SLICES));
 
     let (opening_s_min, opening_s_max) = opening_station_bounds_from_deck(deck_owned.as_ref());
-    let abutments = resolve_abutments(&abutment_input, opening_s_min, opening_s_max, skew_cos, units);
+    let abutments = resolve_abutments(
+        &abutment_input,
+        opening_s_min,
+        opening_s_max,
+        skew_cos,
+        units,
+    );
 
     let pier_width_perp_m = if units == UnitSystem::USCustomary {
         pier_width * FT_TO_M
@@ -808,7 +822,6 @@ pub(crate) fn opening_station_bounds_from_deck(deck: Option<&BridgeDeckProfile>)
     (0.0, 10.0)
 }
 
-
 /// Skew-adjusted segment lengths along explicit BU → internal → BD river stations (metric).
 pub(crate) fn internal_opening_friction_segments(
     xs_up: Option<&CrossSection>,
@@ -851,5 +864,3 @@ pub(crate) fn internal_opening_friction_segments(
     }
     (tables, segment_lengths_m, z_m)
 }
-
-

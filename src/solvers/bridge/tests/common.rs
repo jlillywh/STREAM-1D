@@ -7,7 +7,6 @@ use crate::solvers::pier_geometry::{
     ResolvedPier,
 };
 
-
 pub(crate) fn compound_overbank_approach(ineffective: bool) -> CrossSection {
     CrossSection {
         station: 60.0,
@@ -16,21 +15,15 @@ pub(crate) fn compound_overbank_approach(ineffective: bool) -> CrossSection {
         n_stations: vec![0.0, 10.0],
         n_values: vec![0.03, 0.05],
         unit_system: UnitSystem::Metric,
-        is_overbank: Some(vec![
-            false, false, false, false, true, true, true, true,
-        ]),
+        is_overbank: Some(vec![false, false, false, false, true, true, true, true]),
         blocked_obstructions: None,
         coeff_contraction: None,
         coeff_expansion: None,
         ineffective_flow_areas: if ineffective {
-            Some(
-                IneffectiveFlowAreas::from_block_pairs(&[30.0], &[3.0], &[], &[]).unwrap(),
-            )
+            Some(IneffectiveFlowAreas::from_block_pairs(&[30.0], &[3.0], &[], &[]).unwrap())
         } else {
             // Inactive block keeps the reach-cut energy path without clipping conveyance.
-            Some(
-                IneffectiveFlowAreas::from_block_pairs(&[30.0], &[-100.0], &[], &[]).unwrap(),
-            )
+            Some(IneffectiveFlowAreas::from_block_pairs(&[30.0], &[-100.0], &[], &[]).unwrap())
         },
         guide_banks: None,
     }
@@ -233,7 +226,12 @@ pub(crate) fn class_b_energy_case() -> (f64, f64, f64, i32, GeometryTable, Geome
     panic!("no Class B case found for energy friction test");
 }
 
-pub(crate) fn abutment_coupling(left_w: f64, right_w: f64, left_top: f64, right_top: f64) -> BridgeCouplingParams {
+pub(crate) fn abutment_coupling(
+    left_w: f64,
+    right_w: f64,
+    left_top: f64,
+    right_top: f64,
+) -> BridgeCouplingParams {
     BridgeCouplingParams {
         abutment: BridgeAbutmentUserInput {
             left_width: Some(left_w),

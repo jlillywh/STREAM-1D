@@ -1,5 +1,5 @@
 use crate::geometry::GeometryTable;
-use crate::utils::{UnitSystem, FT_TO_M, CFS_TO_CMS};
+use crate::utils::{UnitSystem, CFS_TO_CMS, FT_TO_M};
 
 use super::geometry::{build_bridge_geometry, BridgeDeckProfile};
 use super::headwater::{solve_bridge_headwater_metric, solve_low_flow_tailwater};
@@ -145,13 +145,8 @@ pub fn solve_bridge_coupled(
         tw_wsel
     };
     let tw_clamped = tw_m.max(geom.z_down_m + 1e-4);
-    let solved = solve_bridge_headwater_metric(
-        q_metric,
-        tw_clamped,
-        &geom,
-        table_hyd_us,
-        table_hyd_ds,
-    );
+    let solved =
+        solve_bridge_headwater_metric(q_metric, tw_clamped, &geom, table_hyd_us, table_hyd_ds);
     let hw_hyd_user = if units == UnitSystem::USCustomary {
         solved.wsel_m / FT_TO_M
     } else {

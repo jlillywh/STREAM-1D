@@ -125,9 +125,10 @@ fn yarnell_reach_inputs(
 
 #[test]
 fn bridge_bu_bd_hecras_benchmarks() {
-    let file: BenchmarkFile =
-        serde_json::from_str(include_str!("../verification/fixtures/bridge_bu_bd_hecras.json"))
-            .expect("bridge BU/BD benchmark JSON");
+    let file: BenchmarkFile = serde_json::from_str(include_str!(
+        "../verification/fixtures/bridge_bu_bd_hecras.json"
+    ))
+    .expect("bridge BU/BD benchmark JSON");
 
     for case in &file.cases {
         let width = case.opening_width_m.unwrap_or(case.channel_width_m);
@@ -144,14 +145,15 @@ fn bridge_bu_bd_hecras_benchmarks() {
         let interior = interior_from_steady(&inputs, 0);
         if case.use_explicit_faces {
             if let Some(expected_l) = case.expected_friction_length_m {
-            let l = resolve_bridge_friction_length_metric(&interior, 0.0, 0.0, UnitSystem::Metric);
-            assert!(
-                (l - expected_l).abs() < 1e-6,
-                "{}: friction length {:.4} m vs expected {:.4} m",
-                case.name,
-                l,
-                expected_l
-            );
+                let l =
+                    resolve_bridge_friction_length_metric(&interior, 0.0, 0.0, UnitSystem::Metric);
+                assert!(
+                    (l - expected_l).abs() < 1e-6,
+                    "{}: friction length {:.4} m vs expected {:.4} m",
+                    case.name,
+                    l,
+                    expected_l
+                );
             }
         }
 
@@ -194,7 +196,8 @@ fn three_section_bridge_reach_matches_two_face_baseline() {
         0.0,
     );
 
-    let cuts_two = layout_cuts_for_bridge(&interior_two, faces, UnitSystem::Metric, None, None, None);
+    let cuts_two =
+        layout_cuts_for_bridge(&interior_two, faces, UnitSystem::Metric, None, None, None);
     let cuts_three =
         layout_cuts_for_bridge(&interior_three, faces, UnitSystem::Metric, None, None, None);
     assert_eq!(cuts_two.len(), 2, "2-face layout: BU + BD only");

@@ -61,9 +61,8 @@ pub fn solve_steady_junction(inputs: &SteadyInputs) -> SteadyResult {
     let q_trib = inputs.tributary_flow_rate.unwrap();
     let q_main = inputs.flow_rate;
 
-    find_section_index(&inputs.cross_sections, junction_station).expect(
-        "junction_main_station must match a main-channel cross-section station",
-    );
+    find_section_index(&inputs.cross_sections, junction_station)
+        .expect("junction_main_station must match a main-channel cross-section station");
 
     let trib_sections = inputs
         .tributary_cross_sections
@@ -140,10 +139,7 @@ pub fn solve_steady_junction(inputs: &SteadyInputs) -> SteadyResult {
 
         let (src, src_idx) = if (st - junction_station).abs() < STATION_TOL {
             // Junction node: prefer downstream combined-flow solve
-            (
-                &ds_result,
-                find_section_index(&ds_sections, st).unwrap(),
-            )
+            (&ds_result, find_section_index(&ds_sections, st).unwrap())
         } else if below {
             (
                 &ds_result,
@@ -324,8 +320,8 @@ mod tests {
             unit_system: UnitSystem::Metric,
             is_overbank: None,
             blocked_obstructions: None,
-        ineffective_flow_areas: None,
-        guide_banks: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
             coeff_contraction: None,
             coeff_expansion: None,
         }
@@ -358,8 +354,8 @@ mod tests {
             unit_system: UnitSystem::USCustomary,
             is_overbank: None,
             blocked_obstructions: None,
-        ineffective_flow_areas: None,
-        guide_banks: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
             coeff_contraction: None,
             coeff_expansion: None,
         }
@@ -410,8 +406,16 @@ mod tests {
     fn test_tributary_junction_adds_downstream_flow() {
         // Main: 1000 -> 500 (junction) -> 0, Q_main = 10 cms above junction
         // Trib: 800 -> 600 -> 400 (mouth), Q_trib = 5 cms
-        let main = vec![rect(1000.0, 0.2, 0.025), rect(500.0, 0.1, 0.025), rect(0.0, 0.0, 0.025)];
-        let trib = vec![rect(800.0, 0.15, 0.030), rect(600.0, 0.12, 0.030), rect(400.0, 0.10, 0.030)];
+        let main = vec![
+            rect(1000.0, 0.2, 0.025),
+            rect(500.0, 0.1, 0.025),
+            rect(0.0, 0.0, 0.025),
+        ];
+        let trib = vec![
+            rect(800.0, 0.15, 0.030),
+            rect(600.0, 0.12, 0.030),
+            rect(400.0, 0.10, 0.030),
+        ];
 
         let inputs = SteadyInputs {
             cross_sections: main,

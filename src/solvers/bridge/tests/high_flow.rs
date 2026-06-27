@@ -176,12 +176,44 @@ fn test_per_side_abutments_affect_energy_wspro_momentum_pressure() {
     let mut energy_asym = asymmetric.clone();
     energy_asym.low_flow_method = 3;
     let hw_energy_sym = solve_bridge_wsel(
-        q, 5.0, 7.0, 0.0, 0, 0, 1.44, 0.5, 0.0, 0.0, tw,
-        UnitSystem::Metric, &table_up, &table_down, &energy_sym, 50.0, None, None,
+        q,
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.5,
+        0.0,
+        0.0,
+        tw,
+        UnitSystem::Metric,
+        &table_up,
+        &table_down,
+        &energy_sym,
+        50.0,
+        None,
+        None,
     );
     let hw_energy_asym = solve_bridge_wsel(
-        q, 5.0, 7.0, 0.0, 0, 0, 1.44, 0.5, 0.0, 0.0, tw,
-        UnitSystem::Metric, &table_up, &table_down, &energy_asym, 50.0, None, None,
+        q,
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.5,
+        0.0,
+        0.0,
+        tw,
+        UnitSystem::Metric,
+        &table_up,
+        &table_down,
+        &energy_asym,
+        50.0,
+        None,
+        None,
     );
     assert!(
         (hw_energy_sym - hw_energy_asym).abs() > 0.01,
@@ -193,12 +225,44 @@ fn test_per_side_abutments_affect_energy_wspro_momentum_pressure() {
     let mut wspro_asym = asymmetric.clone();
     wspro_asym.low_flow_method = 4;
     let hw_wspro_sym = solve_bridge_wsel(
-        q, 5.0, 7.0, 0.0, 0, 0, 1.44, 0.5, 0.0, 0.0, tw,
-        UnitSystem::Metric, &table_up, &table_down, &wspro_sym, 50.0, None, None,
+        q,
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.5,
+        0.0,
+        0.0,
+        tw,
+        UnitSystem::Metric,
+        &table_up,
+        &table_down,
+        &wspro_sym,
+        50.0,
+        None,
+        None,
     );
     let hw_wspro_asym = solve_bridge_wsel(
-        q, 5.0, 7.0, 0.0, 0, 0, 1.44, 0.5, 0.0, 0.0, tw,
-        UnitSystem::Metric, &table_up, &table_down, &wspro_asym, 50.0, None, None,
+        q,
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.5,
+        0.0,
+        0.0,
+        tw,
+        UnitSystem::Metric,
+        &table_up,
+        &table_down,
+        &wspro_asym,
+        50.0,
+        None,
+        None,
     );
     assert!(
         (hw_wspro_sym - hw_wspro_asym).abs() > 0.01,
@@ -208,22 +272,70 @@ fn test_per_side_abutments_affect_energy_wspro_momentum_pressure() {
     let mut momentum = asymmetric.clone();
     momentum.low_flow_method = 2;
     let hw_momentum = solve_bridge_wsel(
-        q, 5.0, 7.0, 0.0, 0, 0, 1.44, 0.5, 0.0, 0.0, tw,
-        UnitSystem::Metric, &table_up, &table_down, &momentum, 50.0, None, None,
+        q,
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.5,
+        0.0,
+        0.0,
+        tw,
+        UnitSystem::Metric,
+        &table_up,
+        &table_down,
+        &momentum,
+        50.0,
+        None,
+        None,
     );
     assert!(hw_momentum > tw);
 
     let mut pressure = asymmetric.clone();
     pressure.low_flow_method = 3;
     let hw_pressure = solve_bridge_wsel(
-        35.0, 5.0, 7.0, 0.0, 0, 0, 1.44, 0.8, 0.0, 0.0, 5.8,
-        UnitSystem::Metric, &table_up, &table_down, &pressure, 50.0, None, None,
+        35.0,
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        5.8,
+        UnitSystem::Metric,
+        &table_up,
+        &table_down,
+        &pressure,
+        50.0,
+        None,
+        None,
     );
     let mut pressure_sym = symmetric.clone();
     pressure_sym.low_flow_method = 3;
     let hw_pressure_sym = solve_bridge_wsel(
-        35.0, 5.0, 7.0, 0.0, 0, 0, 1.44, 0.8, 0.0, 0.0, 5.8,
-        UnitSystem::Metric, &table_up, &table_down, &pressure_sym, 50.0, None, None,
+        35.0,
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        5.8,
+        UnitSystem::Metric,
+        &table_up,
+        &table_down,
+        &pressure_sym,
+        50.0,
+        None,
+        None,
     );
     assert!(
         (hw_pressure - hw_pressure_sym).abs() > 0.01,
@@ -235,12 +347,44 @@ fn test_per_side_abutments_affect_energy_wspro_momentum_pressure() {
     let mut yarnell_asym = asymmetric.clone();
     yarnell_asym.low_flow_method = 1;
     let hw_yarnell_sym = solve_bridge_wsel(
-        q, 5.0, 7.0, 0.5, 2, 0, 1.44, 0.5, 0.0, 0.0, tw,
-        UnitSystem::Metric, &table_up, &table_down, &yarnell_sym, 50.0, None, None,
+        q,
+        5.0,
+        7.0,
+        0.5,
+        2,
+        0,
+        1.44,
+        0.5,
+        0.0,
+        0.0,
+        tw,
+        UnitSystem::Metric,
+        &table_up,
+        &table_down,
+        &yarnell_sym,
+        50.0,
+        None,
+        None,
     );
     let hw_yarnell_asym = solve_bridge_wsel(
-        q, 5.0, 7.0, 0.5, 2, 0, 1.44, 0.5, 0.0, 0.0, tw,
-        UnitSystem::Metric, &table_up, &table_down, &yarnell_asym, 50.0, None, None,
+        q,
+        5.0,
+        7.0,
+        0.5,
+        2,
+        0,
+        1.44,
+        0.5,
+        0.0,
+        0.0,
+        tw,
+        UnitSystem::Metric,
+        &table_up,
+        &table_down,
+        &yarnell_asym,
+        50.0,
+        None,
+        None,
     );
     assert!(
         (hw_yarnell_sym - hw_yarnell_asym).abs() > 0.001,
@@ -250,12 +394,44 @@ fn test_per_side_abutments_affect_energy_wspro_momentum_pressure() {
     let q_weir = 50.0;
     let tw_weir = 5.5;
     let weir_sym = solve_bridge_coupled(
-        q_weir, 5.0, 7.0, 0.0, 0, 0, 1.44, 0.8, 0.0, 0.0, tw_weir,
-        UnitSystem::Metric, &table_up, &table_down, &symmetric, 50.0, None, None,
+        q_weir,
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        tw_weir,
+        UnitSystem::Metric,
+        &table_up,
+        &table_down,
+        &symmetric,
+        50.0,
+        None,
+        None,
     );
     let weir_asym = solve_bridge_coupled(
-        q_weir, 5.0, 7.0, 0.0, 0, 0, 1.44, 0.8, 0.0, 0.0, tw_weir,
-        UnitSystem::Metric, &table_up, &table_down, &asymmetric, 50.0, None, None,
+        q_weir,
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        tw_weir,
+        UnitSystem::Metric,
+        &table_up,
+        &table_down,
+        &asymmetric,
+        50.0,
+        None,
+        None,
     );
     assert!(
         weir_sym.flow_regime == "weir" || weir_sym.flow_regime == "pressure",
@@ -281,12 +457,44 @@ fn test_explicit_high_flow_energy_method() {
     let tw = 5.8;
 
     let pressure = solve_bridge_coupled(
-        q, 5.0, 7.0, 0.0, 0, 0, 1.44, 0.8, 0.0, 0.0, tw,
-        UnitSystem::Metric, &table_up, &table_down, &pressure_coupling, 50.0, None, None,
+        q,
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        tw,
+        UnitSystem::Metric,
+        &table_up,
+        &table_down,
+        &pressure_coupling,
+        50.0,
+        None,
+        None,
     );
     let energy = solve_bridge_coupled(
-        q, 5.0, 7.0, 0.0, 0, 0, 1.44, 0.8, 0.0, 0.0, tw,
-        UnitSystem::Metric, &table_up, &table_down, &energy_coupling, 50.0, None, None,
+        q,
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        tw,
+        UnitSystem::Metric,
+        &table_up,
+        &table_down,
+        &energy_coupling,
+        50.0,
+        None,
+        None,
     );
 
     assert_eq!(pressure.flow_regime, "pressure");
@@ -310,18 +518,69 @@ fn test_high_flow_energy_supercritical_roundtrip() {
     };
     let q = 30.0;
     let hw = solve_bridge_wsel(
-        q, 5.0, 7.0, 0.0, 0, 0, 1.44, 0.8, 0.0, 0.0, 5.5,
-        UnitSystem::Metric, &table_up, &table_down, &coupling, 50.0, None, None,
+        q,
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        5.5,
+        UnitSystem::Metric,
+        &table_up,
+        &table_down,
+        &coupling,
+        50.0,
+        None,
+        None,
     );
     let tw = solve_bridge_tailwater(
-        q, 5.0, 7.0, 0.0, 0, 0, 1.44, 0.8, 0.0, 0.0, hw,
-        UnitSystem::Metric, &table_up, &table_down, &coupling, 50.0, None, None,
+        q,
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        hw,
+        UnitSystem::Metric,
+        &table_up,
+        &table_down,
+        &coupling,
+        50.0,
+        None,
+        None,
     );
     let hw_back = solve_bridge_wsel(
-        q, 5.0, 7.0, 0.0, 0, 0, 1.44, 0.8, 0.0, 0.0, tw,
-        UnitSystem::Metric, &table_up, &table_down, &coupling, 50.0, None, None,
+        q,
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        tw,
+        UnitSystem::Metric,
+        &table_up,
+        &table_down,
+        &coupling,
+        50.0,
+        None,
+        None,
     );
-    assert!((hw_back - hw).abs() < 0.05, "roundtrip hw={hw}, hw_back={hw_back}, tw={tw}");
+    assert!(
+        (hw_back - hw).abs() < 0.05,
+        "roundtrip hw={hw}, hw_back={hw_back}, tw={tw}"
+    );
 }
 #[test]
 fn test_tapered_pier_pressure_net_area_less_than_rectangular() {
@@ -330,9 +589,15 @@ fn test_tapered_pier_pressure_net_area_less_than_rectangular() {
     let a_rect = net_opening_area_at_low_chord(&rect, &table, &table);
     let a_taper = net_opening_area_at_low_chord(&taper, &table, &table);
     assert!(a_taper < a_rect);
-    assert!((a_rect - 36.0).abs() < 0.1, "rect net @ low chord: {a_rect}");
+    assert!(
+        (a_rect - 36.0).abs() < 0.1,
+        "rect net @ low chord: {a_rect}"
+    );
     // Trapezoid pier: 0.5 * (2 + 1) * 4 m height = 6 mÂ² â†’ 40 âˆ’ 6 = 34 mÂ²
-    assert!((a_taper - 34.0).abs() < 0.1, "taper net @ low chord: {a_taper}");
+    assert!(
+        (a_taper - 34.0).abs() < 0.1,
+        "taper net @ low chord: {a_taper}"
+    );
 }
 #[test]
 fn test_partially_submerged_deck_with_vents() {
@@ -384,7 +649,12 @@ fn test_partially_submerged_deck_with_vents() {
         "deck in pressure regime only"
     );
 
-    let vents = resolve_deck_vents(sections.deck_vents.as_ref().unwrap(), 1.0, UnitSystem::Metric, 0.8);
+    let vents = resolve_deck_vents(
+        sections.deck_vents.as_ref().unwrap(),
+        1.0,
+        UnitSystem::Metric,
+        0.8,
+    );
     let h_sub = wsel - vents[0].invert_m;
     assert!(
         h_sub < vents[0].slot_height_m - 1e-6,
@@ -394,7 +664,8 @@ fn test_partially_submerged_deck_with_vents() {
 
     let q_metric = 100.0;
     let a_net = net_opening_area_at_low_chord(&geom, &table_up, &table_down);
-    let parts = combined_high_flow_discharge(wsel, tw, q_metric, &geom, &table_up, a_net, Some(10.0));
+    let parts =
+        combined_high_flow_discharge(wsel, tw, q_metric, &geom, &table_up, a_net, Some(10.0));
     assert!(parts.q_opening_m3s > 1.0, "main submerged orifice active");
     assert!(parts.q_vents_m3s > 0.05, "vents active above invert");
     assert!(
@@ -403,8 +674,7 @@ fn test_partially_submerged_deck_with_vents() {
     );
 
     let e_up = upstream_energy_grade(wsel, q_metric, &geom, &table_up, geom.z_up_m, true);
-    let q_vent_hand =
-        total_deck_vent_discharge_m3s(&vents, wsel, e_up, tw);
+    let q_vent_hand = total_deck_vent_discharge_m3s(&vents, wsel, e_up, tw);
     assert!((parts.q_vents_m3s - q_vent_hand).abs() < 1e-4);
 
     let q = 100.0;
@@ -437,8 +707,7 @@ fn test_partially_submerged_deck_with_vents() {
     );
     assert!(hw < geom.high_chord_m - 1e-3, "no deck overtopping");
 
-    let parts_solved =
-        combined_high_flow_discharge(hw, tw, q, &geom, &table_up, a_net, Some(10.0));
+    let parts_solved = combined_high_flow_discharge(hw, tw, q, &geom, &table_up, a_net, Some(10.0));
     assert!(
         (parts_solved.total_m3s() - q).abs() < 0.05,
         "opening={} vents={} weir={} sum={}",
@@ -649,8 +918,7 @@ fn test_combined_high_flow_weir_only_when_below_high_chord() {
     let wsel = 6.0;
     let tw = 5.5;
     let q = 50.0;
-    let pressure_only =
-        combined_high_flow_discharge(wsel, tw, q, &geom, &table_up, a_net, None);
+    let pressure_only = combined_high_flow_discharge(wsel, tw, q, &geom, &table_up, a_net, None);
     let with_weir = combined_high_flow_discharge(wsel, tw, q, &geom, &table_up, a_net, Some(10.0));
     assert!((pressure_only.q_weir_m3s).abs() < 1e-9);
     assert!((with_weir.q_weir_m3s).abs() < 1e-9);
@@ -771,14 +1039,8 @@ fn test_sluice_orifice_switch_uses_max_low_chord() {
     let q_sluice = main_pressure_flow_discharge(wsel, tw, q, &geom, &table_up, a_net);
     let mut geom_orifice_early = geom.clone();
     geom_orifice_early.low_chord_max_m = geom.low_chord_m;
-    let q_orifice = main_pressure_flow_discharge(
-        wsel,
-        tw,
-        q,
-        &geom_orifice_early,
-        &table_up,
-        a_net,
-    );
+    let q_orifice =
+        main_pressure_flow_discharge(wsel, tw, q, &geom_orifice_early, &table_up, a_net);
     assert!(
         (q_sluice - q_orifice).abs() > 0.5,
         "TW between min and max low chord should remain sluice (max trigger), sluice={q_sluice}, orifice={q_orifice}"
@@ -942,8 +1204,7 @@ fn test_combined_weir_solve_beats_pressure_only_capacity() {
     );
     let q = 220.0;
     let tw = 5.4;
-    let pressure_only_hw =
-        solve_pressure_headwater(q, tw, &geom, &table_up, &table_down);
+    let pressure_only_hw = solve_pressure_headwater(q, tw, &geom, &table_up, &table_down);
     let solved = solve_bridge_headwater_metric(q, tw, &geom, &table_up, &table_down);
     assert!(
         solved.wsel_m <= pressure_only_hw + 0.02,
@@ -955,15 +1216,8 @@ fn test_combined_weir_solve_beats_pressure_only_capacity() {
     let a_net = net_opening_area_at_low_chord(&geom, &table_up, &table_down);
     let e_up = upstream_energy_grade(solved.wsel_m, q, &geom, &table_up, geom.z_up_m, true);
     let l_weir = effective_weir_length_m(&geom, e_up, 10.0);
-    let parts = combined_high_flow_discharge(
-        solved.wsel_m,
-        tw,
-        q,
-        &geom,
-        &table_up,
-        a_net,
-        Some(l_weir),
-    );
+    let parts =
+        combined_high_flow_discharge(solved.wsel_m, tw, q, &geom, &table_up, a_net, Some(l_weir));
     assert!((parts.total_m3s() - q).abs() < 0.05);
     assert!(parts.q_weir_m3s > 0.01);
 }
@@ -1293,12 +1547,36 @@ fn test_deck_ice_lowers_weir_onset_energy() {
     let mut iced = base.clone();
     iced.ice_debris.deck_ice_thickness = 0.5;
     let geom_clear = build_bridge_geometry(
-        5.0, 7.0, 0.0, 0, 0, 1.44, 0.8, 0.0, 0.0, UnitSystem::Metric, &base, 50.0,
-        Some(&deck), None,
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        UnitSystem::Metric,
+        &base,
+        50.0,
+        Some(&deck),
+        None,
     );
     let geom_iced = build_bridge_geometry(
-        5.0, 7.0, 0.0, 0, 0, 1.44, 0.8, 0.0, 0.0, UnitSystem::Metric, &iced, 50.0,
-        Some(&deck), None,
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        UnitSystem::Metric,
+        &iced,
+        50.0,
+        Some(&deck),
+        None,
     );
     // Deck ice lowers effective crest (7.0 -> 6.5 m), so weir overtopping engages below the nominal high chord.
     let tw = 5.5;
@@ -1389,7 +1667,9 @@ fn internal_bridge_cuts_build_opening_friction_segments() {
 
 #[test]
 fn test_deck_obstructed_area_subtracted_in_obstructed_hydraulics() {
-    use crate::solvers::bridge::opening::{obstructed_hydraulics, deck_obstructed_area_at_wsel, deck_obstructed_width_at_wsel};
+    use crate::solvers::bridge::opening::{
+        deck_obstructed_area_at_wsel, deck_obstructed_width_at_wsel, obstructed_hydraulics,
+    };
     let table = rectangular_table(10.0, 0.0, 50); // 10m wide rectangular channel, bed at 0.0
     let deck = BridgeDeckProfile {
         stations_m: vec![0.0, 10.0],
@@ -1397,10 +1677,22 @@ fn test_deck_obstructed_area_subtracted_in_obstructed_hydraulics() {
         high_elevations_m: vec![7.0, 7.0],
     };
     let geom = build_bridge_geometry(
-        5.0, 7.0, 0.0, 0, 0, 1.44, 0.8, 0.0, 0.0, UnitSystem::Metric,
-        &BridgeCouplingParams::default(), 50.0, Some(&deck), None,
+        5.0,
+        7.0,
+        0.0,
+        0,
+        0,
+        1.44,
+        0.8,
+        0.0,
+        0.0,
+        UnitSystem::Metric,
+        &BridgeCouplingParams::default(),
+        50.0,
+        Some(&deck),
+        None,
     );
-    
+
     // 1. Water surface is below deck: wsel = 4.0
     let wsel_low = 4.0;
     let props_low = obstructed_hydraulics(&table, wsel_low, 0.0, &geom, true, true);

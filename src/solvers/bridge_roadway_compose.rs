@@ -14,9 +14,7 @@ pub struct EmbankmentPolyline {
 impl EmbankmentPolyline {
     pub fn is_valid(&self) -> bool {
         let n = self.stations.len();
-        n >= 2
-            && n == self.elevations.len()
-            && self.stations.windows(2).all(|w| w[1] > w[0])
+        n >= 2 && n == self.elevations.len() && self.stations.windows(2).all(|w| w[1] > w[0])
     }
 }
 
@@ -217,20 +215,24 @@ fn compose_ineffective_for_face_full(
     }
 
     let override_face = match face {
-        "upstream" => emb.ineffective_faces.as_ref().and_then(|f| f.upstream.as_ref()),
-        "downstream" => emb.ineffective_faces.as_ref().and_then(|f| f.downstream.as_ref()),
+        "upstream" => emb
+            .ineffective_faces
+            .as_ref()
+            .and_then(|f| f.upstream.as_ref()),
+        "downstream" => emb
+            .ineffective_faces
+            .as_ref()
+            .and_then(|f| f.downstream.as_ref()),
         _ => None,
     };
 
     let s_left = deck.stations.first().copied().unwrap_or(0.0);
     let s_right = deck.stations.last().copied().unwrap_or(s_left);
 
-    let left_pts = face_override_blocks(override_face, Some("left")).unwrap_or_else(|| {
-        ineffective_points_from_side(emb.left.as_ref(), deck, s_left)
-    });
-    let right_pts = face_override_blocks(override_face, Some("right")).unwrap_or_else(|| {
-        ineffective_points_from_side(emb.right.as_ref(), deck, s_right)
-    });
+    let left_pts = face_override_blocks(override_face, Some("left"))
+        .unwrap_or_else(|| ineffective_points_from_side(emb.left.as_ref(), deck, s_left));
+    let right_pts = face_override_blocks(override_face, Some("right"))
+        .unwrap_or_else(|| ineffective_points_from_side(emb.right.as_ref(), deck, s_right));
 
     split_side_ineffective(&left_pts, &right_pts)
 }
@@ -270,8 +272,10 @@ fn flat_ineffective_face_present(
     legacy_right_el: &Option<Vec<Vec<f64>>>,
     b_idx: usize,
 ) -> bool {
-    let face_has = |lst: &Option<Vec<Vec<f64>>>, lel: &Option<Vec<Vec<f64>>>,
-                      rst: &Option<Vec<Vec<f64>>>, rel: &Option<Vec<Vec<f64>>>| {
+    let face_has = |lst: &Option<Vec<Vec<f64>>>,
+                    lel: &Option<Vec<Vec<f64>>>,
+                    rst: &Option<Vec<Vec<f64>>>,
+                    rel: &Option<Vec<Vec<f64>>>| {
         let left = lst
             .as_ref()
             .and_then(|v| v.get(b_idx))
@@ -293,14 +297,15 @@ fn flat_ineffective_face_present(
         left.is_some() || right.is_some()
     };
     face_has(left_st, left_el, right_st, right_el)
-        || face_has(legacy_left_st, legacy_left_el, legacy_right_st, legacy_right_el)
+        || face_has(
+            legacy_left_st,
+            legacy_left_el,
+            legacy_right_st,
+            legacy_right_el,
+        )
 }
 
-fn set_nested_bridge_blocks(
-    target: &mut Option<Vec<Vec<f64>>>,
-    b_idx: usize,
-    values: Vec<f64>,
-) {
+fn set_nested_bridge_blocks(target: &mut Option<Vec<Vec<f64>>>, b_idx: usize, values: Vec<f64>) {
     if values.is_empty() {
         return;
     }
@@ -510,8 +515,6 @@ pub fn steady_composed_embankment_blocked(
     composed_embankment_blocked_for(&inputs.bridge_composed_embankment_blocked, b_idx).cloned()
 }
 
-
-
 /// Opening-frame blocked profiles after rating-curve compose (if any).
 pub fn rating_composed_embankment_blocked(
     params: &BridgeSolveParams,
@@ -582,9 +585,10 @@ pub fn composed_steady_inputs(inputs: &SteadyInputs) -> SteadyInputs {
     c
 }
 
-
-
-fn params_ineffective_nested(stations: &Option<Vec<f64>>, scalar: Option<f64>) -> Option<Vec<Vec<f64>>> {
+fn params_ineffective_nested(
+    stations: &Option<Vec<f64>>,
+    scalar: Option<f64>,
+) -> Option<Vec<Vec<f64>>> {
     if let Some(v) = stations.as_ref().filter(|v| !v.is_empty()) {
         return Some(vec![v.clone()]);
     }
@@ -597,7 +601,10 @@ pub fn apply_roadway_embankment_compose_params(params: &mut BridgeSolveParams) {
     };
     let mut deck_stations = params.deck_stations.as_ref().map(|s| vec![s.clone()]);
     let mut deck_low = params.deck_low_elevations.as_ref().map(|s| vec![s.clone()]);
-    let mut deck_high = params.deck_high_elevations.as_ref().map(|s| vec![s.clone()]);
+    let mut deck_high = params
+        .deck_high_elevations
+        .as_ref()
+        .map(|s| vec![s.clone()]);
     let mut low_chords = Some(vec![params.low_chord]);
     let mut high_chords = Some(vec![params.high_chord]);
     let mut left_widths = params.abutment_left_width.map(|w| vec![w]);
@@ -982,12 +989,16 @@ mod tests {
         );
         assert!((inputs.bridge_abutment_left_widths.as_ref().unwrap()[0] - 1.0).abs() < 1e-9);
         assert!((inputs.bridge_abutment_right_widths.as_ref().unwrap()[0] - 4.0).abs() < 1e-9);
-        assert!((inputs.bridge_abutment_right_top_elevations.as_ref().unwrap()[0] - 2.5).abs()
-            < 1e-9);
-        let blocked = inputs
-            .bridge_composed_embankment_blocked
-            .as_ref()
-            .unwrap()[0]
+        assert!(
+            (inputs
+                .bridge_abutment_right_top_elevations
+                .as_ref()
+                .unwrap()[0]
+                - 2.5)
+                .abs()
+                < 1e-9
+        );
+        let blocked = inputs.bridge_composed_embankment_blocked.as_ref().unwrap()[0]
             .as_ref()
             .unwrap();
         assert!(blocked.left.as_ref().unwrap().is_valid());
@@ -1145,24 +1156,24 @@ mod tests {
         let interior = interior_from_steady(&composed, 0);
         let reach = face(100.0);
         let table = reach.generate_lookup_table(50);
-        let geo = resolve_bridge_face_solve_geometry(crate::solvers::bridge_interior::BridgeFaceSolveParams {
-            interior: &interior,
-            reach_xs_up: Some(&reach),
-            reach_xs_down: Some(&reach),
-            reach_table_up: &table,
-            reach_table_down: &table,
-            raw_units: UnitSystem::Metric,
-            num_slices: 50,
-            ineffective_up: bridge_ineffective_upstream_for(&composed, 0),
-            ineffective_down: bridge_ineffective_downstream_for(&composed, 0),
-            interval_length_m: 4.0,
-            embankment_blocked: Some(blocked),
-            ..crate::solvers::bridge_interior::BridgeFaceSolveParams::new(
-                &interior,
-                &table,
-                &table,
-            )
-        });
+        let geo = resolve_bridge_face_solve_geometry(
+            crate::solvers::bridge_interior::BridgeFaceSolveParams {
+                interior: &interior,
+                reach_xs_up: Some(&reach),
+                reach_xs_down: Some(&reach),
+                reach_table_up: &table,
+                reach_table_down: &table,
+                raw_units: UnitSystem::Metric,
+                num_slices: 50,
+                ineffective_up: bridge_ineffective_upstream_for(&composed, 0),
+                ineffective_down: bridge_ineffective_downstream_for(&composed, 0),
+                interval_length_m: 4.0,
+                embankment_blocked: Some(blocked),
+                ..crate::solvers::bridge_interior::BridgeFaceSolveParams::new(
+                    &interior, &table, &table,
+                )
+            },
+        );
 
         assert!(
             geo.sections
@@ -1178,8 +1189,6 @@ mod tests {
             "fill should reduce conveyance at tailwater"
         );
     }
-
-
 
     #[test]
     fn rating_curve_params_compose() {
@@ -1436,7 +1445,11 @@ mod tests {
         assert_eq!(us_ls.unwrap()[0], vec![1.5]);
         assert_eq!(us_le.unwrap()[0], vec![3.0]);
         assert_eq!(us_rs.unwrap()[0], vec![8.5]);
-        assert_eq!(ds_ls.unwrap()[0], vec![-5.0, 0.0], "downstream uses profile");
+        assert_eq!(
+            ds_ls.unwrap()[0],
+            vec![-5.0, 0.0],
+            "downstream uses profile"
+        );
     }
 
     #[test]

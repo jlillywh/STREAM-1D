@@ -65,7 +65,8 @@ fn validate_bridge_guide_banks(inputs: &SteadyInputs) -> Vec<String> {
             .and_then(|v| v.get(b_idx))
         {
             if let Some(ref gb) = xs.guide_banks {
-                warnings.extend(gb.validation_warnings(&format!("{label} departure cross section")));
+                warnings
+                    .extend(gb.validation_warnings(&format!("{label} departure cross section")));
             }
         }
     }
@@ -87,7 +88,10 @@ fn river_station_to_metric(station: f64, units: UnitSystem) -> f64 {
     }
 }
 
-fn cross_section_at_river_station(sections: &[CrossSection], station_user: f64) -> Option<CrossSection> {
+fn cross_section_at_river_station(
+    sections: &[CrossSection],
+    station_user: f64,
+) -> Option<CrossSection> {
     sections
         .iter()
         .find(|xs| (xs.station - station_user).abs() <= STRUCTURE_STATION_TOL)
@@ -314,7 +318,7 @@ mod tests {
             coeff_expansion: None,
             blocked_obstructions: None,
             ineffective_flow_areas: None,
-        guide_banks: None,
+            guide_banks: None,
         }
     }
 

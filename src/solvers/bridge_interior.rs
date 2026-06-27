@@ -165,7 +165,8 @@ pub struct BridgeFaceSolveParams<'a> {
     pub pier_widths: Option<crate::solvers::pier_geometry::PierWidthUserInput>,
     pub pier_attachments: Option<crate::solvers::pier_geometry::PierAttachmentsUserInput>,
     pub deck_vents: Option<crate::solvers::deck_vent_geometry::DeckVentUserInput>,
-    pub embankment_blocked: Option<&'a crate::solvers::bridge_roadway_compose::ComposedEmbankmentBlocked>,
+    pub embankment_blocked:
+        Option<&'a crate::solvers::bridge_roadway_compose::ComposedEmbankmentBlocked>,
 }
 
 impl<'a> BridgeFaceSolveParams<'a> {
@@ -326,9 +327,8 @@ pub fn friction_path_from_interior(
     interior: &BridgeInteriorInput,
     raw_units: UnitSystem,
 ) -> Option<f64> {
-    let has_explicit = interior.bu.is_some()
-        || interior.bd.is_some()
-        || !interior.internal.is_empty();
+    let has_explicit =
+        interior.bu.is_some() || interior.bd.is_some() || !interior.internal.is_empty();
     if !has_explicit {
         return None;
     }
@@ -359,10 +359,7 @@ pub fn friction_path_from_interior(
         return None;
     }
     stations.sort_by(|a, b| b.partial_cmp(a).unwrap());
-    let path: f64 = stations
-        .windows(2)
-        .map(|w| (w[0] - w[1]).abs())
-        .sum();
+    let path: f64 = stations.windows(2).map(|w| (w[0] - w[1]).abs()).sum();
     if path > STRUCTURE_STATION_TOL {
         Some(path)
     } else {
@@ -480,10 +477,8 @@ pub fn resolve_approach_departure_sections(
             let idx = bu_interval_idx + 2;
             densified_xs.get(idx).and_then(|opt| opt.clone())
         });
-    let guide_banks_approach = resolve_guide_banks(
-        approach_xs.as_ref(),
-        interior.approach_guide_banks.as_ref(),
-    );
+    let guide_banks_approach =
+        resolve_guide_banks(approach_xs.as_ref(), interior.approach_guide_banks.as_ref());
     let guide_banks_departure = resolve_guide_banks(
         departure_xs.as_ref(),
         interior.departure_guide_banks.as_ref(),
@@ -530,14 +525,8 @@ pub fn resolve_bridge_face_solve_geometry(
         embankment_blocked,
     } = params;
 
-    let mut xs_up = interior
-        .bu
-        .clone()
-        .or_else(|| reach_xs_up.cloned());
-    let mut xs_down = interior
-        .bd
-        .clone()
-        .or_else(|| reach_xs_down.cloned());
+    let mut xs_up = interior.bu.clone().or_else(|| reach_xs_up.cloned());
+    let mut xs_down = interior.bd.clone().or_else(|| reach_xs_down.cloned());
 
     let opening_origin = resolve_opening_reach_station_origin(
         interior.opening_reach_station_origin,
@@ -736,7 +725,8 @@ pub enum BridgeLayoutCutKind {
 #[derive(Debug, Clone)]
 pub struct BridgeFaceInsertMeta {
     pub ineffective_opening: Option<IneffectiveFlowAreas>,
-    pub embankment_blocked: Option<crate::solvers::bridge_roadway_compose::ComposedEmbankmentBlocked>,
+    pub embankment_blocked:
+        Option<crate::solvers::bridge_roadway_compose::ComposedEmbankmentBlocked>,
     pub interior: BridgeInteriorInput,
 }
 
@@ -812,11 +802,9 @@ pub fn layout_cuts_for_bridge(
     ineffective_down: Option<IneffectiveFlowAreas>,
     embankment_blocked: Option<&crate::solvers::bridge_roadway_compose::ComposedEmbankmentBlocked>,
 ) -> Vec<BridgeLayoutCut> {
-    let has_explicit = interior.bu.is_some()
-        || interior.bd.is_some()
-        || !interior.internal.is_empty();
-    let faces_differ =
-        (faces.bu_station_m - faces.bd_station_m).abs() > STRUCTURE_STATION_TOL;
+    let has_explicit =
+        interior.bu.is_some() || interior.bd.is_some() || !interior.internal.is_empty();
+    let faces_differ = (faces.bu_station_m - faces.bd_station_m).abs() > STRUCTURE_STATION_TOL;
     if !has_explicit && !faces_differ {
         return vec![];
     }
@@ -880,8 +868,7 @@ fn bridge_face_ineffective_on_reach(
     } else {
         opening
     };
-    opening_frame_ineffective_to_reach(Some(user_units.clone()), origin)
-        .or(Some(user_units))
+    opening_frame_ineffective_to_reach(Some(user_units.clone()), origin).or(Some(user_units))
 }
 
 fn apply_bridge_face_ineffective_to_section(
@@ -954,12 +941,7 @@ fn build_interpolated_layout_node(
         let mut synthetic = interpolate_cross_section(&up_m, &down_m, t, station_m);
         match cut.kind {
             BridgeLayoutCutKind::Bu | BridgeLayoutCutKind::Bd => {
-                apply_bridge_face_ineffective_to_section(
-                    &mut synthetic,
-                    cut,
-                    up_ref,
-                    raw_units,
-                );
+                apply_bridge_face_ineffective_to_section(&mut synthetic, cut, up_ref, raw_units);
                 apply_bridge_face_blocked_to_section(&mut synthetic, cut, up_ref);
             }
             BridgeLayoutCutKind::Internal => {
@@ -987,10 +969,7 @@ fn build_interpolated_layout_node(
             section
         });
     if let Some(ref mut section) = xs_new {
-        if matches!(
-            cut.kind,
-            BridgeLayoutCutKind::Bu | BridgeLayoutCutKind::Bd
-        ) {
+        if matches!(cut.kind, BridgeLayoutCutKind::Bu | BridgeLayoutCutKind::Bd) {
             section.ineffective_flow_areas = None;
             apply_bridge_face_ineffective_to_section(section, cut, up_ref, raw_units);
             apply_bridge_face_blocked_to_section(section, cut, up_ref);
@@ -1113,11 +1092,31 @@ pub fn insert_reach_layout_cuts(
     }
 }
 
+pub fn remove_internal_nodes_inside_bounds(
+    stations: &mut Vec<f64>,
+    tables: &mut Vec<GeometryTable>,
+    z_mins: &mut Vec<f64>,
+    xs: &mut Vec<Option<CrossSection>>,
+    us_station_m: f64,
+    ds_station_m: f64,
+) {
+    let tol = 1e-5;
+    let mut k = 0;
+    while k < stations.len() {
+        let s = stations[k];
+        if s > ds_station_m + tol && s < us_station_m - tol {
+            stations.remove(k);
+            tables.remove(k);
+            z_mins.remove(k);
+            xs.remove(k);
+        } else {
+            k += 1;
+        }
+    }
+}
+
 /// Interval `i` spans BU (`stations[i]`) → BD (`stations[i+1]`).
-pub fn find_bridge_face_interval(
-    faces: BridgeFaceStations,
-    stations: &[f64],
-) -> Option<usize> {
+pub fn find_bridge_face_interval(faces: BridgeFaceStations, stations: &[f64]) -> Option<usize> {
     let tol = STRUCTURE_STATION_TOL;
     for i in 0..stations.len().saturating_sub(1) {
         if (stations[i] - faces.bu_station_m).abs() <= tol
@@ -1144,8 +1143,6 @@ fn bridge_length_user_steady(inputs: &crate::solvers::steady::SteadyInputs, b_id
         .copied()
         .unwrap_or(0.0)
 }
-
-
 
 /// Insert BU/BD/internal nodes and return bridge interval index per bridge (`None` if unmatched).
 pub fn apply_bridge_reach_layout_steady(
@@ -1200,13 +1197,47 @@ pub fn apply_bridge_reach_layout_steady(
         &mut [],
     );
 
+    for faces in &face_list {
+        remove_internal_nodes_inside_bounds(
+            stations,
+            tables,
+            z_mins,
+            xs,
+            faces.bu_station_m,
+            faces.bd_station_m,
+        );
+    }
+
     face_list
         .iter()
         .map(|faces| find_bridge_face_interval(*faces, stations))
         .collect()
 }
 
-
+pub fn re_resolve_bridge_intervals(
+    inputs: &crate::solvers::steady::SteadyInputs,
+    raw_units: UnitSystem,
+    stations: &[f64],
+) -> Vec<Option<usize>> {
+    let Some(ref centers) = inputs.bridge_stations else {
+        return vec![];
+    };
+    centers
+        .iter()
+        .enumerate()
+        .map(|(b_idx, &center)| {
+            let interior = interior_from_steady(inputs, b_idx);
+            let faces = resolve_bridge_face_stations_metric(
+                center,
+                raw_units,
+                interior.bu.as_ref(),
+                interior.bd.as_ref(),
+                bridge_length_user_steady(inputs, b_idx),
+            );
+            find_bridge_face_interval(faces, stations)
+        })
+        .collect()
+}
 
 /// Re-map original cross-section indices after layout nodes are inserted.
 pub fn refresh_original_to_densified(
@@ -1225,17 +1256,13 @@ pub fn refresh_original_to_densified(
     }
 }
 
-pub fn bridge_intervals_from_faces(
-    face_intervals: &[Option<usize>],
-) -> Vec<(usize, usize)> {
+pub fn bridge_intervals_from_faces(face_intervals: &[Option<usize>]) -> Vec<(usize, usize)> {
     face_intervals
         .iter()
         .enumerate()
         .filter_map(|(b_idx, interval)| interval.map(|i| (i, b_idx)))
         .collect()
 }
-
-
 
 #[cfg(test)]
 mod tests {
@@ -1293,10 +1320,7 @@ mod tests {
         });
         assert!((geo.z_up_user - 2.0).abs() < 1e-9);
         assert_eq!(geo.sections.opening_reach_station_origin, Some(50.0));
-        let a_bu = geo
-            .table_up
-            .interpolate(5.0)
-            .area;
+        let a_bu = geo.table_up.interpolate(5.0).area;
         let a_reach = flat_table().interpolate(5.0).area;
         assert!(a_bu < a_reach);
     }
@@ -1319,7 +1343,7 @@ mod tests {
             is_overbank: None,
             blocked_obstructions: None,
             ineffective_flow_areas: None,
-        guide_banks: None,
+            guide_banks: None,
             coeff_contraction: None,
             coeff_expansion: None,
         };
@@ -1340,13 +1364,8 @@ mod tests {
 
     #[test]
     fn face_stations_from_bridge_length_when_no_explicit_faces() {
-        let faces = resolve_bridge_face_stations_metric(
-            500.0,
-            UnitSystem::Metric,
-            None,
-            None,
-            20.0,
-        );
+        let faces =
+            resolve_bridge_face_stations_metric(500.0, UnitSystem::Metric, None, None, 20.0);
         assert!((faces.bu_station_m - 510.0).abs() < 1e-9);
         assert!((faces.bd_station_m - 490.0).abs() < 1e-9);
     }
@@ -1407,7 +1426,9 @@ mod tests {
         let interval = find_bridge_face_interval(faces, &stations).expect("BU/BD interval");
         assert_eq!(stations[interval], 505.0);
         assert_eq!(stations[interval + 1], 495.0);
-        assert!(tables[interval].interpolate(3.0).area < tables[interval + 2].interpolate(3.0).area);
+        assert!(
+            tables[interval].interpolate(3.0).area < tables[interval + 2].interpolate(3.0).area
+        );
     }
 
     #[test]
@@ -1430,15 +1451,13 @@ mod tests {
     fn explicit_bu_ineffective_independent_of_reach_face() {
         let mut reach = box_xs(0.0, 40.0, 0.0, 5.0);
         reach.is_overbank = Some(vec![false, false, false, false, true, true, true, true]);
-        reach.ineffective_flow_areas = Some(
-            IneffectiveFlowAreas::from_block_pairs(&[35.0], &[3.0], &[], &[]).unwrap(),
-        );
+        reach.ineffective_flow_areas =
+            Some(IneffectiveFlowAreas::from_block_pairs(&[35.0], &[3.0], &[], &[]).unwrap());
 
         let mut bu = box_xs(0.0, 40.0, 0.0, 5.0);
         bu.is_overbank = reach.is_overbank.clone();
-        bu.ineffective_flow_areas = Some(
-            IneffectiveFlowAreas::from_block_pairs(&[12.0], &[3.0], &[], &[]).unwrap(),
-        );
+        bu.ineffective_flow_areas =
+            Some(IneffectiveFlowAreas::from_block_pairs(&[12.0], &[3.0], &[], &[]).unwrap());
 
         let interior = BridgeInteriorInput {
             bu: Some(bu),
@@ -1447,7 +1466,8 @@ mod tests {
             opening_reach_station_origin: Some(0.0),
             ..Default::default()
         };
-        let bridge_opening = IneffectiveFlowAreas::from_block_pairs(&[20.0], &[3.0], &[], &[]).unwrap();
+        let bridge_opening =
+            IneffectiveFlowAreas::from_block_pairs(&[20.0], &[3.0], &[], &[]).unwrap();
 
         let table = flat_table();
         let geo = resolve_face(&interior, &table, &table, |p| {
@@ -1468,9 +1488,8 @@ mod tests {
     #[test]
     fn interpolated_bu_inherits_bridge_not_reach_ineffective() {
         let mut reach_us = box_xs(0.0, 40.0, 0.0, 5.0);
-        reach_us.ineffective_flow_areas = Some(
-            IneffectiveFlowAreas::from_block_pairs(&[30.0], &[3.0], &[], &[]).unwrap(),
-        );
+        reach_us.ineffective_flow_areas =
+            Some(IneffectiveFlowAreas::from_block_pairs(&[30.0], &[3.0], &[], &[]).unwrap());
         reach_us.station = 520.0;
         let mut reach_ds = box_xs(0.0, 40.0, 0.0, 5.0);
         reach_ds.station = 480.0;
@@ -1485,13 +1504,8 @@ mod tests {
         ];
         let mut xs: Vec<Option<CrossSection>> = vec![Some(reach_us), Some(reach_ds)];
 
-        let faces = resolve_bridge_face_stations_metric(
-            500.0,
-            UnitSystem::Metric,
-            None,
-            None,
-            20.0,
-        );
+        let faces =
+            resolve_bridge_face_stations_metric(500.0, UnitSystem::Metric, None, None, 20.0);
         let bridge_opening =
             IneffectiveFlowAreas::from_block_pairs(&[5.0], &[3.0], &[], &[]).unwrap();
         let interior = BridgeInteriorInput {
@@ -1533,19 +1547,13 @@ mod tests {
             "BU should use bridge ineffective (5), not reach (30)"
         );
 
-        let geo = resolve_face(
-            &interior,
-            &tables[bu_idx],
-            &tables[bu_idx + 1],
-            |p| {
-                p.reach_xs_up = Some(bu_xs);
-                p.reach_xs_down = xs[bu_idx + 1].as_ref();
-                p.num_slices = 20;
-                p.ineffective_up = Some(
-                    IneffectiveFlowAreas::from_block_pairs(&[5.0], &[3.0], &[], &[]).unwrap(),
-                );
-            },
-        );
+        let geo = resolve_face(&interior, &tables[bu_idx], &tables[bu_idx + 1], |p| {
+            p.reach_xs_up = Some(bu_xs);
+            p.reach_xs_down = xs[bu_idx + 1].as_ref();
+            p.num_slices = 20;
+            p.ineffective_up =
+                Some(IneffectiveFlowAreas::from_block_pairs(&[5.0], &[3.0], &[], &[]).unwrap());
+        });
         let up = geo.sections.ineffective_up.expect("BU bridge ineffective");
         assert!((up.left_blocks[0].station - 5.0).abs() < 1e-9);
     }
@@ -1553,9 +1561,8 @@ mod tests {
     #[test]
     fn reach_fallback_uses_reach_xs_ineffective() {
         let mut reach = box_xs(0.0, 40.0, 0.0, 5.0);
-        reach.ineffective_flow_areas = Some(
-            IneffectiveFlowAreas::from_block_pairs(&[25.0], &[3.0], &[], &[]).unwrap(),
-        );
+        reach.ineffective_flow_areas =
+            Some(IneffectiveFlowAreas::from_block_pairs(&[25.0], &[3.0], &[], &[]).unwrap());
 
         let interior = BridgeInteriorInput::default();
         let table = flat_table();
@@ -1572,7 +1579,8 @@ mod tests {
     #[test]
     fn bridge_opening_ineffective_shifted_to_reach_x() {
         let reach = box_xs(100.0, 40.0, 0.0, 5.0);
-        let bridge_opening = IneffectiveFlowAreas::from_block_pairs(&[5.0], &[3.0], &[], &[]).unwrap();
+        let bridge_opening =
+            IneffectiveFlowAreas::from_block_pairs(&[5.0], &[3.0], &[], &[]).unwrap();
 
         let interior = BridgeInteriorInput {
             opening_reach_station_origin: Some(100.0),
@@ -1793,8 +1801,8 @@ mod tests {
                     blocked_obstructions: None,
                     ineffective_flow_areas: None,
                     guide_banks: None,
-            coeff_contraction: None,
-            coeff_expansion: None,
+                    coeff_contraction: None,
+                    coeff_expansion: None,
                 })
             })
             .collect();
@@ -1840,7 +1848,11 @@ mod tests {
         let xs: Vec<Option<CrossSection>> = stations
             .iter()
             .map(|&st| {
-                let width = if (st - 550.0_f64).abs() < 1e-9 { 30.0 } else { 10.0 };
+                let width = if (st - 550.0_f64).abs() < 1e-9 {
+                    30.0
+                } else {
+                    10.0
+                };
                 let mut section = box_xs(st, width, 0.0, 5.0);
                 section.station = st;
                 Some(section)
@@ -1866,8 +1878,6 @@ mod tests {
         assert_eq!(gb_app.unwrap().left_toe.unwrap().station, 60.0);
     }
 
-
-
     #[test]
     fn interior_from_steady_carries_guide_bank_fields() {
         use crate::geometry::{GuideBankToe, GuideBanks};
@@ -1886,7 +1896,12 @@ mod tests {
         };
         let interior = interior_from_steady(&inputs, 0);
         assert_eq!(
-            interior.approach_guide_banks.unwrap().left_toe.unwrap().station,
+            interior
+                .approach_guide_banks
+                .unwrap()
+                .left_toe
+                .unwrap()
+                .station,
             12.0
         );
         assert_eq!(interior.departure_reach_station, Some(40.0));
@@ -1901,9 +1916,7 @@ mod tests {
             n_stations: vec![0.0],
             n_values: vec![0.03],
             unit_system: UnitSystem::Metric,
-            is_overbank: Some(vec![
-                false, false, false, false, true, true, true, true,
-            ]),
+            is_overbank: Some(vec![false, false, false, false, true, true, true, true]),
             blocked_obstructions: None,
             ineffective_flow_areas: Some(
                 IneffectiveFlowAreas::from_block_pairs(&[30.0], &[3.0], &[], &[]).unwrap(),
@@ -1954,15 +1967,9 @@ mod tests {
 
     #[test]
     fn layout_cuts_attach_face_meta_when_bu_bd_omitted() {
-        let ineffective =
-            IneffectiveFlowAreas::from_block_pairs(&[5.0], &[3.0], &[], &[]).unwrap();
-        let faces = resolve_bridge_face_stations_metric(
-            500.0,
-            UnitSystem::Metric,
-            None,
-            None,
-            20.0,
-        );
+        let ineffective = IneffectiveFlowAreas::from_block_pairs(&[5.0], &[3.0], &[], &[]).unwrap();
+        let faces =
+            resolve_bridge_face_stations_metric(500.0, UnitSystem::Metric, None, None, 20.0);
         let cuts = layout_cuts_for_bridge(
             &BridgeInteriorInput {
                 opening_reach_station_origin: Some(0.0),
@@ -2013,13 +2020,8 @@ mod tests {
             cross_section_min_bed(&reach_ds),
         ];
         let mut xs: Vec<Option<CrossSection>> = vec![Some(reach_us), Some(reach_ds)];
-        let faces = resolve_bridge_face_stations_metric(
-            500.0,
-            UnitSystem::Metric,
-            None,
-            None,
-            20.0,
-        );
+        let faces =
+            resolve_bridge_face_stations_metric(500.0, UnitSystem::Metric, None, None, 20.0);
         let bridge_opening =
             IneffectiveFlowAreas::from_block_pairs(&[], &[], &[8.0], &[3.0]).unwrap();
         let cuts = layout_cuts_for_bridge(
@@ -2062,9 +2064,8 @@ mod tests {
         use crate::geometry::IneffectiveFlowAreas;
 
         let mut up = box_xs(0.0, 20.0, 0.0, 5.0);
-        up.ineffective_flow_areas = Some(
-            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[15.0], &[3.0]).unwrap(),
-        );
+        up.ineffective_flow_areas =
+            Some(IneffectiveFlowAreas::from_block_pairs(&[], &[], &[15.0], &[3.0]).unwrap());
         up.station = 510.0;
         let mut down = box_xs(0.0, 20.0, 0.0, 5.0);
         down.station = 490.0;
@@ -2090,14 +2091,8 @@ mod tests {
         assert!(cuts[1].xs.is_some());
 
         let mut stations = vec![510.0, 490.0];
-        let mut tables = vec![
-            up.generate_lookup_table(20),
-            down.generate_lookup_table(20),
-        ];
-        let mut z_mins = vec![
-            cross_section_min_bed(&up),
-            cross_section_min_bed(&down),
-        ];
+        let mut tables = vec![up.generate_lookup_table(20), down.generate_lookup_table(20)];
+        let mut z_mins = vec![cross_section_min_bed(&up), cross_section_min_bed(&down)];
         let mut xs: Vec<Option<CrossSection>> = vec![Some(up), Some(down)];
         insert_reach_layout_cuts(
             &mut stations,
@@ -2126,13 +2121,8 @@ mod tests {
         let mut tables = vec![table.clone(), table.clone()];
         let mut z_mins = vec![0.0, 0.0];
         let mut xs: Vec<Option<CrossSection>> = vec![Some(up), None];
-        let faces = resolve_bridge_face_stations_metric(
-            500.0,
-            UnitSystem::Metric,
-            None,
-            None,
-            20.0,
-        );
+        let faces =
+            resolve_bridge_face_stations_metric(500.0, UnitSystem::Metric, None, None, 20.0);
         let bridge_opening =
             IneffectiveFlowAreas::from_block_pairs(&[3.0], &[3.0], &[], &[]).unwrap();
         let cuts = layout_cuts_for_bridge(
@@ -2177,14 +2167,8 @@ mod tests {
         let mut down = box_xs(0.0, 10.0, 0.0, 5.0);
         down.station = 0.0;
         let mut stations = vec![200.0, 0.0];
-        let mut tables = vec![
-            up.generate_lookup_table(20),
-            down.generate_lookup_table(20),
-        ];
-        let mut z_mins = vec![
-            cross_section_min_bed(&up),
-            cross_section_min_bed(&down),
-        ];
+        let mut tables = vec![up.generate_lookup_table(20), down.generate_lookup_table(20)];
+        let mut z_mins = vec![cross_section_min_bed(&up), cross_section_min_bed(&down)];
         let mut xs: Vec<Option<CrossSection>> = vec![Some(up), Some(down)];
         let inputs = SteadyInputs {
             cross_sections: xs.iter().filter_map(|o| o.clone()).collect(),
@@ -2209,8 +2193,6 @@ mod tests {
         assert!(intervals[0].is_some());
         assert!(stations.len() > 2);
     }
-
-
 
     #[test]
     fn insert_updates_existing_station_with_explicit_bu() {
@@ -2254,7 +2236,10 @@ mod tests {
             UnitSystem::Metric,
             &mut [],
         );
-        let idx = stations.iter().position(|&s| (s - 505.0).abs() < 1e-6).unwrap();
+        let idx = stations
+            .iter()
+            .position(|&s| (s - 505.0).abs() < 1e-6)
+            .unwrap();
         assert!(tables[idx].interpolate(3.0).area < flat_table().interpolate(3.0).area);
     }
 }

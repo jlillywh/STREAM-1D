@@ -3,7 +3,8 @@ use crate::solvers::deck_vent_geometry::total_deck_vent_discharge_m3s;
 use crate::utils::G_METRIC;
 
 use super::geometry::{
-    effective_deck_crest_m, effective_scalar_high_chord_m, effective_weir_length_m, interpolate_profile, BridgeGeometry,
+    effective_deck_crest_m, effective_scalar_high_chord_m, effective_weir_length_m,
+    interpolate_profile, BridgeGeometry,
 };
 use super::low_flow::{
     net_opening_area_at_low_chord, solve_high_flow_energy, solve_high_flow_energy_fallback,
@@ -13,10 +14,12 @@ use super::opening::{obstructed_hydraulics, opening_height_below_deck_m, velocit
 use super::types::{BridgeFlowRegimeKind, BridgeHeadwaterSolve, HighFlowMethod};
 
 /// Bradley (1978) trapezoidal-weir submergence curve (HEC-RAS Fig. 5-8): percent submergence → flow factor.
-const BRADLEY_SUBMERGENCE_PCT: [f64; 12] =
-    [0.0, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 95.0, 98.0];
-const BRADLEY_FLOW_FACTOR: [f64; 12] =
-    [1.0, 1.0, 0.99, 0.97, 0.94, 0.90, 0.84, 0.75, 0.62, 0.40, 0.22, 0.08];
+const BRADLEY_SUBMERGENCE_PCT: [f64; 12] = [
+    0.0, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 95.0, 98.0,
+];
+const BRADLEY_FLOW_FACTOR: [f64; 12] = [
+    1.0, 1.0, 0.99, 0.97, 0.94, 0.90, 0.84, 0.75, 0.62, 0.40, 0.22, 0.08,
+];
 pub(crate) fn sluice_gate_discharge_coeff(y3_over_z: f64, user_coeff: f64) -> f64 {
     if user_coeff > 1e-6 {
         return user_coeff;
@@ -48,7 +51,11 @@ pub(crate) fn weir_submergence_ratio(tw_m: f64, e_upstream: f64, crest_m: f64) -
 }
 
 /// Maximum Bradley submergence ratio over deck segments where $E_{up}$ clears the local crest.
-pub(crate) fn max_active_weir_submergence_ratio(tw_m: f64, e_upstream: f64, geom: &BridgeGeometry) -> f64 {
+pub(crate) fn max_active_weir_submergence_ratio(
+    tw_m: f64,
+    e_upstream: f64,
+    geom: &BridgeGeometry,
+) -> f64 {
     if let Some(deck) = geom.deck.as_ref().filter(|d| d.is_valid()) {
         let mut max_ratio = 0.0_f64;
         for i in 0..deck.stations_m.len().saturating_sub(1) {
@@ -59,11 +66,7 @@ pub(crate) fn max_active_weir_submergence_ratio(tw_m: f64, e_upstream: f64, geom
             let s_mid = 0.5 * (deck.stations_m[i] + deck.stations_m[i + 1]);
             let crest = effective_deck_crest_m(
                 geom,
-                interpolate_profile(
-                    &deck.stations_m,
-                    &deck.high_elevations_m,
-                    s_mid,
-                ),
+                interpolate_profile(&deck.stations_m, &deck.high_elevations_m, s_mid),
             );
             if e_upstream > crest + 1e-6 {
                 max_ratio = max_ratio.max(weir_submergence_ratio(tw_m, e_upstream, crest));
@@ -77,7 +80,11 @@ pub(crate) fn max_active_weir_submergence_ratio(tw_m: f64, e_upstream: f64, geom
     }
 }
 
-pub(crate) fn weir_submergence_exceeds_cap(tw_m: f64, e_upstream: f64, geom: &BridgeGeometry) -> bool {
+pub(crate) fn weir_submergence_exceeds_cap(
+    tw_m: f64,
+    e_upstream: f64,
+    geom: &BridgeGeometry,
+) -> bool {
     max_active_weir_submergence_ratio(tw_m, e_upstream, geom) >= geom.max_weir_submergence
 }
 
@@ -93,11 +100,7 @@ pub(crate) fn segment_weir_discharge_m3s(tw_m: f64, e_upstream: f64, geom: &Brid
             let s_mid = 0.5 * (deck.stations_m[i] + deck.stations_m[i + 1]);
             let crest = effective_deck_crest_m(
                 geom,
-                interpolate_profile(
-                    &deck.stations_m,
-                    &deck.high_elevations_m,
-                    s_mid,
-                ),
+                interpolate_profile(&deck.stations_m, &deck.high_elevations_m, s_mid),
             );
             let h = (e_upstream - crest).max(0.0);
             if h <= 1e-6 {
@@ -141,9 +144,7 @@ pub(crate) fn main_pressure_flow_discharge(
 }
 
 pub(crate) fn deck_vents_active_at_wsel(geom: &BridgeGeometry, wsel_m: f64) -> bool {
-    geom.deck_vents
-        .iter()
-        .any(|v| wsel_m > v.invert_m + 1e-9)
+    geom.deck_vents.iter().any(|v| wsel_m > v.invert_m + 1e-9)
 }
 
 pub(crate) fn deck_vent_pressure_discharge_m3s(
@@ -276,11 +277,7 @@ pub(crate) fn weir_head_active_at_energy(e_upstream: f64, geom: &BridgeGeometry)
             let s_mid = 0.5 * (deck.stations_m[i] + deck.stations_m[i + 1]);
             let crest = effective_deck_crest_m(
                 geom,
-                interpolate_profile(
-                    &deck.stations_m,
-                    &deck.high_elevations_m,
-                    s_mid,
-                ),
+                interpolate_profile(&deck.stations_m, &deck.high_elevations_m, s_mid),
             );
             if e_upstream > crest + 1e-6 {
                 return true;
@@ -315,11 +312,7 @@ pub(crate) fn solve_high_flow(
     if weir_submergence_exceeds_cap(tw_clamped, e_pressure, geom) {
         return BridgeHeadwaterSolve {
             wsel_m: solve_high_flow_energy_fallback(
-                q_metric,
-                tw_clamped,
-                geom,
-                table_up,
-                table_down,
+                q_metric, tw_clamped, geom, table_up, table_down,
             ),
             regime: BridgeFlowRegimeKind::Energy,
         };
@@ -383,11 +376,7 @@ pub(crate) fn solve_high_flow(
         if weir_submergence_exceeds_cap(tw_clamped, e_up, geom) {
             return BridgeHeadwaterSolve {
                 wsel_m: solve_high_flow_energy_fallback(
-                    q_metric,
-                    tw_clamped,
-                    geom,
-                    table_up,
-                    table_down,
+                    q_metric, tw_clamped, geom, table_up, table_down,
                 ),
                 regime: BridgeFlowRegimeKind::Energy,
             };
@@ -409,11 +398,7 @@ pub(crate) fn solve_high_flow(
     if weir_submergence_exceeds_cap(tw_clamped, e_best, geom) {
         return BridgeHeadwaterSolve {
             wsel_m: solve_high_flow_energy_fallback(
-                q_metric,
-                tw_clamped,
-                geom,
-                table_up,
-                table_down,
+                q_metric, tw_clamped, geom, table_up, table_down,
             ),
             regime: BridgeFlowRegimeKind::Energy,
         };
@@ -506,16 +491,8 @@ pub(crate) fn solve_high_flow_tailwater(
             return -1.0;
         }
         let l_weir = effective_weir_length_m(geom, e_up, fallback_weir_width);
-        combined_high_flow_discharge(
-            hw_m,
-            tw,
-            q_metric,
-            geom,
-            table_up,
-            a_net,
-            Some(l_weir),
-        )
-        .total_m3s()
+        combined_high_flow_discharge(hw_m, tw, q_metric, geom, table_up, a_net, Some(l_weir))
+            .total_m3s()
             - q_metric
     };
 
