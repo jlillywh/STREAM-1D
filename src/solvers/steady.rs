@@ -5669,5 +5669,97 @@ mod tests {
         let result = solve_steady(&inputs);
         assert!(result.wsel.iter().all(|&w| w > 0.0));
     }
+
+    #[test]
+    fn test_steady_compound_culvert_flow_distribution() {
+        let xs200 = CrossSection {
+            station: 200.0,
+            x: vec![-15.0, -15.0, 15.0, 15.0],
+            y: vec![10.0, 0.0, 0.0, 10.0],
+            n_stations: vec![-15.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let xs100 = CrossSection {
+            station: 100.0,
+            x: vec![-15.0, -15.0, 15.0, 15.0],
+            y: vec![10.0, 0.0, 0.0, 10.0],
+            n_stations: vec![-15.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let xs0 = CrossSection {
+            station: 0.0,
+            x: vec![-15.0, -15.0, 15.0, 15.0],
+            y: vec![10.0, 0.0, 0.0, 10.0],
+            n_stations: vec![-15.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+
+        // Flow rate = 300 cfs. Tailwater WSEL = 4.0.
+        // Station 50.0 compound culvert with 2 groups: Group 1 (Circular) and Group 2 (Box)
+        let inputs = SteadyInputs {
+            cross_sections: vec![xs200, xs100, xs0],
+            flow_rate: 300.0,
+            num_slices: Some(50),
+            regime: 0,
+            downstream_wsel: Some(4.0),
+            culvert_stations: Some(vec![50.0, 50.0]),
+            culvert_shape_types: Some(vec![0, 1]), // Circular and Box
+            culvert_spans: Some(vec![6.0, 8.0]),
+            culvert_rises: Some(vec![6.0, 4.0]),
+            culvert_roughness_ns: Some(vec![0.013, 0.013]),
+            culvert_lengths: Some(vec![50.0, 50.0]),
+            culvert_entrance_loss_coeffs: Some(vec![0.5, 0.5]),
+            culvert_exit_loss_coeffs: Some(vec![1.0, 1.0]),
+            culvert_z_downs: Some(vec![0.0, 0.5]),
+            culvert_z_ups: Some(vec![0.0, 0.5]),
+            culvert_barrels: Some(vec![1, 1]),
+            ..Default::default()
+        };
+
+        let result = solve_steady(&inputs);
+
+        // Retrieve culvert results from steady results vectors
+        let q_barrels = result.culvert_q_barrels.expect("barrel flows");
+        let q_weirs = result.culvert_q_weirs.expect("weir flows");
+        
+        assert_eq!(q_barrels.len(), 2, "Expected 2 culvert results");
+        
+        // Assert positive flow through both groups (Circular and Box)
+        assert!(q_barrels[0] > 0.0, "Circular group flow should be positive, got {}", q_barrels[0]);
+        assert!(q_barrels[1] > 0.0, "Box group flow should be positive, got {}", q_barrels[1]);
+        
+        // Weir flow should be 0 because we didn't specify crest_elev / overtopping
+        assert_eq!(q_weirs[0], 0.0);
+        assert_eq!(q_weirs[1], 0.0);
+
+        // Sum of barrel flows should equal the total flow rate (300 cfs)
+        let total_flow_resolved = q_barrels[0] + q_barrels[1];
+        assert!(
+            (total_flow_resolved - 300.0).abs() < 1.0,
+            "Total resolved flow {} should be close to 300 cfs",
+            total_flow_resolved
+        );
+    }
 }
 

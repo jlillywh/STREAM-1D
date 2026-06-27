@@ -3604,4 +3604,40 @@ mod tests {
         let res_overtop = solve_culvert(&params_overtop);
         assert_eq!(res_overtop.control_type, "overtopping");
     }
+
+    #[test]
+    fn test_partially_blocked_barrel_increases_headwater() {
+        let base = us_circular_baseline();
+        let solved_base = solve_culvert(&base);
+
+        let mut blocked = base.clone();
+        blocked.depth_blocked = 1.5; // 1.5 ft of sediment blockage at the bottom
+        let solved_blocked = solve_culvert(&blocked);
+
+        assert!(
+            solved_blocked.wsel > solved_base.wsel,
+            "WSEL should increase with partial sediment blockage: base={}, blocked={}",
+            solved_base.wsel,
+            solved_blocked.wsel
+        );
+    }
+
+    #[test]
+    fn test_roadway_weir_overtopping() {
+        let mut params = us_circular_baseline();
+        params.q = 100.0; // moderate flow split
+        params.crest_elev = Some(13.0); // low crest elevation relative to flow
+        params.weir_coeff = 2.6;
+        params.weir_length = 2.0; // short weir length to prevent weir-only overtopping
+
+        let solved = solve_culvert(&params);
+        println!("DEBUG OVERTOPPING: wsel={}, q_barrel={}, q_weir={}, control={}", solved.wsel, solved.q_barrel, solved.q_weir, solved.control_type);
+        assert_eq!(solved.control_type, "overtopping");
+        assert!(solved.q_weir > 0.0, "weir flow should be positive");
+        assert!(solved.q_barrel > 0.0, "barrel flow should be positive");
+        assert!(
+            (solved.q_barrel + solved.q_weir - params.q).abs() < 1e-3,
+            "total flow should equal barrel + weir flow"
+        );
+    }
 }
