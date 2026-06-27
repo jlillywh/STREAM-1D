@@ -1353,6 +1353,32 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
     let mut inline_structure_q_weirs: Option<Vec<f64>> =
         inline_structure_count.map(|n| vec![0.0; n]);
 
+    let mut sub_culvert_control_types = culvert_control_types.clone();
+    let mut sub_culvert_wsel_inlet = culvert_wsel_inlet.clone();
+    let mut sub_culvert_wsel_outlet = culvert_wsel_outlet.clone();
+    let mut sub_culvert_q_barrels = culvert_q_barrels.clone();
+    let mut sub_culvert_q_weirs = culvert_q_weirs.clone();
+    let mut sub_culvert_barrel_depths = culvert_barrel_depths.clone();
+    let mut sub_culvert_barrel_velocities = culvert_barrel_velocities.clone();
+    let mut sub_culvert_barrel_froude = culvert_barrel_froude.clone();
+
+    let mut sub_inline_structure_wsel_inlet = inline_structure_wsel_inlet.clone();
+    let mut sub_inline_structure_wsel_outlet = inline_structure_wsel_outlet.clone();
+    let mut sub_inline_structure_q_weirs = inline_structure_q_weirs.clone();
+
+    let mut super_culvert_control_types = culvert_control_types.clone();
+    let mut super_culvert_wsel_inlet = culvert_wsel_inlet.clone();
+    let mut super_culvert_wsel_outlet = culvert_wsel_outlet.clone();
+    let mut super_culvert_q_barrels = culvert_q_barrels.clone();
+    let mut super_culvert_q_weirs = culvert_q_weirs.clone();
+    let mut super_culvert_barrel_depths = culvert_barrel_depths.clone();
+    let mut super_culvert_barrel_velocities = culvert_barrel_velocities.clone();
+    let mut super_culvert_barrel_froude = culvert_barrel_froude.clone();
+
+    let mut super_inline_structure_wsel_inlet = inline_structure_wsel_inlet.clone();
+    let mut super_inline_structure_wsel_outlet = inline_structure_wsel_outlet.clone();
+    let mut super_inline_structure_q_weirs = inline_structure_q_weirs.clone();
+
     let mut structure_adjacent_indices = std::collections::HashSet::new();
     let mut structure_ineffective: std::collections::HashMap<usize, IneffectiveFlowAreas> =
         std::collections::HashMap::new();
@@ -1807,28 +1833,28 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                             wsel_up_user = culvert_result.wsel;
                         }
 
-                        if let Some(ref mut controls) = culvert_control_types {
+                        if let Some(ref mut controls) = sub_culvert_control_types {
                             controls[c_idx] = culvert_result.control_type.clone();
                         }
-                        if let Some(ref mut v) = culvert_wsel_inlet {
+                        if let Some(ref mut v) = sub_culvert_wsel_inlet {
                             v[c_idx] = culvert_result.wsel_inlet;
                         }
-                        if let Some(ref mut v) = culvert_wsel_outlet {
+                        if let Some(ref mut v) = sub_culvert_wsel_outlet {
                             v[c_idx] = culvert_result.wsel_outlet;
                         }
-                        if let Some(ref mut v) = culvert_q_barrels {
+                        if let Some(ref mut v) = sub_culvert_q_barrels {
                             v[c_idx] = culvert_result.q_barrel;
                         }
-                        if let Some(ref mut v) = culvert_q_weirs {
+                        if let Some(ref mut v) = sub_culvert_q_weirs {
                             v[c_idx] = culvert_result.q_weir;
                         }
-                        if let Some(ref mut v) = culvert_barrel_depths {
+                        if let Some(ref mut v) = sub_culvert_barrel_depths {
                             v[c_idx] = culvert_result.barrel_depth;
                         }
-                        if let Some(ref mut v) = culvert_barrel_velocities {
+                        if let Some(ref mut v) = sub_culvert_barrel_velocities {
                             v[c_idx] = culvert_result.barrel_velocity;
                         }
-                        if let Some(ref mut v) = culvert_barrel_froude {
+                        if let Some(ref mut v) = sub_culvert_barrel_froude {
                             v[c_idx] = culvert_result.barrel_froude;
                         }
 
@@ -2267,28 +2293,28 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
 
                             let culvert_result = crate::solvers::culvert::solve_culvert(&p_temp);
 
-                            if let Some(ref mut controls) = culvert_control_types {
+                            if let Some(ref mut controls) = sub_culvert_control_types {
                                 controls[c_idx] = culvert_result.control_type.clone();
                             }
-                            if let Some(ref mut v) = culvert_wsel_inlet {
+                            if let Some(ref mut v) = sub_culvert_wsel_inlet {
                                 v[c_idx] = culvert_result.wsel_inlet;
                             }
-                            if let Some(ref mut v) = culvert_wsel_outlet {
+                            if let Some(ref mut v) = sub_culvert_wsel_outlet {
                                 v[c_idx] = culvert_result.wsel_outlet;
                             }
-                            if let Some(ref mut v) = culvert_q_barrels {
+                            if let Some(ref mut v) = sub_culvert_q_barrels {
                                 v[c_idx] = culvert_result.q_barrel;
                             }
-                            if let Some(ref mut v) = culvert_q_weirs {
+                            if let Some(ref mut v) = sub_culvert_q_weirs {
                                 v[c_idx] = culvert_result.q_weir;
                             }
-                            if let Some(ref mut v) = culvert_barrel_depths {
+                            if let Some(ref mut v) = sub_culvert_barrel_depths {
                                 v[c_idx] = culvert_result.barrel_depth;
                             }
-                            if let Some(ref mut v) = culvert_barrel_velocities {
+                            if let Some(ref mut v) = sub_culvert_barrel_velocities {
                                 v[c_idx] = culvert_result.barrel_velocity;
                             }
-                            if let Some(ref mut v) = culvert_barrel_froude {
+                            if let Some(ref mut v) = sub_culvert_barrel_froude {
                                 v[c_idx] = culvert_result.barrel_froude;
                             }
                         }
@@ -2406,17 +2432,17 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                         solved_hw_ft
                     };
 
-                    if let Some(ref mut v) = inline_structure_wsel_inlet {
+                    if let Some(ref mut v) = sub_inline_structure_wsel_inlet {
                         v[is_idx] = solved_hw_user;
                     }
-                    if let Some(ref mut v) = inline_structure_wsel_outlet {
+                    if let Some(ref mut v) = sub_inline_structure_wsel_outlet {
                         v[is_idx] = if raw_units == UnitSystem::Metric {
                             tw_ft * FT_TO_M
                         } else {
                             tw_ft
                         };
                     }
-                    if let Some(ref mut v) = inline_structure_q_weirs {
+                    if let Some(ref mut v) = sub_inline_structure_q_weirs {
                         v[is_idx] = inputs.flow_rate;
                     }
 
@@ -2887,28 +2913,28 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                         }
 
                         if let Some(culvert_result) = final_result {
-                            if let Some(ref mut controls) = culvert_control_types {
+                            if let Some(ref mut controls) = super_culvert_control_types {
                                 controls[c_idx] = culvert_result.control_type.clone();
                             }
-                            if let Some(ref mut v) = culvert_wsel_inlet {
+                            if let Some(ref mut v) = super_culvert_wsel_inlet {
                                 v[c_idx] = culvert_result.wsel_inlet;
                             }
-                            if let Some(ref mut v) = culvert_wsel_outlet {
+                            if let Some(ref mut v) = super_culvert_wsel_outlet {
                                 v[c_idx] = culvert_result.wsel_outlet;
                             }
-                            if let Some(ref mut v) = culvert_q_barrels {
+                            if let Some(ref mut v) = super_culvert_q_barrels {
                                 v[c_idx] = culvert_result.q_barrel;
                             }
-                            if let Some(ref mut v) = culvert_q_weirs {
+                            if let Some(ref mut v) = super_culvert_q_weirs {
                                 v[c_idx] = culvert_result.q_weir;
                             }
-                            if let Some(ref mut v) = culvert_barrel_depths {
+                            if let Some(ref mut v) = super_culvert_barrel_depths {
                                 v[c_idx] = culvert_result.barrel_depth;
                             }
-                            if let Some(ref mut v) = culvert_barrel_velocities {
+                            if let Some(ref mut v) = super_culvert_barrel_velocities {
                                 v[c_idx] = culvert_result.barrel_velocity;
                             }
-                            if let Some(ref mut v) = culvert_barrel_froude {
+                            if let Some(ref mut v) = super_culvert_barrel_froude {
                                 v[c_idx] = culvert_result.barrel_froude;
                             }
                         }
@@ -3346,28 +3372,28 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
 
                             let culvert_result = crate::solvers::culvert::solve_culvert(&p_temp);
 
-                            if let Some(ref mut controls) = culvert_control_types {
+                            if let Some(ref mut controls) = super_culvert_control_types {
                                 controls[c_idx] = culvert_result.control_type.clone();
                             }
-                            if let Some(ref mut v) = culvert_wsel_inlet {
+                            if let Some(ref mut v) = super_culvert_wsel_inlet {
                                 v[c_idx] = culvert_result.wsel_inlet;
                             }
-                            if let Some(ref mut v) = culvert_wsel_outlet {
+                            if let Some(ref mut v) = super_culvert_wsel_outlet {
                                 v[c_idx] = culvert_result.wsel_outlet;
                             }
-                            if let Some(ref mut v) = culvert_q_barrels {
+                            if let Some(ref mut v) = super_culvert_q_barrels {
                                 v[c_idx] = culvert_result.q_barrel;
                             }
-                            if let Some(ref mut v) = culvert_q_weirs {
+                            if let Some(ref mut v) = super_culvert_q_weirs {
                                 v[c_idx] = culvert_result.q_weir;
                             }
-                            if let Some(ref mut v) = culvert_barrel_depths {
+                            if let Some(ref mut v) = super_culvert_barrel_depths {
                                 v[c_idx] = culvert_result.barrel_depth;
                             }
-                            if let Some(ref mut v) = culvert_barrel_velocities {
+                            if let Some(ref mut v) = super_culvert_barrel_velocities {
                                 v[c_idx] = culvert_result.barrel_velocity;
                             }
-                            if let Some(ref mut v) = culvert_barrel_froude {
+                            if let Some(ref mut v) = super_culvert_barrel_froude {
                                 v[c_idx] = culvert_result.barrel_froude;
                             }
                         }
@@ -3585,17 +3611,17 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                         solved_tw_ft
                     };
 
-                    if let Some(ref mut v) = inline_structure_wsel_inlet {
+                    if let Some(ref mut v) = super_inline_structure_wsel_inlet {
                         v[is_idx] = if raw_units == UnitSystem::Metric {
                             hw_ft * FT_TO_M
                         } else {
                             hw_ft
                         };
                     }
-                    if let Some(ref mut v) = inline_structure_wsel_outlet {
+                    if let Some(ref mut v) = super_inline_structure_wsel_outlet {
                         v[is_idx] = solved_tw_user;
                     }
-                    if let Some(ref mut v) = inline_structure_q_weirs {
+                    if let Some(ref mut v) = super_inline_structure_q_weirs {
                         v[is_idx] = inputs.flow_rate;
                     }
 
@@ -3757,9 +3783,9 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
 
     // REGIME SELECTION / MIXED REGIME SOLVING
     if regime == 0 {
-        wsel_metric = sub_wsel;
+        wsel_metric = sub_wsel.clone();
     } else if regime == 1 {
-        wsel_metric = super_wsel;
+        wsel_metric = super_wsel.clone();
     } else {
         // Mixed regime selection
         let mut super_failed = false;
@@ -3799,6 +3825,170 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                 wsel_metric[i] = sub_wsel[i];
             } else {
                 wsel_metric[i] = super_wsel[i];
+            }
+        }
+    }
+
+    // Merge structure results from sub/super sweeps based on which profile was selected at their stationing intervals
+    if let Some(ref c_stations) = inputs.culvert_stations {
+        for c_idx in 0..c_stations.len() {
+            let mut i = 0;
+            for (&int_idx, c_indices) in &culvert_at_interval {
+                if c_indices.contains(&c_idx) {
+                    i = int_idx;
+                    break;
+                }
+            }
+            let use_subcritical = if regime == 0 {
+                true
+            } else if regime == 1 {
+                false
+            } else {
+                (wsel_metric[i] - sub_wsel[i]).abs() < (wsel_metric[i] - super_wsel[i]).abs() + 1e-5
+            };
+
+            if use_subcritical {
+                if let (Some(ref mut dest), Some(ref src)) =
+                    (&mut culvert_control_types, &sub_culvert_control_types)
+                {
+                    dest[c_idx] = src[c_idx].clone();
+                }
+                if let (Some(ref mut dest), Some(ref src)) =
+                    (&mut culvert_wsel_inlet, &sub_culvert_wsel_inlet)
+                {
+                    dest[c_idx] = src[c_idx];
+                }
+                if let (Some(ref mut dest), Some(ref src)) =
+                    (&mut culvert_wsel_outlet, &sub_culvert_wsel_outlet)
+                {
+                    dest[c_idx] = src[c_idx];
+                }
+                if let (Some(ref mut dest), Some(ref src)) =
+                    (&mut culvert_q_barrels, &sub_culvert_q_barrels)
+                {
+                    dest[c_idx] = src[c_idx];
+                }
+                if let (Some(ref mut dest), Some(ref src)) =
+                    (&mut culvert_q_weirs, &sub_culvert_q_weirs)
+                {
+                    dest[c_idx] = src[c_idx];
+                }
+                if let (Some(ref mut dest), Some(ref src)) =
+                    (&mut culvert_barrel_depths, &sub_culvert_barrel_depths)
+                {
+                    dest[c_idx] = src[c_idx];
+                }
+                if let (Some(ref mut dest), Some(ref src)) = (
+                    &mut culvert_barrel_velocities,
+                    &sub_culvert_barrel_velocities,
+                ) {
+                    dest[c_idx] = src[c_idx];
+                }
+                if let (Some(ref mut dest), Some(ref src)) =
+                    (&mut culvert_barrel_froude, &sub_culvert_barrel_froude)
+                {
+                    dest[c_idx] = src[c_idx];
+                }
+            } else {
+                if let (Some(ref mut dest), Some(ref src)) =
+                    (&mut culvert_control_types, &super_culvert_control_types)
+                {
+                    dest[c_idx] = src[c_idx].clone();
+                }
+                if let (Some(ref mut dest), Some(ref src)) =
+                    (&mut culvert_wsel_inlet, &super_culvert_wsel_inlet)
+                {
+                    dest[c_idx] = src[c_idx];
+                }
+                if let (Some(ref mut dest), Some(ref src)) =
+                    (&mut culvert_wsel_outlet, &super_culvert_wsel_outlet)
+                {
+                    dest[c_idx] = src[c_idx];
+                }
+                if let (Some(ref mut dest), Some(ref src)) =
+                    (&mut culvert_q_barrels, &super_culvert_q_barrels)
+                {
+                    dest[c_idx] = src[c_idx];
+                }
+                if let (Some(ref mut dest), Some(ref src)) =
+                    (&mut culvert_q_weirs, &super_culvert_q_weirs)
+                {
+                    dest[c_idx] = src[c_idx];
+                }
+                if let (Some(ref mut dest), Some(ref src)) =
+                    (&mut culvert_barrel_depths, &super_culvert_barrel_depths)
+                {
+                    dest[c_idx] = src[c_idx];
+                }
+                if let (Some(ref mut dest), Some(ref src)) = (
+                    &mut culvert_barrel_velocities,
+                    &super_culvert_barrel_velocities,
+                ) {
+                    dest[c_idx] = src[c_idx];
+                }
+                if let (Some(ref mut dest), Some(ref src)) =
+                    (&mut culvert_barrel_froude, &super_culvert_barrel_froude)
+                {
+                    dest[c_idx] = src[c_idx];
+                }
+            }
+        }
+    }
+
+    if let Some(ref is_stations) = inputs.inline_structure_stations {
+        for is_idx in 0..is_stations.len() {
+            let mut i = 0;
+            for (&int_idx, &is_val) in &inline_structure_at_interval {
+                if is_val == is_idx {
+                    i = int_idx;
+                    break;
+                }
+            }
+            let use_subcritical = if regime == 0 {
+                true
+            } else if regime == 1 {
+                false
+            } else {
+                (wsel_metric[i] - sub_wsel[i]).abs() < (wsel_metric[i] - super_wsel[i]).abs() + 1e-5
+            };
+
+            if use_subcritical {
+                if let (Some(ref mut dest), Some(ref src)) = (
+                    &mut inline_structure_wsel_inlet,
+                    &sub_inline_structure_wsel_inlet,
+                ) {
+                    dest[is_idx] = src[is_idx];
+                }
+                if let (Some(ref mut dest), Some(ref src)) = (
+                    &mut inline_structure_wsel_outlet,
+                    &sub_inline_structure_wsel_outlet,
+                ) {
+                    dest[is_idx] = src[is_idx];
+                }
+                if let (Some(ref mut dest), Some(ref src)) =
+                    (&mut inline_structure_q_weirs, &sub_inline_structure_q_weirs)
+                {
+                    dest[is_idx] = src[is_idx];
+                }
+            } else {
+                if let (Some(ref mut dest), Some(ref src)) = (
+                    &mut inline_structure_wsel_inlet,
+                    &super_inline_structure_wsel_inlet,
+                ) {
+                    dest[is_idx] = src[is_idx];
+                }
+                if let (Some(ref mut dest), Some(ref src)) = (
+                    &mut inline_structure_wsel_outlet,
+                    &super_inline_structure_wsel_outlet,
+                ) {
+                    dest[is_idx] = src[is_idx];
+                }
+                if let (Some(ref mut dest), Some(ref src)) = (
+                    &mut inline_structure_q_weirs,
+                    &super_inline_structure_q_weirs,
+                ) {
+                    dest[is_idx] = src[is_idx];
+                }
             }
         }
     }
