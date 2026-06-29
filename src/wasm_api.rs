@@ -402,7 +402,7 @@ mod tests {
     fn test_api_metadata_serializes() {
         let json = serde_json::to_string(&build_api_metadata()).unwrap();
         assert!(json.contains("culvert_inlet_types"));
-        assert!(json.contains("\"api_version\":37"));
+        assert!(json.contains("\"api_version\":38"));
         assert!(json.contains("structure_coupling_orders"));
     }
 
