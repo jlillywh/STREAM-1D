@@ -452,6 +452,8 @@ impl CrossSection {
             None,
             self.blocked_obstructions.as_deref(),
             None,
+            None,
+            None,
         )
     }
 
@@ -466,6 +468,8 @@ impl CrossSection {
             ineffective,
             self.blocked_obstructions.as_deref(),
             None,
+            None,
+            None,
         )
     }
 
@@ -476,6 +480,8 @@ impl CrossSection {
         ineffective: Option<&IneffectiveFlowAreas>,
         blocked: Option<&[BlockedObstruction]>,
         guide_banks: Option<&crate::geometry::GuideBanks>,
+        levee_left: Option<(f64, Option<f64>)>,
+        levee_right: Option<(f64, Option<f64>)>,
     ) -> GeometryRow {
         let n_pts = self.x.len();
         if n_pts < 2 || elev <= self.y.iter().cloned().fold(f64::INFINITY, f64::min) {
@@ -580,7 +586,23 @@ impl CrossSection {
                     .and_then(|gb| crate::geometry::lateral_limits_at_wsel(gb, elev))
                     .map(|limits| crate::geometry::segment_guide_fraction(xa, xb, limits))
                     .unwrap_or(1.0);
-                let active_scale = if is_ineffective { 0.0 } else { guide_frac };
+                let mut is_levee_inactive = false;
+                if let Some((left_sta, left_elevation)) = levee_left {
+                    let left_elev = left_elevation
+                        .unwrap_or_else(|| self.ground_elevation_at(left_sta).unwrap_or(0.0));
+                    if elev <= left_elev && x_mid < left_sta {
+                        is_levee_inactive = true;
+                    }
+                }
+                if let Some((right_sta, right_elevation)) = levee_right {
+                    let right_elev = right_elevation
+                        .unwrap_or_else(|| self.ground_elevation_at(right_sta).unwrap_or(0.0));
+                    if elev <= right_elev && x_mid > right_sta {
+                        is_levee_inactive = true;
+                    }
+                }
+
+                let active_scale = if is_ineffective || is_levee_inactive { 0.0 } else { guide_frac };
 
                 let add_active =
                     |zone: &mut ZoneProperties, scale: f64| {
@@ -687,8 +709,6 @@ impl CrossSection {
 
         let area = lob.area + ch.area + rob.area;
         let perimeter = lob.perimeter + ch.perimeter + rob.perimeter;
-        let top_width = lob.top_width + ch.top_width + rob.top_width;
-
         let get_conveyance = |zone: &ZoneProperties| -> f64 {
             if zone.perimeter > 1e-9 {
                 let comp_n = (zone.sum_pn15 / zone.perimeter).powf(2.0 / 3.0);
@@ -704,7 +724,15 @@ impl CrossSection {
         };
 
         let clip_active = ineffective.filter(|i| i.is_configured()).is_some()
-            || guide_banks.filter(|g| g.is_configured()).is_some();
+            || guide_banks.filter(|g| g.is_configured()).is_some()
+            || levee_left.is_some()
+            || levee_right.is_some();
+
+        let top_width = if clip_active {
+            lob_active.top_width + ch_active.top_width + rob_active.top_width
+        } else {
+            lob.top_width + ch.top_width + rob.top_width
+        };
 
         let active_area = if clip_active {
             lob_active.area + ch_active.area + rob_active.area
@@ -832,6 +860,8 @@ pub fn row_at_elevation(
             ineffective_ref,
             xs.blocked_obstructions.as_deref(),
             guide,
+            None,
+            None,
         )
     } else {
         let row = table.interpolate(elev);
@@ -958,6 +988,32 @@ pub fn specific_force_at_elevation(
 }
 
 impl CrossSection {
+    /// Linearly interpolates the ground elevation at lateral station `x`.
+    pub fn ground_elevation_at(&self, target_x: f64) -> Option<f64> {
+        let n = self.x.len();
+        if n < 2 {
+            return None;
+        }
+        if target_x <= self.x[0] {
+            return Some(self.y[0]);
+        }
+        if target_x >= self.x[n - 1] {
+            return Some(self.y[n - 1]);
+        }
+        for i in 0..n - 1 {
+            let x1 = self.x[i];
+            let x2 = self.x[i + 1];
+            if target_x >= x1 && target_x <= x2 {
+                if (x2 - x1).abs() < 1e-9 {
+                    return Some(self.y[i]);
+                }
+                let t = (target_x - x1) / (x2 - x1);
+                return Some(self.y[i] + t * (self.y[i + 1] - self.y[i]));
+            }
+        }
+        None
+    }
+
     /// Generates the full lookup table for this cross-section.
     pub fn generate_lookup_table(&self, num_uniform_slices: usize) -> GeometryTable {
         let metric_xs = self.to_metric();
@@ -969,6 +1025,33 @@ impl CrossSection {
         }
 
         GeometryTable { rows }
+    }
+
+    /// Generates the full lookup table for this cross-section including levee parameters.
+    pub fn generate_lookup_table_with_levees(
+        &self,
+        num_uniform_slices: usize,
+        levee_left: Option<(f64, Option<f64>)>,
+        levee_right: Option<(f64, Option<f64>)>,
+    ) -> GeometryTable {
+        let metric_xs = self.to_metric();
+        let elevs = metric_xs.get_slicing_elevations(num_uniform_slices);
+
+        let mut rows = Vec::new();
+        for &el in &elevs {
+            rows.push(metric_xs.compute_properties_at_elevation_with_levees(el, levee_left, levee_right));
+        }
+
+        GeometryTable { rows }
+    }
+
+    pub fn compute_properties_at_elevation_with_levees(
+        &self,
+        elev: f64,
+        levee_left: Option<(f64, Option<f64>)>,
+        levee_right: Option<(f64, Option<f64>)>,
+    ) -> GeometryRow {
+        self.compute_properties_at_elevation_with_modifiers(elev, None, None, None, levee_left, levee_right)
     }
 }
 
@@ -1598,7 +1681,7 @@ mod tests {
         let plain = xs.compute_properties_at_elevation(3.0);
         let guided = xs
             .to_metric()
-            .compute_properties_at_elevation_with_modifiers(3.0, None, None, Some(&guide_banks));
+            .compute_properties_at_elevation_with_modifiers(3.0, None, None, Some(&guide_banks), None, None);
         assert!((plain.area - 60.0).abs() < 0.1);
         assert!((guided.active_area - 30.0).abs() < 0.1);
         assert!(guided.active_area < plain.area);
@@ -1739,6 +1822,58 @@ mod tests {
         let above = table.interpolate(3.0);
         assert!((above.conveyance - 12.0).abs() < 1e-9);
         assert!((above.area - 10.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_levee_active_flow_subtraction() {
+        // A simple cross section representing a channel with overbanks:
+        // Left Overbank (0.0 to 3.0), Main Channel (3.0 to 7.0), Right Overbank (7.0 to 10.0)
+        // Elev: Left OB (6.0), Channel Bottom (2.0), Right OB (6.0)
+        // We configure:
+        // Left Levee at station 3.0, Elevation 8.0 (so WSEL <= 8.0 blocks the LOB)
+        // Right Levee at station 7.0, Elevation 8.0 (so WSEL <= 8.0 blocks the ROB)
+        let xs = CrossSection {
+            station: 100.0,
+            x: vec![0.0, 3.0, 3.0, 7.0, 7.0, 10.0],
+            y: vec![6.0, 6.0, 2.0, 2.0, 6.0, 6.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.03],
+            unit_system: UnitSystem::Metric,
+            is_overbank: Some(vec![true, true, false, false, true, true]),
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+        };
+
+        // 1. Water Level below levee (WSEL = 7.0)
+        // Since WSEL (7.0) <= Levee Elev (8.0), the overbanks outside x = 3.0 and x = 7.0 must be INACTIVE.
+        // Active area should only be in the channel: (7.0 - 3.0) * (7.0 - 2.0) = 4.0 * 5.0 = 20.0 m2.
+        // Active top width: 4.0 m.
+        let row_below = xs.compute_properties_at_elevation_with_levees(7.0, Some((3.0, Some(8.0))), Some((7.0, Some(8.0))));
+        assert!((row_below.active_area - 20.0).abs() < 1e-3, "Expected active area 20.0, got {}", row_below.active_area);
+        assert!((row_below.top_width - 4.0).abs() < 1e-3, "Expected active top width 4.0, got {}", row_below.top_width);
+
+        // 2. Water Level above levee overtopping (WSEL = 9.0)
+        // Since WSEL (9.0) > Levee Elev (8.0), the entire cross-section is active.
+        // Channel Area: 4.0 * (9.0 - 2.0) = 28.0 m2.
+        // Left Overbank Area: 3.0 * (9.0 - 6.0) = 9.0 m2.
+        // Right Overbank Area: 3.0 * (9.0 - 6.0) = 9.0 m2.
+        // Total Active Area: 28.0 + 9.0 + 9.0 = 46.0 m2.
+        let row_above = xs.compute_properties_at_elevation_with_levees(9.0, Some((3.0, Some(8.0))), Some((7.0, Some(8.0))));
+        assert!((row_above.active_area - 46.0).abs() < 1e-3, "Expected overtopped area 46.0, got {}", row_above.active_area);
+
+        // 3. Auto-Elevation defaulting test (Levee height = None)
+        // If levee height is None, it defaults to the ground elevation at the levee station.
+        // Left levee station is at x = 3.0 where ground elevation y = 6.0.
+        // So left levee default elevation is 6.0.
+        // Right levee station is at x = 7.0 where ground elevation y = 6.0.
+        // So right levee default elevation is 6.0.
+        // At WSEL = 7.0, WSEL (7.0) > Default Levee Elev (6.0), so they should be overtopped and active!
+        // Total Area = 4.0 * (7.0 - 2.0) [channel] + 3.0 * (7.0 - 6.0) [left ob] + 3.0 * (7.0 - 6.0) [right ob] = 20.0 + 3.0 + 3.0 = 26.0 m2.
+        let row_default = xs.compute_properties_at_elevation_with_levees(7.0, Some((3.0, None)), Some((7.0, None)));
+        assert!((row_default.active_area - 26.0).abs() < 1e-3, "Expected defaulted overtopped area 26.0, got {}", row_default.active_area);
     }
 }
 

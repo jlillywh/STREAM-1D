@@ -361,6 +361,19 @@ pub struct SteadyInputs {
     #[serde(default)]
     pub upstream_bc_rating_wsel: Option<Vec<f64>>,
 
+    /// Left levee stations per cross section (optional, in user units)
+    #[serde(default)]
+    pub levee_left_stations: Option<Vec<f64>>,
+    /// Left levee elevations per cross section (optional, in user units)
+    #[serde(default)]
+    pub levee_left_elevations: Option<Vec<f64>>,
+    /// Right levee stations per cross section (optional, in user units)
+    #[serde(default)]
+    pub levee_right_stations: Option<Vec<f64>>,
+    /// Right levee elevations per cross section (optional, in user units)
+    #[serde(default)]
+    pub levee_right_elevations: Option<Vec<f64>>,
+
     /// Optional tributary reach joining the main channel (steady subcritical today).
     #[serde(default)]
     pub tributary_cross_sections: Option<Vec<CrossSection>>,
@@ -958,16 +971,40 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
     let c_contraction = inputs.coeff_contraction.unwrap_or(crate::geometry::DEFAULT_COEFF_CONTRACTION);
     let c_expansion = inputs.coeff_expansion.unwrap_or(crate::geometry::DEFAULT_COEFF_EXPANSION);
 
-    // Convert all cross sections to metric internally
-    let mut xs_list: Vec<CrossSection> = inputs.cross_sections.iter().map(|xs| xs.to_metric()).collect();
+    // Convert all cross sections to metric internally, zipping with their original index
+    let mut xs_with_indices: Vec<(usize, CrossSection)> = inputs.cross_sections.iter()
+        .enumerate()
+        .map(|(idx, xs)| (idx, xs.to_metric()))
+        .collect();
     
     // Sort descending by station (upstream to downstream)
     // Upstream has larger station numbers, index 0 is most upstream.
-    xs_list.sort_by(|a, b| b.station.partial_cmp(&a.station).unwrap());
-    let m = xs_list.len();
+    xs_with_indices.sort_by(|a, b| b.1.station.partial_cmp(&a.1.station).unwrap());
+    let m = xs_with_indices.len();
 
-    // Generate geometry tables and calculate bed elevations
-    let tables: Vec<GeometryTable> = xs_list.iter().map(|xs| xs.generate_lookup_table(num_slices)).collect();
+    let xs_list: Vec<CrossSection> = xs_with_indices.iter().map(|(_, xs)| xs.clone()).collect();
+
+    // Generate geometry tables using original indices to lookup levee settings
+    let tables: Vec<GeometryTable> = xs_with_indices.iter().map(|(orig_idx, xs)| {
+        let left_sta = inputs.levee_left_stations.as_ref().and_then(|v| v.get(*orig_idx).copied()).filter(|&s| s > 0.0);
+        let left_elev = inputs.levee_left_elevations.as_ref().and_then(|v| v.get(*orig_idx).copied()).filter(|&e| e > 0.0);
+        let right_sta = inputs.levee_right_stations.as_ref().and_then(|v| v.get(*orig_idx).copied()).filter(|&s| s > 0.0);
+        let right_elev = inputs.levee_right_elevations.as_ref().and_then(|v| v.get(*orig_idx).copied()).filter(|&e| e > 0.0);
+        
+        let left_levee = left_sta.map(|s| {
+            let s_m = if raw_units == UnitSystem::USCustomary { s * FT_TO_M } else { s };
+            let e_m = left_elev.map(|e| if raw_units == UnitSystem::USCustomary { e * FT_TO_M } else { e });
+            (s_m, e_m)
+        });
+        let right_levee = right_sta.map(|s| {
+            let s_m = if raw_units == UnitSystem::USCustomary { s * FT_TO_M } else { s };
+            let e_m = right_elev.map(|e| if raw_units == UnitSystem::USCustomary { e * FT_TO_M } else { e });
+            (s_m, e_m)
+        });
+
+        xs.generate_lookup_table_with_levees(num_slices, left_levee, right_levee)
+    }).collect();
+
     let z_mins: Vec<f64> = xs_list.iter().map(|xs| xs.y.iter().cloned().fold(f64::INFINITY, f64::min)).collect();
 
     // DENSIFICATION STEP: Automatic Reach Interpolation
