@@ -125,6 +125,37 @@ pub struct SteadyInputs {
     /// FHWA HDS-5 scale number per culvert (optional).
     #[serde(default)]
     pub culvert_scale_numbers: Option<Vec<i32>>,
+    /// Tapered inlet type per culvert (0 = None, 1 = Side-Tapered, 2 = Slope-Tapered) (optional).
+    #[serde(default)]
+    pub culvert_tapered_types: Option<Vec<i32>>,
+    /// Tapered inlet face span/width per culvert (optional).
+    #[serde(default)]
+    pub culvert_tapered_face_spans: Option<Vec<f64>>,
+    /// Tapered inlet face rise/height per culvert (optional).
+    #[serde(default)]
+    pub culvert_tapered_face_rises: Option<Vec<f64>>,
+    /// Tapered inlet vertical drop (fall) from face/crest to throat per culvert (optional).
+    #[serde(default)]
+    pub culvert_tapered_falls: Option<Vec<f64>>,
+    /// Tapered inlet crest weir length for overtopping crest control per culvert (optional).
+    #[serde(default)]
+    pub culvert_tapered_crest_weir_lengths: Option<Vec<f64>>,
+    /// Tapered inlet crest discharge coefficient per culvert (optional).
+    #[serde(default)]
+    pub culvert_tapered_crest_weir_coeffs: Option<Vec<f64>>,
+    /// Tapered inlet face control FHWA HDS-5 chart number per culvert (optional).
+    #[serde(default)]
+    pub culvert_tapered_face_chart_numbers: Option<Vec<i32>>,
+    /// Tapered inlet face control FHWA HDS-5 scale number per culvert (optional).
+    #[serde(default)]
+    pub culvert_tapered_face_scale_numbers: Option<Vec<i32>>,
+    /// Tapered inlet throat control FHWA HDS-5 chart number per culvert (optional).
+    #[serde(default)]
+    pub culvert_tapered_throat_chart_numbers: Option<Vec<i32>>,
+    /// Tapered inlet throat control FHWA HDS-5 scale number per culvert (optional).
+    #[serde(default)]
+    pub culvert_tapered_throat_scale_numbers: Option<Vec<i32>>,
+
 
     /// Inline structure stations (optional)
     #[serde(default)]
@@ -422,6 +453,18 @@ pub struct SteadyInputs {
     /// Main-channel station where the tributary mouth connects (must match a main cross-section).
     #[serde(default)]
     pub junction_main_station: Option<f64>,
+    /// Left levee stations per cross section (optional, in user units)
+    #[serde(default)]
+    pub levee_left_stations: Option<Vec<f64>>,
+    /// Left levee elevations per cross section (optional, in user units)
+    #[serde(default)]
+    pub levee_left_elevations: Option<Vec<f64>>,
+    /// Right levee stations per cross section (optional, in user units)
+    #[serde(default)]
+    pub levee_right_stations: Option<Vec<f64>>,
+    /// Right levee elevations per cross section (optional, in user units)
+    #[serde(default)]
+    pub levee_right_elevations: Option<Vec<f64>>,
 }
 
 /// Output results from the steady-state solver.
@@ -679,7 +722,7 @@ pub fn solve_step(
     if area1 < 1e-6 {
         return None;
     }
-    let hv1 = (q * q) / (2.0 * G_METRIC * area1 * area1);
+    let hv1 = row1.alpha * (q * q) / (2.0 * G_METRIC * area1 * area1);
     let k1 = row1.conveyance;
 
     let target_residual = |y2: f64| -> Option<f64> {
@@ -688,7 +731,7 @@ pub fn solve_step(
         if area2 < 1e-6 {
             return None;
         }
-        let hv2 = (q * q) / (2.0 * G_METRIC * area2 * area2);
+        let hv2 = row2.alpha * (q * q) / (2.0 * G_METRIC * area2 * area2);
         let k2 = row2.conveyance;
 
         let k_avg = 0.5 * (k1 + k2);
@@ -716,6 +759,7 @@ pub fn solve_step(
             Some(y2 + hv2 - (y1 + hv1 - hf - ho))
         }
     };
+
 
     // Define search bounds based on flow regime to prevent conjugate depth crossing
     let upstream_has_reach_modifiers = xs2
@@ -815,7 +859,6 @@ pub fn solve_step(
                     return Some(best_y);
                 }
             }
-            // Failed to bracket root, fallback to critical depth
             return Some(z2_min + yc2);
         }
     }
@@ -1019,16 +1062,40 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
     let c_contraction = inputs.coeff_contraction.unwrap_or(crate::geometry::DEFAULT_COEFF_CONTRACTION);
     let c_expansion = inputs.coeff_expansion.unwrap_or(crate::geometry::DEFAULT_COEFF_EXPANSION);
 
-    // Convert all cross sections to metric internally
-    let mut xs_list: Vec<CrossSection> = inputs.cross_sections.iter().map(|xs| xs.to_metric()).collect();
+    // Convert all cross sections to metric internally, zipping with their original index
+    let mut xs_with_indices: Vec<(usize, CrossSection)> = inputs.cross_sections.iter()
+        .enumerate()
+        .map(|(idx, xs)| (idx, xs.to_metric()))
+        .collect();
     
     // Sort descending by station (upstream to downstream)
     // Upstream has larger station numbers, index 0 is most upstream.
-    xs_list.sort_by(|a, b| b.station.partial_cmp(&a.station).unwrap());
-    let m = xs_list.len();
+    xs_with_indices.sort_by(|a, b| b.1.station.partial_cmp(&a.1.station).unwrap());
+    let m = xs_with_indices.len();
 
-    // Generate geometry tables and calculate bed elevations
-    let tables: Vec<GeometryTable> = xs_list.iter().map(|xs| xs.generate_lookup_table(num_slices)).collect();
+    let xs_list: Vec<CrossSection> = xs_with_indices.iter().map(|(_, xs)| xs.clone()).collect();
+
+    // Generate geometry tables using original indices to lookup levee settings
+    let tables: Vec<GeometryTable> = xs_with_indices.iter().map(|(orig_idx, xs)| {
+        let left_sta = inputs.levee_left_stations.as_ref().and_then(|v| v.get(*orig_idx).copied()).filter(|&s| s > 0.0);
+        let left_elev = inputs.levee_left_elevations.as_ref().and_then(|v| v.get(*orig_idx).copied()).filter(|&e| e > 0.0);
+        let right_sta = inputs.levee_right_stations.as_ref().and_then(|v| v.get(*orig_idx).copied()).filter(|&s| s > 0.0);
+        let right_elev = inputs.levee_right_elevations.as_ref().and_then(|v| v.get(*orig_idx).copied()).filter(|&e| e > 0.0);
+        
+        let left_levee = left_sta.map(|s| {
+            let s_m = if raw_units == UnitSystem::USCustomary { s * FT_TO_M } else { s };
+            let e_m = left_elev.map(|e| if raw_units == UnitSystem::USCustomary { e * FT_TO_M } else { e });
+            (s_m, e_m)
+        });
+        let right_levee = right_sta.map(|s| {
+            let s_m = if raw_units == UnitSystem::USCustomary { s * FT_TO_M } else { s };
+            let e_m = right_elev.map(|e| if raw_units == UnitSystem::USCustomary { e * FT_TO_M } else { e });
+            (s_m, e_m)
+        });
+
+        xs.generate_lookup_table_with_levees(num_slices, left_levee, right_levee)
+    }).collect();
+
     let z_mins: Vec<f64> = xs_list.iter().map(|xs| xs.y.iter().cloned().fold(f64::INFINITY, f64::min)).collect();
 
     // DENSIFICATION STEP: Automatic Reach Interpolation
@@ -1352,6 +1419,16 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                     let crest_elev = inputs.culvert_crest_elevs.as_ref().and_then(|v| v.get(c_idx)).copied();
                     let chart_number = inputs.culvert_chart_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
                     let scale_number = inputs.culvert_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
+                    let tapered_type = inputs.culvert_tapered_types.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0);
+                    let tapered_face_span = inputs.culvert_tapered_face_spans.as_ref().and_then(|v| v.get(c_idx)).copied();
+                    let tapered_face_rise = inputs.culvert_tapered_face_rises.as_ref().and_then(|v| v.get(c_idx)).copied();
+                    let tapered_fall = inputs.culvert_tapered_falls.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
+                    let tapered_crest_weir_length = inputs.culvert_tapered_crest_weir_lengths.as_ref().and_then(|v| v.get(c_idx)).copied();
+                    let tapered_crest_weir_coeff = inputs.culvert_tapered_crest_weir_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied();
+                    let tapered_face_chart_number = inputs.culvert_tapered_face_chart_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
+                    let tapered_face_scale_number = inputs.culvert_tapered_face_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
+                    let tapered_throat_chart_number = inputs.culvert_tapered_throat_chart_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
+                    let tapered_throat_scale_number = inputs.culvert_tapered_throat_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
                     let weir_coeff = inputs.culvert_weir_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
                     let weir_length = inputs.culvert_weir_lengths.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
                     let num_barrels = inputs.culvert_barrels.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(1).max(1);
@@ -1494,6 +1571,16 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                                 roadway_elevations,
                                 chart_number,
                                 scale_number,
+                                tapered_type,
+                                tapered_face_span,
+                                tapered_face_rise,
+                                tapered_fall,
+                                tapered_crest_weir_length,
+                                tapered_crest_weir_coeff,
+                                tapered_face_chart_number,
+                                tapered_face_scale_number,
+                                tapered_throat_chart_number,
+                                tapered_throat_scale_number,
                             },
                         );
                         wsel_up_user = culvert_result.wsel;
@@ -1574,6 +1661,16 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                         let crest_elev = inputs.culvert_crest_elevs.as_ref().and_then(|v| v.get(c_idx)).copied();
                         let chart_number = inputs.culvert_chart_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
                         let scale_number = inputs.culvert_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
+                        let tapered_type = inputs.culvert_tapered_types.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0);
+                        let tapered_face_span = inputs.culvert_tapered_face_spans.as_ref().and_then(|v| v.get(c_idx)).copied();
+                        let tapered_face_rise = inputs.culvert_tapered_face_rises.as_ref().and_then(|v| v.get(c_idx)).copied();
+                        let tapered_fall = inputs.culvert_tapered_falls.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
+                        let tapered_crest_weir_length = inputs.culvert_tapered_crest_weir_lengths.as_ref().and_then(|v| v.get(c_idx)).copied();
+                        let tapered_crest_weir_coeff = inputs.culvert_tapered_crest_weir_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied();
+                        let tapered_face_chart_number = inputs.culvert_tapered_face_chart_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
+                        let tapered_face_scale_number = inputs.culvert_tapered_face_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
+                        let tapered_throat_chart_number = inputs.culvert_tapered_throat_chart_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
+                        let tapered_throat_scale_number = inputs.culvert_tapered_throat_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
                         let weir_coeff = inputs.culvert_weir_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
                         let weir_length = inputs.culvert_weir_lengths.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
                         let num_barrels = inputs.culvert_barrels.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(1).max(1);
@@ -1627,6 +1724,16 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                             roadway_elevations,
                             chart_number,
                             scale_number,
+                            tapered_type,
+                            tapered_face_span,
+                            tapered_face_rise,
+                            tapered_fall,
+                            tapered_crest_weir_length,
+                            tapered_crest_weir_coeff,
+                            tapered_face_chart_number,
+                            tapered_face_scale_number,
+                            tapered_throat_chart_number,
+                            tapered_throat_scale_number,
                         };
                         crate::solvers::culvert::normalize_culvert_params(&mut p);
                         compound_params.push(p);
@@ -1784,7 +1891,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                 let coeff_user = inputs.inline_structure_weir_coeffs.as_ref().and_then(|v| v.get(is_idx)).copied().unwrap_or(if raw_units == UnitSystem::USCustomary { 2.6 } else { 1.44 });
                 let length_user = inputs.inline_structure_weir_lengths.as_ref().and_then(|v| v.get(is_idx)).copied().unwrap_or(0.0);
 
-                let tw_wsel_user = if raw_units == UnitSystem::USCustomary {
+                let _tw_wsel_user = if raw_units == UnitSystem::USCustomary {
                     sub_wsel[i + 1] / FT_TO_M
                 } else {
                     sub_wsel[i + 1]
@@ -2052,6 +2159,16 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                     let crest_elev = inputs.culvert_crest_elevs.as_ref().and_then(|v| v.get(c_idx)).copied();
                     let chart_number = inputs.culvert_chart_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
                     let scale_number = inputs.culvert_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
+                    let tapered_type = inputs.culvert_tapered_types.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0);
+                    let tapered_face_span = inputs.culvert_tapered_face_spans.as_ref().and_then(|v| v.get(c_idx)).copied();
+                    let tapered_face_rise = inputs.culvert_tapered_face_rises.as_ref().and_then(|v| v.get(c_idx)).copied();
+                    let tapered_fall = inputs.culvert_tapered_falls.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
+                    let tapered_crest_weir_length = inputs.culvert_tapered_crest_weir_lengths.as_ref().and_then(|v| v.get(c_idx)).copied();
+                    let tapered_crest_weir_coeff = inputs.culvert_tapered_crest_weir_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied();
+                    let tapered_face_chart_number = inputs.culvert_tapered_face_chart_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
+                    let tapered_face_scale_number = inputs.culvert_tapered_face_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
+                    let tapered_throat_chart_number = inputs.culvert_tapered_throat_chart_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
+                    let tapered_throat_scale_number = inputs.culvert_tapered_throat_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
                     let weir_coeff = inputs.culvert_weir_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
                     let weir_length = inputs.culvert_weir_lengths.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
                     let num_barrels = inputs.culvert_barrels.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(1).max(1);
@@ -2174,6 +2291,16 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                             roadway_elevations,
                             chart_number,
                             scale_number,
+                            tapered_type,
+                            tapered_face_span,
+                            tapered_face_rise,
+                            tapered_fall,
+                            tapered_crest_weir_length,
+                            tapered_crest_weir_coeff,
+                            tapered_face_chart_number,
+                            tapered_face_scale_number,
+                            tapered_throat_chart_number,
+                            tapered_throat_scale_number,
                         };
                         let (tw_new, res) =
                             crate::solvers::culvert::solve_culvert_from_headwater(&culvert_params, hw_wsel_user);
@@ -2256,6 +2383,16 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                         let crest_elev = inputs.culvert_crest_elevs.as_ref().and_then(|v| v.get(c_idx)).copied();
                         let chart_number = inputs.culvert_chart_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
                         let scale_number = inputs.culvert_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
+                        let tapered_type = inputs.culvert_tapered_types.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0);
+                        let tapered_face_span = inputs.culvert_tapered_face_spans.as_ref().and_then(|v| v.get(c_idx)).copied();
+                        let tapered_face_rise = inputs.culvert_tapered_face_rises.as_ref().and_then(|v| v.get(c_idx)).copied();
+                        let tapered_fall = inputs.culvert_tapered_falls.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
+                        let tapered_crest_weir_length = inputs.culvert_tapered_crest_weir_lengths.as_ref().and_then(|v| v.get(c_idx)).copied();
+                        let tapered_crest_weir_coeff = inputs.culvert_tapered_crest_weir_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied();
+                        let tapered_face_chart_number = inputs.culvert_tapered_face_chart_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
+                        let tapered_face_scale_number = inputs.culvert_tapered_face_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
+                        let tapered_throat_chart_number = inputs.culvert_tapered_throat_chart_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
+                        let tapered_throat_scale_number = inputs.culvert_tapered_throat_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
                         let weir_coeff = inputs.culvert_weir_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
                         let weir_length = inputs.culvert_weir_lengths.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
                         let num_barrels = inputs.culvert_barrels.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(1).max(1);
@@ -2309,6 +2446,16 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                             roadway_elevations,
                             chart_number,
                             scale_number,
+                            tapered_type,
+                            tapered_face_span,
+                            tapered_face_rise,
+                            tapered_fall,
+                            tapered_crest_weir_length,
+                            tapered_crest_weir_coeff,
+                            tapered_face_chart_number,
+                            tapered_face_scale_number,
+                            tapered_throat_chart_number,
+                            tapered_throat_scale_number,
                         };
                         crate::solvers::culvert::normalize_culvert_params(&mut p);
                         compound_params.push(p);
@@ -2732,9 +2879,9 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
 
     // REGIME SELECTION / MIXED REGIME SOLVING
     if regime == 0 {
-        wsel_metric = sub_wsel;
+        wsel_metric = sub_wsel.clone();
     } else if regime == 1 {
-        wsel_metric = super_wsel;
+        wsel_metric = super_wsel.clone();
     } else {
         // Mixed regime selection
         let mut super_failed = false;
@@ -2803,7 +2950,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
     for orig_idx in 0..m {
         let sorted_xs_idx = original_mapping[orig_idx];
         let sorted_idx = original_to_densified[sorted_xs_idx];
-        
+
         let wsel_val = wsel_metric[sorted_idx];
         let yc_val = critical_wsels[sorted_idx];
         let table = &densified_tables[sorted_idx];

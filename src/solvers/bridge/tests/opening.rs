@@ -850,6 +850,7 @@ fn internal_opening_friction_segments_direct_and_edge_cases() {
         blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+        ..Default::default()
     };
     let internal = CrossSection {
         station: 50.0,
@@ -864,6 +865,7 @@ fn internal_opening_friction_segments_direct_and_edge_cases() {
         blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+        ..Default::default()
     };
     let bd = CrossSection {
         station: 0.0,
@@ -878,6 +880,7 @@ fn internal_opening_friction_segments_direct_and_edge_cases() {
         blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+        ..Default::default()
     };
 
     let (tables, lengths, z_m) =

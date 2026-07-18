@@ -13,8 +13,9 @@ pub const CFS_TO_CMS: f64 = 0.028316846592;
 pub const FT2_TO_M2: f64 = FT_TO_M * FT_TO_M;
 
 /// Supported unit systems for inputs and outputs.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Copy, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum UnitSystem {
+    #[default]
     USCustomary,
     Metric,
 }

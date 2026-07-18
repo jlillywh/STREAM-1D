@@ -361,3 +361,31 @@ def test_compute_bridge_rating_curve_per_side_abutments():
     })
     assert abs(asymmetric['wsel'][0] - symmetric['wsel'][0]) > 0.01
 
+def test_steady_inputs_tapered_inlet_serialization():
+    xs = st.CrossSection(100.0, [0.0, 10.0], [1.0, 1.0], [0.0], [0.035], "USCustomary")
+    inputs = st.SteadyInputs(
+        cross_sections=[xs],
+        flow_rate=50.0,
+        culvert_stations=[50.0],
+        culvert_tapered_types=[1],
+        culvert_tapered_face_spans=[8.0],
+        culvert_tapered_face_rises=[5.0],
+        culvert_tapered_falls=[1.5],
+        culvert_tapered_crest_weir_lengths=[10.0],
+        culvert_tapered_crest_weir_coeffs=[3.0],
+        culvert_tapered_face_chart_numbers=[58],
+        culvert_tapered_face_scale_numbers=[2],
+        culvert_tapered_throat_chart_numbers=[57],
+        culvert_tapered_throat_scale_numbers=[1],
+    )
+    d = inputs.to_dict()
+    assert d['culvert_tapered_types'] == [1]
+    assert d['culvert_tapered_face_spans'] == [8.0]
+    assert d['culvert_tapered_face_rises'] == [5.0]
+    assert d['culvert_tapered_falls'] == [1.5]
+    assert d['culvert_tapered_crest_weir_lengths'] == [10.0]
+    assert d['culvert_tapered_crest_weir_coeffs'] == [3.0]
+    assert d['culvert_tapered_face_chart_numbers'] == [58]
+    assert d['culvert_tapered_face_scale_numbers'] == [2]
+    assert d['culvert_tapered_throat_chart_numbers'] == [57]
+    assert d['culvert_tapered_throat_scale_numbers'] == [1]

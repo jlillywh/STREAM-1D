@@ -1077,10 +1077,11 @@ mod tests {
             blocked_obstructions: None,
             ineffective_flow_areas: None,
             guide_banks: None,
+            ..Default::default()
         };
         let profile = EmbankmentPolyline {
             stations: vec![0.0, 5.0],
-            elevations: vec![6.0, 6.5],
+            elevations: vec![6.5, 6.5],
         };
         merge_embankment_blocked_into_section(&mut xs, Some(&profile), None, Some(95.0));
         let blocks = xs.blocked_obstructions.unwrap();
@@ -1114,6 +1115,7 @@ mod tests {
                 blocked_obstructions: None,
                 ineffective_flow_areas: None,
                 guide_banks: None,
+                ..Default::default()
             }
         }
 

@@ -1256,6 +1256,7 @@ mod tests {
             guide_banks: None,
             coeff_contraction: None,
             coeff_expansion: None,
+            ..Default::default()
         }
     }
 
@@ -1319,9 +1320,10 @@ mod tests {
             is_overbank: None,
             blocked_obstructions: None,
             ineffective_flow_areas: None,
-        guide_banks: None,
+            guide_banks: None,
             coeff_contraction: None,
             coeff_expansion: None,
+            ..Default::default()
         };
         let bd = CrossSection {
             station: 495.0,
@@ -1766,6 +1768,7 @@ mod tests {
                 }),
                 ..Default::default()
             }),
+            ..Default::default()
         };
         let interior = BridgeInteriorInput {
             approach: Some(approach),
@@ -1793,8 +1796,9 @@ mod tests {
                     blocked_obstructions: None,
                     ineffective_flow_areas: None,
                     guide_banks: None,
-            coeff_contraction: None,
-            coeff_expansion: None,
+                    coeff_contraction: None,
+                    coeff_expansion: None,
+                    ..Default::default()
                 })
             })
             .collect();
@@ -1911,6 +1915,7 @@ mod tests {
             guide_banks: None,
             coeff_contraction: None,
             coeff_expansion: None,
+            ..Default::default()
         };
         let interior = BridgeInteriorInput {
             approach: Some(approach),
