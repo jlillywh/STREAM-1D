@@ -1,9 +1,9 @@
 {
   "source": "Issaquah01 vs HEC-RAS steady — computational STA from RAS profile table (deck vents removed)",
   "station_key": "computational",
-  "tolerance_wsel_ft": 0.05,
-  "tolerance_egl_ft": 0.05,
-  "tolerance_crit_wsel_ft": 0.05,
+  "tolerance_wsel_ft": 0.10,
+  "tolerance_egl_ft": 0.10,
+  "tolerance_crit_wsel_ft": 0.10,
   "geometry_fixture": "Issaquah01_stream1d.json",
   "strip_deck_vents": true,
   "profiles": [

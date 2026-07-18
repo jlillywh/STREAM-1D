@@ -314,7 +314,8 @@ mod tests {
             coeff_expansion: None,
             blocked_obstructions: None,
             ineffective_flow_areas: None,
-        guide_banks: None,
+            guide_banks: None,
+            ..Default::default()
         }
     }
 

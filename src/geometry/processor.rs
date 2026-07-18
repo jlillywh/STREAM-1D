@@ -1,7 +1,7 @@
 use crate::utils::{G_METRIC, UnitSystem, FT_TO_M};
 
 /// A raw cross-section definition.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct CrossSection {
     /// Station location along the river reach (e.g. downstream is 0, upstream is positive).
     pub station: f64,
@@ -286,6 +286,8 @@ pub struct GeometryRow {
     pub active_area: f64,
     /// Channel-zone active area when overbanks are subdivided (equals `channel_area` when no ineffective areas).
     pub active_channel_area: f64,
+    /// Velocity distribution coefficient alpha.
+    pub alpha: f64,
 }
 
 /// A lookup table mapping elevation to geometric properties.
@@ -494,6 +496,7 @@ impl CrossSection {
                 channel_area: 0.0,
                 active_area: 0.0,
                 active_channel_area: 0.0,
+                alpha: 1.0,
             };
         }
 
@@ -707,8 +710,22 @@ impl CrossSection {
             }
         }
 
+        let clip_active = ineffective.filter(|i| i.is_configured()).is_some()
+            || guide_banks.filter(|g| g.is_configured()).is_some()
+            || levee_left.is_some()
+            || levee_right.is_some();
+
         let area = lob.area + ch.area + rob.area;
-        let perimeter = lob.perimeter + ch.perimeter + rob.perimeter;
+        let perimeter = if clip_active {
+            lob_active.perimeter + ch_active.perimeter + rob_active.perimeter
+        } else {
+            lob.perimeter + ch.perimeter + rob.perimeter
+        };
+        let top_width = if clip_active {
+            lob_active.top_width + ch_active.top_width + rob_active.top_width
+        } else {
+            lob.top_width + ch.top_width + rob.top_width
+        };
         let get_conveyance = |zone: &ZoneProperties| -> f64 {
             if zone.perimeter > 1e-9 {
                 let comp_n = (zone.sum_pn15 / zone.perimeter).powf(2.0 / 3.0);
@@ -723,16 +740,6 @@ impl CrossSection {
             }
         };
 
-        let clip_active = ineffective.filter(|i| i.is_configured()).is_some()
-            || guide_banks.filter(|g| g.is_configured()).is_some()
-            || levee_left.is_some()
-            || levee_right.is_some();
-
-        let top_width = if clip_active {
-            lob_active.top_width + ch_active.top_width + rob_active.top_width
-        } else {
-            lob.top_width + ch.top_width + rob.top_width
-        };
 
         let active_area = if clip_active {
             lob_active.area + ch_active.area + rob_active.area
@@ -758,6 +765,32 @@ impl CrossSection {
             ch.area
         };
 
+        let add_zone = |k: f64, a: f64| {
+            if a > 1e-9 && k > 1e-9 {
+                k.powi(3) / a.powi(2)
+            } else {
+                0.0
+            }
+        };
+        let k_lob = if clip_active { get_conveyance(&lob_active) } else { get_conveyance(&lob) };
+        let k_ch = if clip_active { get_conveyance(&ch_active) } else { get_conveyance(&ch) };
+        let k_rob = if clip_active { get_conveyance(&rob_active) } else { get_conveyance(&rob) };
+        let a_lob = if clip_active { lob_active.area } else { lob.area };
+        let a_ch = if clip_active { ch_active.area } else { ch.area };
+        let a_rob = if clip_active { rob_active.area } else { rob.area };
+
+        let alpha = if is_subdivided && active_area > 1e-9 && conveyance > 1e-9 {
+            let sum = add_zone(k_lob, a_lob) + add_zone(k_ch, a_ch) + add_zone(k_rob, a_rob);
+            let denom = conveyance.powi(3) / active_area.powi(2);
+            if denom > 1e-9 {
+                (sum / denom).max(1.0).min(10.0)
+            } else {
+                1.0
+            }
+        } else {
+            1.0
+        };
+
         GeometryRow {
             elevation: elev,
             area,
@@ -767,6 +800,7 @@ impl CrossSection {
             channel_area: ch.area,
             active_area,
             active_channel_area,
+            alpha,
         }
     }
 }
@@ -1070,6 +1104,7 @@ impl GeometryTable {
                 channel_area: 0.0,
                 active_area: 0.0,
                 active_channel_area: 0.0,
+                alpha: 1.0,
             };
         }
 
@@ -1106,6 +1141,7 @@ impl GeometryTable {
                 channel_area: last.channel_area + last.top_width * dy,
                 active_area: last.active_area + last.top_width * dy,
                 active_channel_area: last.active_channel_area + last.top_width * dy,
+                alpha: last.alpha,
             };
         }
 
@@ -1140,6 +1176,7 @@ impl GeometryTable {
             channel_area: r1.channel_area + t * (r2.channel_area - r1.channel_area),
             active_area: r1.active_area + t * (r2.active_area - r1.active_area),
             active_channel_area: r1.active_channel_area + t * (r2.active_channel_area - r1.active_channel_area),
+            alpha: r1.alpha + t * (r2.alpha - r1.alpha),
         }
     }
 
@@ -1222,6 +1259,7 @@ pub fn interpolate_geometry_table(
             channel_area: (1.0 - t) * row1.channel_area + t * row2.channel_area,
             active_area: (1.0 - t) * row1.active_area + t * row2.active_area,
             active_channel_area: (1.0 - t) * row1.active_channel_area + t * row2.active_channel_area,
+            alpha: (1.0 - t) * row1.alpha + t * row2.alpha,
         });
     }
 
@@ -1817,6 +1855,7 @@ mod tests {
                 channel_area: 0.0,
                 active_area: 0.0,
                 active_channel_area: 0.0,
+                alpha: 1.0,
             }],
         };
         let above = table.interpolate(3.0);

@@ -299,6 +299,7 @@ mod tests {
             guide_banks: None,
             coeff_contraction: None,
             coeff_expansion: None,
+            ..Default::default()
         }
     }
 

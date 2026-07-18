@@ -70,9 +70,7 @@ fn wasm_culvert_rating_curve_contract() {
             custom_shape_tbl_perimeter: None,
             custom_shape_tbl_top_width: None,
             roadway_stations: None,
-            roadway_elevations: None,
-            chart_number: None,
-            scale_number: None,
+            ..Default::default()
         },
     };
     let curve = compute_culvert_rating_curve(&inputs);
@@ -252,11 +250,15 @@ fn steady_validation_guide_bank_polyline_warning() {
 fn wasm_api_metadata_version() {
     let meta = build_api_metadata();
     assert_eq!(meta.api_version, API_VERSION);
-    assert_eq!(API_VERSION, 39);
+    assert_eq!(API_VERSION, 40);
     assert!(meta
         .culvert_tier1_fields
         .inputs
         .contains(&"culvert_inlet_types".to_string()));
+    assert!(meta
+        .culvert_tier1_fields
+        .inputs
+        .contains(&"culvert_tapered_types".to_string()));
     assert!(meta
         .culvert_tier1_fields
         .inputs
@@ -265,7 +267,6 @@ fn wasm_api_metadata_version() {
         .culvert_tier1_fields
         .inputs
         .contains(&"culvert_scale_numbers".to_string()));
-
     assert_eq!(
         meta.bridge_fields.rating_curve_entry_point,
         "computeBridgeRatingCurve"

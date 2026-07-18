@@ -1330,6 +1330,7 @@ fn internal_bridge_cuts_build_opening_friction_segments() {
         blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+        ..Default::default()
     };
     let internal = CrossSection {
         station: 50.0,
@@ -1344,6 +1345,7 @@ fn internal_bridge_cuts_build_opening_friction_segments() {
         blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+        ..Default::default()
     };
     let bd = CrossSection {
         station: 0.0,
@@ -1358,6 +1360,7 @@ fn internal_bridge_cuts_build_opening_friction_segments() {
         blocked_obstructions: None,
         ineffective_flow_areas: None,
         guide_banks: None,
+        ..Default::default()
     };
     let sections = BridgeSectionContext {
         xs_up: Some(bu),

@@ -695,7 +695,7 @@ pub struct CulvertRatingCurveResult {
 }
 
 /// Parameters for a culvert headwater solve (user units unless noted).
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct CulvertSolveParams {
     #[serde(default)]
     pub q: f64,
@@ -769,6 +769,28 @@ pub struct CulvertSolveParams {
     /// FHWA HDS-5 scale number (optional).
     #[serde(default)]
     pub scale_number: Option<i32>,
+    /// Tapered inlet type (0 = None, 1 = Side-Tapered, 2 = Slope-Tapered).
+    #[serde(default)]
+    pub tapered_type: i32,
+    /// Tapered inlet face span/width (optional).
+    pub tapered_face_span: Option<f64>,
+    /// Tapered inlet face rise/height (optional).
+    pub tapered_face_rise: Option<f64>,
+    /// Tapered inlet vertical drop (fall) from face/crest to throat (optional).
+    #[serde(default)]
+    pub tapered_fall: f64,
+    /// Tapered inlet crest weir length for overtopping crest control (optional).
+    pub tapered_crest_weir_length: Option<f64>,
+    /// Tapered inlet crest discharge coefficient (optional).
+    pub tapered_crest_weir_coeff: Option<f64>,
+    /// Tapered inlet face control FHWA HDS-5 chart number (optional).
+    pub tapered_face_chart_number: Option<i32>,
+    /// Tapered inlet face control FHWA HDS-5 scale number (optional).
+    pub tapered_face_scale_number: Option<i32>,
+    /// Tapered inlet throat control FHWA HDS-5 chart number (optional).
+    pub tapered_throat_chart_number: Option<i32>,
+    /// Tapered inlet throat control FHWA HDS-5 scale number (optional).
+    pub tapered_throat_scale_number: Option<i32>,
 }
 
 fn default_num_barrels() -> i32 {
@@ -926,8 +948,8 @@ fn solve_multi_barrel_barrels(base: &CulvertSolveParams, q_total: f64) -> Barrel
     let mut total_vel = 0.0;
     let mut total_fr = 0.0;
     let mut total_q = 0.0;
-    let mut max_inlet = wsel;
-    let mut max_outlet = wsel;
+    let mut max_inlet = 0.0f64;
+    let mut max_outlet = 0.0f64;
 
     for p in &barrel_bases {
         let q_i = barrel_q_for_wsel(p, wsel);
@@ -1116,6 +1138,26 @@ pub fn fhwa_nomograph_coeffs(chart: i32, scale: i32) -> Option<(f64, f64, f64, f
         (35, 1) => Some((0.0300, 1.50, 0.0496, 0.57, false)),
         (35, 2) => Some((0.0088, 2.00, 0.0368, 0.68, false)),
         (35, 3) => Some((0.0030, 2.00, 0.0269, 0.77, false)),
+
+        // Chart 55 (Side-Tapered Circular Pipe, Throat Control)
+        (55, 1) => Some((0.534, 0.333, 0.0196, 0.89, true)),
+        (55, 2) => Some((0.519, 0.640, 0.0210, 0.90, true)),
+
+        // Chart 56 (Side-Tapered Circular Pipe, Face Control)
+        (56, 1) => Some((0.536, 0.622, 0.0368, 0.83, true)),
+        (56, 2) => Some((0.5035, 0.719, 0.0478, 0.80, true)),
+
+        // Chart 57 (Side/Slope-Tapered Box, Throat Control)
+        (57, 1) => Some((0.534, 0.333, 0.0196, 0.89, true)),
+        (57, 2) => Some((0.519, 0.640, 0.0210, 0.90, true)),
+
+        // Chart 58 (Side-Tapered Box, Face Control)
+        (58, 1) => Some((0.536, 0.622, 0.0368, 0.83, true)),
+        (58, 2) => Some((0.5035, 0.719, 0.0478, 0.80, true)),
+
+        // Chart 59 (Slope-Tapered Box, Face Control)
+        (59, 1) => Some((0.536, 0.622, 0.0368, 0.83, true)),
+        (59, 2) => Some((0.5035, 0.719, 0.0478, 0.80, true)),
 
         _ => None,
     }
@@ -1395,6 +1437,311 @@ impl CulvertGeometry {
         }
         best_yc
     }
+
+    fn static_moment(&self, y: f64, depth_blocked: f64) -> f64 {
+        let d_b = depth_blocked.min(self.rise);
+        if y <= d_b {
+            return 0.0;
+        }
+        let n_steps = 20;
+        let dy = (y - d_b) / n_steps as f64;
+        let mut sum = 0.0;
+        for i in 0..n_steps {
+            let eta_i = d_b + i as f64 * dy;
+            let eta_ip1 = eta_i + dy;
+            let w_i = self.effective_top_width(eta_i, d_b);
+            let w_ip1 = self.effective_top_width(eta_ip1, d_b);
+            let term_i = (y - eta_i) * w_i;
+            let term_ip1 = (y - eta_ip1) * w_ip1;
+            sum += 0.5 * (term_i + term_ip1) * dy;
+        }
+        sum
+    }
+
+    fn specific_force(&self, y: f64, q: f64, depth_blocked: f64) -> f64 {
+        let d_b = depth_blocked.min(self.rise);
+        if y <= d_b {
+            return f64::INFINITY;
+        }
+        let area = self.effective_area(y, d_b);
+        if area < 1e-9 {
+            return f64::INFINITY;
+        }
+        let static_mom = self.static_moment(y, d_b);
+        static_mom + (q * q) / (G_ENGLISH * area)
+    }
+}
+
+fn solve_inlet_control_elevation(
+    geom: &CulvertGeometry,
+    q_cfs: f64,
+    span_ft: f64,
+    rise_ft: f64,
+    len_ft: f64,
+    z_up_ft: f64,
+    z_down_ft: f64,
+    db_ft: f64,
+    chart_number: Option<i32>,
+    scale_number: Option<i32>,
+    inlet_type: i32,
+    entrance_loss_coeff: f64,
+) -> f64 {
+    let d_eff = (rise_ft - db_ft).max(0.01);
+    let a_full_eff = geom.effective_area(rise_ft, db_ft);
+
+    let yc = geom.critical_depth(q_cfs, db_ft);
+    let yc_eff = (yc - db_ft).max(0.0);
+    let ac = geom.effective_area(yc, db_ft);
+    let vc = if ac > 1e-9 { q_cfs / ac } else { 0.0 };
+    let hc_eff = yc_eff + (vc * vc) / (2.0 * G_ENGLISH);
+
+    let (k, m, c, y, is_form_2) = if let (Some(chart), Some(scale)) = (chart_number, scale_number) {
+        if chart > 0 && scale > 0 {
+            if let Some((k_val, m_val, c_val, y_val, form2)) = fhwa_nomograph_coeffs(chart, scale) {
+                (k_val, m_val, c_val, y_val, form2)
+            } else {
+                let (k_val, m_val, c_val, y_val) = inlet_nomograph_coeffs(geom.shape, inlet_type, entrance_loss_coeff);
+                (k_val, m_val, c_val, y_val, false)
+            }
+        } else {
+            let (k_val, m_val, c_val, y_val) = inlet_nomograph_coeffs(geom.shape, inlet_type, entrance_loss_coeff);
+            (k_val, m_val, c_val, y_val, false)
+        }
+    } else {
+        let (k_val, m_val, c_val, y_val) = inlet_nomograph_coeffs(geom.shape, inlet_type, entrance_loss_coeff);
+        (k_val, m_val, c_val, y_val, false)
+    };
+
+    let culv_slope = (z_up_ft - z_down_ft) / len_ft.max(1.0);
+    let f_param = q_cfs / (a_full_eff * d_eff.sqrt());
+
+    let hw_d_unsub = if is_form_2 {
+        k * f_param.powf(m)
+    } else {
+        (hc_eff / d_eff) + k * f_param.powf(m) - 0.5 * culv_slope
+    };
+    let hw_d_sub = c * f_param.powi(2) + y - 0.5 * culv_slope;
+
+    let hw_d = if f_param <= 3.0 {
+        hw_d_unsub
+    } else if f_param >= 4.0 {
+        hw_d_sub
+    } else {
+        let t = (f_param - 3.0) / (4.0 - 3.0);
+        (1.0 - t) * hw_d_unsub + t * hw_d_sub
+    };
+
+    let hw_inlet_eff = if is_form_2 {
+        hw_d * d_eff
+    } else {
+        (hw_d * d_eff).max(hc_eff)
+    };
+    z_up_ft + db_ft + hw_inlet_eff
+}
+
+fn solve_gvf_step(
+    geom: &CulvertGeometry,
+    q: f64,
+    n_top: f64,
+    n_bottom: f64,
+    depth_bottom_n: f64,
+    depth_blocked: f64,
+    y1: f64,
+    z1: f64,
+    z2: f64,
+    dx: f64,
+    is_subcritical: bool,
+    yc: f64,
+) -> f64 {
+    let d_b = depth_blocked.min(geom.rise);
+    let area1 = geom.effective_area(y1, d_b);
+    if area1 < 1e-9 {
+        return d_b;
+    }
+    let n1 = geom.composite_n(y1, d_b, n_top, n_bottom, depth_bottom_n);
+    let p1 = geom.effective_perimeter(y1, d_b);
+    let r1 = if p1 > 1e-9 { area1 / p1 } else { 0.0 };
+    let k1 = if n1 > 1e-9 && r1 > 0.0 {
+        (1.486 / n1) * area1 * r1.powf(2.0 / 3.0)
+    } else {
+        0.0
+    };
+    let sf1 = if k1 > 1e-9 { (q / k1).powi(2) } else { 0.0 };
+    let v1 = q / area1;
+    let hv1 = (v1 * v1) / (2.0 * G_ENGLISH);
+    let eg1 = y1 + z1 + hv1;
+
+    let mut low = if is_subcritical { yc } else { d_b };
+    let mut high = if is_subcritical { geom.rise + 50.0 } else { yc };
+    let mut best_y2 = 0.5 * (low + high);
+
+    for _ in 0..40 {
+        let y2 = 0.5 * (low + high);
+        
+        let (area2, k2, sf2, v2, hv2) = if y2 >= geom.rise {
+            let area_full = geom.effective_area(geom.rise, d_b);
+            let p_full = geom.effective_perimeter(geom.rise, d_b);
+            let r_full = if p_full > 1e-9 { area_full / p_full } else { 0.0 };
+            let n_full = geom.composite_n(geom.rise, d_b, n_top, n_bottom, depth_bottom_n);
+            let k_full = if n_full > 1e-9 && r_full > 0.0 {
+                (1.486 / n_full) * area_full * r_full.powf(2.0 / 3.0)
+            } else {
+                0.0
+            };
+            let sf_full = if k_full > 1e-9 { (q / k_full).powi(2) } else { 0.0 };
+            let v_full = q / area_full;
+            let hv_full = (v_full * v_full) / (2.0 * G_ENGLISH);
+            (area_full, k_full, sf_full, v_full, hv_full)
+        } else {
+            let area2 = geom.effective_area(y2, d_b);
+            let n2 = geom.composite_n(y2, d_b, n_top, n_bottom, depth_bottom_n);
+            let p2 = geom.effective_perimeter(y2, d_b);
+            let r2 = if p2 > 1e-9 { area2 / p2 } else { 0.0 };
+            let k2 = if n2 > 1e-9 && r2 > 0.0 {
+                (1.486 / n2) * area2 * r2.powf(2.0 / 3.0)
+            } else {
+                0.0
+            };
+            let sf2 = if k2 > 1e-9 { (q / k2).powi(2) } else { 0.0 };
+            let v2 = if area2 > 1e-9 { q / area2 } else { 0.0 };
+            let hv2 = (v2 * v2) / (2.0 * G_ENGLISH);
+            (area2, k2, sf2, v2, hv2)
+        };
+
+        let sf_avg = 0.5 * (sf1 + sf2);
+        let hf = dx * sf_avg;
+
+        let eg2_calc = y2 + z2 + hv2;
+        let target_eg = if is_subcritical { eg1 + hf } else { eg1 - hf };
+
+        if is_subcritical {
+            if eg2_calc < target_eg {
+                low = y2;
+            } else {
+                high = y2;
+            }
+        } else {
+            if eg2_calc < target_eg {
+                high = y2;
+            } else {
+                low = y2;
+            }
+        }
+        best_y2 = y2;
+    }
+    best_y2
+}
+
+fn compute_gvf_outlet_control(
+    geom: &CulvertGeometry,
+    q_cfs: f64,
+    n_top: f64,
+    n_bottom: f64,
+    depth_bottom_n: f64,
+    depth_blocked: f64,
+    tw_ft: f64,
+    z_down_ft: f64,
+    z_up_ft: f64,
+    len_ft: f64,
+    yc: f64,
+    entrance_loss_coeff: f64,
+    exit_loss_coeff: f64,
+    ds_vel_hd: f64,
+    us_vel_hd: f64,
+) -> f64 {
+    let rise = geom.rise;
+    let db = depth_blocked.min(rise);
+    let tw_depth = tw_ft - z_down_ft;
+    
+    let (mut y_start, mut is_full) = if tw_depth >= rise {
+        (rise, true)
+    } else {
+        (tw_depth.max(yc).min(rise), false)
+    };
+
+    let area_exit = geom.effective_area(y_start, db);
+    let v_exit = if area_exit > 1e-9 { q_cfs / area_exit } else { 0.0 };
+    let v_exit_hd = (v_exit * v_exit) / (2.0 * G_ENGLISH);
+    
+    let eg_start = if is_full {
+        tw_ft + ds_vel_hd + exit_loss_coeff * (v_exit_hd - ds_vel_hd).max(0.0)
+    } else if tw_depth >= yc {
+        tw_ft + ds_vel_hd + exit_loss_coeff * (v_exit_hd - ds_vel_hd).max(0.0)
+    } else {
+        z_down_ft + y_start + v_exit_hd
+    };
+
+    let n_steps = 10;
+    let dx = len_ft / n_steps as f64;
+    let mut y_curr = y_start;
+    let mut eg_curr = eg_start;
+
+    for i in 0..n_steps {
+        let z_i = z_down_ft + (i as f64) * (z_up_ft - z_down_ft) / n_steps as f64;
+        let z_ip1 = z_down_ft + ((i + 1) as f64) * (z_up_ft - z_down_ft) / n_steps as f64;
+
+        if is_full {
+            let area_full = geom.effective_area(rise, db);
+            let p_full = geom.effective_perimeter(rise, db);
+            let r_full = if p_full > 1e-9 { area_full / p_full } else { 0.0 };
+            let n_full = geom.composite_n(rise, db, n_top, n_bottom, depth_bottom_n);
+            let k_full = if n_full > 1e-9 && r_full > 0.0 {
+                (1.486 / n_full) * area_full * r_full.powf(2.0 / 3.0)
+            } else {
+                0.0
+            };
+            let sf_full = if k_full > 1e-9 { (q_cfs / k_full).powi(2) } else { 0.0 };
+            eg_curr += dx * sf_full; 
+            
+            let hgl_depth = eg_curr - z_ip1 - (q_cfs * q_cfs) / (2.0 * G_ENGLISH * area_full * area_full);
+            if hgl_depth < rise {
+                is_full = false;
+                y_curr = hgl_depth.max(db);
+            } else {
+                y_curr = rise;
+            }
+        } else {
+            let y_next = solve_gvf_step(
+                geom,
+                q_cfs,
+                n_top,
+                n_bottom,
+                depth_bottom_n,
+                depth_blocked,
+                y_curr,
+                z_i,
+                z_ip1,
+                dx,
+                true,
+                yc,
+            );
+            if y_next <= yc + 1e-4 {
+                return z_down_ft; // Subcritical GVF profile drew down to critical depth; wave cannot propagate upstream
+            }
+            y_curr = y_next;
+
+            if y_curr >= rise {
+                is_full = true;
+                let area_full = geom.effective_area(rise, db);
+                let v_full = q_cfs / area_full;
+                let hv_full = (v_full * v_full) / (2.0 * G_ENGLISH);
+                eg_curr = y_curr + z_ip1 + hv_full;
+            } else {
+                let area_curr = geom.effective_area(y_curr, db);
+                let v_curr = if area_curr > 1e-9 { q_cfs / area_curr } else { 0.0 };
+                let hv_curr = (v_curr * v_curr) / (2.0 * G_ENGLISH);
+                eg_curr = y_curr + z_ip1 + hv_curr;
+            }
+        }
+    }
+
+    let area_inlet = geom.effective_area(y_curr, db);
+    let v_inlet = if area_inlet > 1e-9 { q_cfs / area_inlet } else { 0.0 };
+    let v_inlet_hd = (v_inlet * v_inlet) / (2.0 * G_ENGLISH);
+    let he = entrance_loss_coeff * v_inlet_hd;
+    let eg_inlet = eg_curr + he;
+    let wsel_outlet = eg_inlet - us_vel_hd;
+    wsel_outlet
 }
 
 fn solve_culvert_barrel_internal(params: &CulvertSolveParams, q: f64) -> BarrelSolveInternal {
@@ -1440,105 +1787,123 @@ fn solve_culvert_barrel_internal(params: &CulvertSolveParams, q: f64) -> BarrelS
     // Apply velocity distribution coefficient alpha (~1.3 for contracted sections near culverts)
     let us_vel_hd = (us_vel_ft * us_vel_ft) / (2.0 * G_ENGLISH) * 1.3;
 
-    // 1. INLET CONTROL CALCULATIONS
-    // Bisection search for critical depth inside barrel in feet (measured from original invert)
-    let yc = geom.critical_depth(q_cfs, db_ft);
-    let yc_eff = (yc - db_ft).max(0.0);
-    let ac = geom.effective_area(yc, db_ft);
-    let vc = if ac > 1e-9 { q_cfs / ac } else { 0.0 };
-    let hc_eff = yc_eff + (vc * vc) / (2.0 * G_ENGLISH); // Specific head at critical depth above effective invert
+    let ds_vel_ft = if params.units == UnitSystem::Metric {
+        params.ds_velocity / FT_TO_M
+    } else {
+        params.ds_velocity
+    };
+    let ds_vel_hd = (ds_vel_ft * ds_vel_ft) / (2.0 * G_ENGLISH);
 
-    let (k, m, c, y, is_form_2) = if let (Some(chart), Some(scale)) =
-        (params.chart_number, params.scale_number)
-    {
-        if chart > 0 && scale > 0 {
-            if let Some((k_val, m_val, c_val, y_val, form2)) = fhwa_nomograph_coeffs(chart, scale) {
-                (k_val, m_val, c_val, y_val, form2)
+    // 1. INLET CONTROL CALCULATIONS
+    let yc = geom.critical_depth(q_cfs, db_ft);
+
+    // Throat Control WSEL
+    let throat_chart = params.tapered_throat_chart_number.or(params.chart_number);
+    let throat_scale = params.tapered_throat_scale_number.or(params.scale_number);
+    let wsel_throat = solve_inlet_control_elevation(
+        &geom,
+        q_cfs,
+        span_ft,
+        rise_ft,
+        len_ft,
+        z_up_ft,
+        z_down_ft,
+        db_ft,
+        throat_chart,
+        throat_scale,
+        params.inlet_type,
+        params.entrance_loss_coeff,
+    );
+
+    // Face Control WSEL (if tapered)
+    let mut wsel_face = 0.0;
+    let fall_ft = if params.units == UnitSystem::Metric {
+        params.tapered_fall / FT_TO_M
+    } else {
+        params.tapered_fall
+    };
+    let z_face_ft = z_up_ft + fall_ft;
+    if params.tapered_type == 1 || params.tapered_type == 2 {
+        let face_span_ft = params.tapered_face_span
+            .map(|v| if params.units == UnitSystem::Metric { v / FT_TO_M } else { v })
+            .unwrap_or(span_ft);
+        let face_rise_ft = params.tapered_face_rise
+            .map(|v| if params.units == UnitSystem::Metric { v / FT_TO_M } else { v })
+            .unwrap_or(rise_ft);
+        let face_geom = CulvertGeometry::new(params, face_span_ft, face_rise_ft);
+        let face_chart = params.tapered_face_chart_number.or(params.chart_number);
+        let face_scale = params.tapered_face_scale_number.or(params.scale_number);
+        wsel_face = solve_inlet_control_elevation(
+            &face_geom,
+            q_cfs,
+            face_span_ft,
+            face_rise_ft,
+            len_ft,
+            z_face_ft,
+            z_down_ft,
+            db_ft,
+            face_chart,
+            face_scale,
+            params.inlet_type,
+            params.entrance_loss_coeff,
+        );
+    }
+
+    // Crest Control WSEL (slope-tapered only)
+    let mut wsel_crest = 0.0;
+    if params.tapered_type == 2 {
+        let crest_len_ft = params.tapered_crest_weir_length
+            .map(|v| if params.units == UnitSystem::Metric { v / FT_TO_M } else { v })
+            .unwrap_or(span_ft);
+        let crest_coeff = if params.units == UnitSystem::Metric {
+            if let Some(coeff) = params.tapered_crest_weir_coeff {
+                if coeff > 0.0 {
+                    coeff / CFS_TO_CMS * FT_TO_M.powf(2.5)
+                } else {
+                    3.0
+                }
             } else {
-                let (k_val, m_val, c_val, y_val) = inlet_nomograph_coeffs(
-                    geom.shape,
-                    params.inlet_type,
-                    params.entrance_loss_coeff,
-                );
-                (k_val, m_val, c_val, y_val, false)
+                3.0
             }
         } else {
-            let (k_val, m_val, c_val, y_val) =
-                inlet_nomograph_coeffs(geom.shape, params.inlet_type, params.entrance_loss_coeff);
-            (k_val, m_val, c_val, y_val, false)
-        }
-    } else {
-        let (k_val, m_val, c_val, y_val) =
-            inlet_nomograph_coeffs(geom.shape, params.inlet_type, params.entrance_loss_coeff);
-        (k_val, m_val, c_val, y_val, false)
-    };
+            params.tapered_crest_weir_coeff.unwrap_or(3.0)
+        };
 
-    // FHWA barrel slope S0 (positive when downstream invert is lower than upstream).
-    let culv_slope = (z_up_ft - z_down_ft) / len_ft;
-    let f_param = q_cfs / (a_full_eff * d_eff.sqrt());
 
-    // Unsubmerged Eq (Form 1 vs Form 2)
-    let hw_d_unsub = if is_form_2 {
-        k * f_param.powf(m)
-    } else {
-        (hc_eff / d_eff) + k * f_param.powf(m) - 0.5 * culv_slope
-    };
-    // Submerged Eq
-    let hw_d_sub = c * f_param.powi(2) + y - 0.5 * culv_slope;
+        let hc = if crest_len_ft > 1e-9 && crest_coeff > 1e-9 {
+            (q_cfs / (crest_coeff * crest_len_ft)).powf(2.0 / 3.0)
+        } else {
+            0.0
+        };
+        wsel_crest = z_face_ft + hc;
+    }
 
-    // Transition between unsubmerged (F <= 3.0) and submerged (F >= 4.0)
-    let hw_d = if f_param <= 3.0 {
-        hw_d_unsub
-    } else if f_param >= 4.0 {
-        hw_d_sub
-    } else {
-        let t = (f_param - 3.0) / (4.0 - 3.0);
-        (1.0 - t) * hw_d_unsub + t * hw_d_sub
-    };
+    // Governing Inlet Control WSEL
+    let mut wsel_inlet = wsel_throat;
+    if wsel_face > wsel_inlet {
+        wsel_inlet = wsel_face;
+    }
+    if wsel_crest > wsel_inlet {
+        wsel_inlet = wsel_crest;
+    }
 
-    let hw_inlet_eff = if is_form_2 {
-        hw_d * d_eff
-    } else {
-        (hw_d * d_eff).max(hc_eff)
-    };
-    let wsel_inlet = z_up_ft + db_ft + hw_inlet_eff;
-
-    // 2. OUTLET CONTROL CALCULATIONS
-    let y_barrel = (tw_ft - z_down_ft).max(yc).min(rise_ft);
-    let a_barrel = geom.effective_area(y_barrel, db_ft);
-    let v_barrel = if a_barrel > 1e-9 {
-        q_cfs / a_barrel
-    } else {
-        0.0
-    };
-
-    let he = params.entrance_loss_coeff * (v_barrel * v_barrel) / (2.0 * G_ENGLISH);
-    let ho = params.exit_loss_coeff * (v_barrel * v_barrel) / (2.0 * G_ENGLISH);
-
-    // Friction loss (hf = L * Sf) using composite n and effective geometry
-    let p_barrel = geom.effective_perimeter(y_barrel, db_ft);
-    let r_barrel = if p_barrel > 1e-9 {
-        a_barrel / p_barrel
-    } else {
-        0.0
-    };
-    let n_c = geom.composite_n(
-        y_barrel,
-        db_ft,
+    let wsel_outlet = compute_gvf_outlet_control(
+        &geom,
+        q_cfs,
         params.roughness_n,
         params.manning_n_bottom,
         dbn_ft,
+        db_ft,
+        tw_ft,
+        z_down_ft,
+        z_up_ft,
+        len_ft,
+        yc,
+        params.entrance_loss_coeff,
+        params.exit_loss_coeff,
+        ds_vel_hd,
+        us_vel_hd,
     );
-    let sf = if a_barrel > 1e-9 && r_barrel > 1e-9 {
-        (q_cfs * n_c / (1.486 * a_barrel * r_barrel.powf(2.0 / 3.0))).powi(2)
-    } else {
-        0.0
-    };
-    let hf = len_ft * sf;
-
-    // Total head loss / energy equation (FHWA HDS-5 standard formulation)
-    let eg_outlet = tw_ft + he + hf + ho;
-    let wsel_outlet = eg_outlet - us_vel_hd;
 
     let wsel_up_ft = wsel_inlet.max(wsel_outlet);
 
@@ -1557,6 +1922,10 @@ fn solve_culvert_barrel_internal(params: &CulvertSolveParams, q: f64) -> BarrelS
     } else {
         wsel_outlet
     };
+
+    let y_barrel = (tw_ft - z_down_ft).max(yc).min(rise_ft);
+    let a_barrel = geom.effective_area(y_barrel, db_ft);
+    let v_barrel = if a_barrel > 1e-9 { q_cfs / a_barrel } else { 0.0 };
 
     let t_barrel = geom.effective_top_width(y_barrel, db_ft);
     let d_hyd = if t_barrel > 1e-9 {
@@ -1960,6 +2329,7 @@ pub fn solve_culvert_wsel(
         chart_number: None,
 
         scale_number: None,
+        ..Default::default()
     };
     solve_culvert(&params).wsel
 }
@@ -2161,8 +2531,8 @@ mod tests {
             roadway_elevations: None,
 
             chart_number: None,
-
             scale_number: None,
+            ..Default::default()
         }
     }
 
@@ -2400,10 +2770,9 @@ mod tests {
             custom_shape_tbl_top_width: None,
             roadway_stations: None,
             roadway_elevations: None,
-
             chart_number: None,
-
             scale_number: None,
+            ..Default::default()
         };
         let legacy = solve_culvert(&base).wsel;
         let mut projecting = base.clone();
@@ -2447,10 +2816,9 @@ mod tests {
             custom_shape_tbl_top_width: None,
             roadway_stations: None,
             roadway_elevations: None,
-
             chart_number: None,
-
             scale_number: None,
+            ..Default::default()
         };
         let bed = CulvertSolveParams {
             z_up: 10.0,
@@ -2496,10 +2864,9 @@ mod tests {
             custom_shape_tbl_top_width: None,
             roadway_stations: None,
             roadway_elevations: None,
-
             chart_number: None,
-
             scale_number: None,
+            ..Default::default()
         };
         let result = solve_culvert(&params);
         assert!(result.wsel > 14.0);
@@ -2541,10 +2908,9 @@ mod tests {
             custom_shape_tbl_top_width: None,
             roadway_stations: None,
             roadway_elevations: None,
-
             chart_number: None,
-
             scale_number: None,
+            ..Default::default()
         };
         assert_eq!(solve_culvert(&params).control_type, "inlet");
 
@@ -2673,10 +3039,9 @@ mod tests {
             custom_shape_tbl_top_width: None,
             roadway_stations: None,
             roadway_elevations: None,
-
             chart_number: None,
-
             scale_number: None,
+            ..Default::default()
         };
         let result = solve_culvert(&params);
         assert!(result.wsel < 20.0);
@@ -2718,10 +3083,9 @@ mod tests {
             custom_shape_tbl_top_width: None,
             roadway_stations: None,
             roadway_elevations: None,
-
             chart_number: None,
-
             scale_number: None,
+            ..Default::default()
         };
         let result = solve_culvert(&params);
         assert_eq!(result.control_type, "inlet");
@@ -2769,10 +3133,9 @@ mod tests {
             custom_shape_tbl_top_width: None,
             roadway_stations: None,
             roadway_elevations: None,
-
             chart_number: None,
-
             scale_number: None,
+            ..Default::default()
         };
         let flat = CulvertSolveParams {
             z_down: 10.0,
@@ -2835,10 +3198,9 @@ mod tests {
                 custom_shape_tbl_top_width: None,
                 roadway_stations: None,
                 roadway_elevations: None,
-
                 chart_number: None,
-
                 scale_number: None,
+                ..Default::default()
             },
         };
         let curve = compute_culvert_rating_curve(&inputs);
@@ -2883,10 +3245,9 @@ mod tests {
             custom_shape_tbl_top_width: None,
             roadway_stations: None,
             roadway_elevations: None,
-
             chart_number: None,
-
             scale_number: None,
+            ..Default::default()
         };
         let result = solve_culvert(&params);
         assert_eq!(result.control_type, "overtopping");
@@ -2939,10 +3300,9 @@ mod tests {
             custom_shape_tbl_top_width: None,
             roadway_stations: None,
             roadway_elevations: None,
-
             chart_number: None,
-
             scale_number: None,
+            ..Default::default()
         };
         let mut skewed = base.clone();
         skewed.skew_deg = 30.0;
@@ -2992,10 +3352,9 @@ mod tests {
             custom_shape_tbl_top_width: None,
             roadway_stations: None,
             roadway_elevations: None,
-
             chart_number: None,
-
             scale_number: None,
+            ..Default::default()
         };
         let mut blocked = base.clone();
         blocked.active_barrels = 1;
@@ -3037,10 +3396,9 @@ mod tests {
             custom_shape_tbl_top_width: None,
             roadway_stations: None,
             roadway_elevations: None,
-
             chart_number: None,
-
             scale_number: None,
+            ..Default::default()
         };
         let equal_small = CulvertSolveParams {
             barrel_spans: None,
@@ -3102,10 +3460,9 @@ mod tests {
             custom_shape_tbl_top_width: None,
             roadway_stations: None,
             roadway_elevations: None,
-
             chart_number: None,
-
             scale_number: None,
+            ..Default::default()
         };
         let explicit = CulvertSolveParams {
             barrel_spans: Some(vec![5.0, 5.0]),
@@ -3205,15 +3562,17 @@ mod tests {
     #[test]
     fn test_entrance_and_exit_loss_increase_headwater() {
         let base = us_circular_baseline();
-        let mut high_ke = base.clone();
-        high_ke.entrance_loss_coeff = 1.5;
-        assert!(solve_culvert(&high_ke).wsel > solve_culvert(&base).wsel);
-
         let mut outlet = base.clone();
         outlet.tw_wsel = 15.0;
-        let low_kx = solve_culvert(&outlet).wsel;
-        outlet.exit_loss_coeff = 2.5;
-        assert!(solve_culvert(&outlet).wsel > low_kx);
+        let low_ke = solve_culvert(&outlet).wsel;
+        outlet.entrance_loss_coeff = 1.5;
+        assert!(solve_culvert(&outlet).wsel > low_ke);
+
+        let mut outlet2 = base.clone();
+        outlet2.tw_wsel = 15.0;
+        let low_kx = solve_culvert(&outlet2).wsel;
+        outlet2.exit_loss_coeff = 2.5;
+        assert!(solve_culvert(&outlet2).wsel > low_kx);
     }
 
     #[test]
@@ -3492,10 +3851,9 @@ mod tests {
             custom_shape_tbl_top_width: None,
             roadway_stations: None,
             roadway_elevations: None,
-
             chart_number: None,
-
             scale_number: None,
+            ..Default::default()
         };
         let result = solve_culvert(&params);
         assert!(result.wsel > 1.2);
@@ -3595,10 +3953,9 @@ mod tests {
             custom_shape_tbl_top_width: None,
             roadway_stations: None,
             roadway_elevations: None,
-
             chart_number: None,
-
             scale_number: None,
+            ..Default::default()
         };
 
         let mut custom_params = box_params.clone();
@@ -3794,6 +4151,113 @@ mod tests {
         params_overtop.active_barrels = 0; // force all flow through weir
         let res_overtop = solve_culvert(&params_overtop);
         assert_eq!(res_overtop.control_type, "overtopping");
+    }
+
+    #[test]
+    fn test_tapered_inlet_throat_and_face_control() {
+        let mut params = us_circular_baseline();
+        params.q = 150.0;
+        params.shape_type = 1; // Box
+        params.span = 5.0;
+        params.rise = 5.0;
+        params.tw_wsel = 8.0;
+
+        params.tapered_type = 0;
+        let standard_wsel = solve_culvert(&params).wsel;
+
+        params.tapered_type = 1;
+        params.tapered_face_span = Some(8.0);
+        params.tapered_face_rise = Some(5.0);
+        params.tapered_fall = 1.0;
+        params.tapered_throat_chart_number = Some(57);
+        params.tapered_throat_scale_number = Some(1);
+        params.tapered_face_chart_number = Some(58);
+        params.tapered_face_scale_number = Some(1);
+
+        let tapered_wsel = solve_culvert(&params).wsel;
+        assert!(tapered_wsel != standard_wsel);
+    }
+
+    #[test]
+    fn test_slope_tapered_crest_control() {
+        let mut params = us_circular_baseline();
+        params.q = 50.0;
+        params.shape_type = 1; // Box
+        params.span = 5.0;
+        params.rise = 5.0;
+        params.tw_wsel = 8.0;
+
+        params.tapered_type = 2;
+        params.tapered_face_span = Some(8.0);
+        params.tapered_face_rise = Some(5.0);
+        params.tapered_fall = 2.0;
+        params.tapered_crest_weir_length = Some(10.0);
+        params.tapered_crest_weir_coeff = Some(3.0);
+        params.tapered_throat_chart_number = Some(57);
+        params.tapered_throat_scale_number = Some(1);
+        params.tapered_face_chart_number = Some(59);
+        params.tapered_face_scale_number = Some(1);
+
+        let res = solve_culvert(&params);
+        assert!(res.wsel > 12.0);
+    }
+
+    #[test]
+    fn test_gvf_step_drawdown() {
+        let mut params = us_circular_baseline();
+        params.shape_type = 1; // Box
+        params.span = 5.0;
+        params.rise = 5.0;
+        let geom = CulvertGeometry::new(&params, 5.0, 5.0);
+        let q = 100.0;
+        let yc = geom.critical_depth(q, 0.0);
+
+        let y2 = solve_gvf_step(
+            &geom,
+            q,
+            0.013,
+            0.013,
+            0.0,
+            0.0,
+            4.0,
+            10.0,
+            10.1,
+            10.0,
+            true,
+            yc,
+        );
+        assert!(y2 > yc);
+        assert!(y2 < 5.0);
+    }
+
+    #[test]
+    fn test_gvf_outlet_control_pressurized_flow() {
+        let mut params = us_circular_baseline();
+        params.shape_type = 1; // Box
+        params.span = 5.0;
+        params.rise = 5.0;
+        let geom = CulvertGeometry::new(&params, 5.0, 5.0);
+        let q = 150.0;
+        let yc = geom.critical_depth(q, 0.0);
+
+        let wsel = compute_gvf_outlet_control(
+            &geom,
+            q,
+            0.013,
+            0.013,
+            0.0,
+            0.0,
+            16.0,
+            10.0,
+            11.0,
+            100.0,
+            yc,
+            0.5,
+            1.0,
+            0.0,
+            0.0,
+        );
+        assert!(wsel > 16.0);
     }
 
     #[test]

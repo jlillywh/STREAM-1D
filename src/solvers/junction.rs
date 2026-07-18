@@ -324,10 +324,11 @@ mod tests {
             unit_system: UnitSystem::Metric,
             is_overbank: None,
             blocked_obstructions: None,
-        ineffective_flow_areas: None,
-        guide_banks: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
             coeff_contraction: None,
             coeff_expansion: None,
+            ..Default::default()
         }
     }
 
@@ -358,10 +359,11 @@ mod tests {
             unit_system: UnitSystem::USCustomary,
             is_overbank: None,
             blocked_obstructions: None,
-        ineffective_flow_areas: None,
-        guide_banks: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
             coeff_contraction: None,
             coeff_expansion: None,
+            ..Default::default()
         }
     }
 
