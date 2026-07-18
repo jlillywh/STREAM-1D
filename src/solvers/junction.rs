@@ -210,6 +210,22 @@ pub fn solve_steady_junction(inputs: &SteadyInputs) -> SteadyResult {
         us_result.culvert_barrel_froude.as_deref(),
     );
 
+    let inline_structure_wsel_inlet = merge_culvert_f64(
+        inputs.inline_structure_stations.as_deref(),
+        ds_result.inline_structure_wsel_inlet.as_deref(),
+        us_result.inline_structure_wsel_inlet.as_deref(),
+    );
+    let inline_structure_wsel_outlet = merge_culvert_f64(
+        inputs.inline_structure_stations.as_deref(),
+        ds_result.inline_structure_wsel_outlet.as_deref(),
+        us_result.inline_structure_wsel_outlet.as_deref(),
+    );
+    let inline_structure_q_weirs = merge_culvert_f64(
+        inputs.inline_structure_stations.as_deref(),
+        ds_result.inline_structure_q_weirs.as_deref(),
+        us_result.inline_structure_q_weirs.as_deref(),
+    );
+
     SteadyResult {
         wsel: out_wsel,
         critical_wsel: out_yc,
@@ -229,6 +245,9 @@ pub fn solve_steady_junction(inputs: &SteadyInputs) -> SteadyResult {
         culvert_barrel_depths,
         culvert_barrel_velocities,
         culvert_barrel_froude,
+        inline_structure_wsel_inlet,
+        inline_structure_wsel_outlet,
+        inline_structure_q_weirs,
     }
 }
 

@@ -42,10 +42,7 @@ pub fn resolve_culvert_face_stations_metric(
     let center_m = user_length_to_metric(center_station_user, raw_units);
     let length_m = user_length_to_metric(culvert_length_user, raw_units);
 
-    let (us_m, ds_m) = match (
-        approach_reach_station_user,
-        departure_reach_station_user,
-    ) {
+    let (us_m, ds_m) = match (approach_reach_station_user, departure_reach_station_user) {
         (Some(us), Some(ds)) => {
             let us_m = user_length_to_metric(us, raw_units);
             let ds_m = user_length_to_metric(ds, raw_units);
@@ -113,16 +110,11 @@ fn faces_to_bridge(faces: CulvertFaceStations) -> BridgeFaceStations {
 }
 
 /// Interval `i` spans US face (`stations[i]`) → DS face (`stations[i+1]`).
-pub fn find_culvert_face_interval(
-    faces: CulvertFaceStations,
-    stations: &[f64],
-) -> Option<usize> {
+pub fn find_culvert_face_interval(faces: CulvertFaceStations, stations: &[f64]) -> Option<usize> {
     find_bridge_face_interval(faces_to_bridge(faces), stations)
 }
 
-pub fn culvert_intervals_from_faces(
-    face_intervals: &[Option<usize>],
-) -> Vec<(usize, usize)> {
+pub fn culvert_intervals_from_faces(face_intervals: &[Option<usize>]) -> Vec<(usize, usize)> {
     face_intervals
         .iter()
         .enumerate()
@@ -130,10 +122,7 @@ pub fn culvert_intervals_from_faces(
         .collect()
 }
 
-fn culvert_length_user_steady(
-    inputs: &crate::solvers::steady::SteadyInputs,
-    c_idx: usize,
-) -> f64 {
+fn culvert_length_user_steady(inputs: &crate::solvers::steady::SteadyInputs, c_idx: usize) -> f64 {
     inputs
         .culvert_lengths
         .as_ref()
@@ -219,6 +208,19 @@ pub fn apply_culvert_reach_layout_steady(
         );
     }
 
+    for (c_idx, faces) in face_list.iter().enumerate() {
+        if culvert_has_explicit_bounds_steady(inputs, c_idx) {
+            crate::solvers::bridge_interior::remove_internal_nodes_inside_bounds(
+                stations,
+                tables,
+                z_mins,
+                xs,
+                faces.us_station_m,
+                faces.ds_station_m,
+            );
+        }
+    }
+
     face_list
         .iter()
         .enumerate()
@@ -232,7 +234,33 @@ pub fn apply_culvert_reach_layout_steady(
         .collect()
 }
 
-
+pub fn re_resolve_culvert_intervals(
+    inputs: &crate::solvers::steady::SteadyInputs,
+    raw_units: UnitSystem,
+    stations: &[f64],
+) -> Vec<Option<usize>> {
+    let Some(ref centers) = inputs.culvert_stations else {
+        return vec![];
+    };
+    centers
+        .iter()
+        .enumerate()
+        .map(|(c_idx, &center)| {
+            let faces = resolve_culvert_face_stations_metric(
+                center,
+                raw_units,
+                approach_reach_user_steady(inputs, c_idx),
+                departure_reach_user_steady(inputs, c_idx),
+                culvert_length_user_steady(inputs, c_idx),
+            );
+            if culvert_has_explicit_bounds_steady(inputs, c_idx) {
+                find_culvert_face_interval(faces, stations)
+            } else {
+                fallback_culvert_interval(faces, center, raw_units, stations)
+            }
+        })
+        .collect()
+}
 
 fn fallback_culvert_interval(
     faces: CulvertFaceStations,
@@ -295,10 +323,8 @@ mod tests {
             .map(|_| flat_xs(0.0).generate_lookup_table(20))
             .collect();
         let mut z_mins: Vec<f64> = stations.iter().map(|_| 0.0).collect();
-        let mut xs: Vec<Option<CrossSection>> = stations
-            .iter()
-            .map(|&st| Some(flat_xs(st)))
-            .collect();
+        let mut xs: Vec<Option<CrossSection>> =
+            stations.iter().map(|&st| Some(flat_xs(st))).collect();
 
         let inputs = crate::solvers::steady::SteadyInputs {
             culvert_stations: Some(vec![500.0]),
@@ -365,26 +391,16 @@ mod tests {
 
     #[test]
     fn resolve_faces_center_plus_minus_half_length() {
-        let faces = resolve_culvert_face_stations_metric(
-            500.0,
-            UnitSystem::Metric,
-            None,
-            None,
-            100.0,
-        );
+        let faces =
+            resolve_culvert_face_stations_metric(500.0, UnitSystem::Metric, None, None, 100.0);
         assert!((faces.us_station_m - 550.0).abs() < 1e-9);
         assert!((faces.ds_station_m - 450.0).abs() < 1e-9);
     }
 
     #[test]
     fn resolve_faces_zero_length_collapses_to_center() {
-        let faces = resolve_culvert_face_stations_metric(
-            500.0,
-            UnitSystem::Metric,
-            None,
-            None,
-            0.0,
-        );
+        let faces =
+            resolve_culvert_face_stations_metric(500.0, UnitSystem::Metric, None, None, 0.0);
         assert!((faces.us_station_m - 500.0).abs() < 1e-9);
         assert!((faces.ds_station_m - 500.0).abs() < 1e-9);
     }
@@ -426,10 +442,8 @@ mod tests {
             .map(|_| flat_xs(0.0).generate_lookup_table(10))
             .collect::<Vec<_>>();
         let mut z_mins = vec![0.0; stations.len()];
-        let mut xs: Vec<Option<CrossSection>> = stations
-            .iter()
-            .map(|&st| Some(flat_xs(st)))
-            .collect();
+        let mut xs: Vec<Option<CrossSection>> =
+            stations.iter().map(|&st| Some(flat_xs(st))).collect();
         let inputs = crate::solvers::steady::SteadyInputs::default();
         let intervals = apply_culvert_reach_layout_steady(
             &inputs,
@@ -451,10 +465,8 @@ mod tests {
             .map(|_| flat_xs(0.0).generate_lookup_table(20))
             .collect();
         let mut z_mins: Vec<f64> = stations.iter().map(|_| 0.0).collect();
-        let mut xs: Vec<Option<CrossSection>> = stations
-            .iter()
-            .map(|&st| Some(flat_xs(st)))
-            .collect();
+        let mut xs: Vec<Option<CrossSection>> =
+            stations.iter().map(|&st| Some(flat_xs(st))).collect();
 
         let inputs = crate::solvers::steady::SteadyInputs {
             culvert_stations: Some(vec![500.0]),
@@ -474,7 +486,11 @@ mod tests {
 
         assert_eq!(intervals.len(), 1);
         assert!(intervals[0].is_some());
-        assert_eq!(stations.len(), 3, "no bounding cuts without explicit reach stations");
+        assert_eq!(
+            stations.len(),
+            3,
+            "no bounding cuts without explicit reach stations"
+        );
     }
 
     #[test]
@@ -484,8 +500,9 @@ mod tests {
             ..Default::default()
         };
         assert!(culvert_has_explicit_bounds_steady(&inputs, 0));
-        assert!(!culvert_has_explicit_bounds_steady(&crate::solvers::steady::SteadyInputs::default(), 0));
+        assert!(!culvert_has_explicit_bounds_steady(
+            &crate::solvers::steady::SteadyInputs::default(),
+            0
+        ));
     }
-
-
 }

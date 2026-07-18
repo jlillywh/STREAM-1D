@@ -205,6 +205,7 @@ pub(crate) fn bridge_headwater_implicit_rhs(
 }
 
 /// Tailwater residual for reverse-flow BC inversion: R = y_tw − TW_low(y_hw, Q).
+#[allow(dead_code)]
 pub(crate) fn bridge_tailwater_implicit_rhs(
     y_hw_metric: f64,
     y_tw_metric: f64,
@@ -288,6 +289,7 @@ pub(crate) fn bridge_tailwater_implicit_rhs(
     })
 }
 
+#[allow(dead_code)]
 fn tw_clamped_ge_low_chord(tw_m: f64, geom: &BridgeGeometry) -> bool {
     tw_m.max(geom.z_down_m + 1e-4) >= geom.low_chord_m
 }

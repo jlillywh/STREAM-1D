@@ -3,7 +3,7 @@
 use serde::Serialize;
 
 /// API contract version — increment when SteadyInputs / SteadyResult fields change.
-pub const API_VERSION: u32 = 38;
+pub const API_VERSION: u32 = 39;
 
 /// Engine package version (keep in sync with `Cargo.toml`).
 pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -96,7 +96,8 @@ pub fn build_api_metadata() -> WasmApiMetadata {
             EnumEntry {
                 code: 4,
                 name: "PipeArch".to_string(),
-                description: "Corrugated pipe-arch; span = spring-line width, rise = total height".to_string(),
+                description: "Corrugated pipe-arch; span = spring-line width, rise = total height"
+                    .to_string(),
             },
             EnumEntry {
                 code: 5,
@@ -108,12 +109,19 @@ pub fn build_api_metadata() -> WasmApiMetadata {
                 name: "Horseshoe".to_string(),
                 description: "Horseshoe; span = spring-line width, rise = total height".to_string(),
             },
+            EnumEntry {
+                code: 7,
+                name: "Custom".to_string(),
+                description: "User-defined shape using area, perimeter, and top width tables"
+                    .to_string(),
+            },
         ],
         culvert_inlet_types: vec![
             EnumEntry {
                 code: 0,
                 name: "LegacyKeThreshold".to_string(),
-                description: "Infer nomograph from entrance loss Ke (backward compatible)".to_string(),
+                description: "Infer nomograph from entrance loss Ke (backward compatible)"
+                    .to_string(),
             },
             EnumEntry {
                 code: 1,
@@ -174,6 +182,8 @@ pub fn build_api_metadata() -> WasmApiMetadata {
                 "culvert_crest_elevs".to_string(),
                 "culvert_weir_coeffs".to_string(),
                 "culvert_weir_lengths".to_string(),
+                "culvert_chart_numbers".to_string(),
+                "culvert_scale_numbers".to_string(),
             ],
             outputs: vec!["culvert_control_types".to_string()],
         },
@@ -370,17 +380,20 @@ pub fn build_api_metadata() -> WasmApiMetadata {
             EnumEntry {
                 code: 0,
                 name: "CombinedDownstream".to_string(),
-                description: "Merge culverts and bridges; couple downstream structures first".to_string(),
+                description: "Merge culverts and bridges; couple downstream structures first"
+                    .to_string(),
             },
             EnumEntry {
                 code: 1,
                 name: "CulvertsFirst".to_string(),
-                description: "All culverts (downstream-first), then all bridges (downstream-first)".to_string(),
+                description: "All culverts (downstream-first), then all bridges (downstream-first)"
+                    .to_string(),
             },
             EnumEntry {
                 code: 2,
                 name: "BridgesFirst".to_string(),
-                description: "All bridges (downstream-first), then all culverts (downstream-first)".to_string(),
+                description: "All bridges (downstream-first), then all culverts (downstream-first)"
+                    .to_string(),
             },
         ],
     }
@@ -395,7 +408,7 @@ mod tests {
     fn test_api_metadata_serializes() {
         let json = serde_json::to_string(&build_api_metadata()).unwrap();
         assert!(json.contains("culvert_inlet_types"));
-        assert!(json.contains("\"api_version\":38"));
+        assert!(json.contains("\"api_version\":39"));
         assert!(json.contains("structure_coupling_orders"));
     }
 
@@ -425,6 +438,9 @@ mod tests {
             culvert_barrel_depths: Some(vec![3.0]),
             culvert_barrel_velocities: Some(vec![5.0]),
             culvert_barrel_froude: Some(vec![0.8]),
+            inline_structure_wsel_inlet: None,
+            inline_structure_wsel_outlet: None,
+            inline_structure_q_weirs: None,
         })
         .unwrap();
         assert!(result_json.contains("culvert_control_types"));

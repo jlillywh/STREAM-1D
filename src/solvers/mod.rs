@@ -9,6 +9,7 @@ pub mod bridge_roadway_compose;
 pub mod pier_geometry;
 pub mod deck_vent_geometry;
 pub mod junction;
+pub mod inline_structure_reach_layout;
 
 pub use bridge::{
     compute_bridge_rating_curve, solve_bridge_from_params, BridgeRatingCurveInputs,

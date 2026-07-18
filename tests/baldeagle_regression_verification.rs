@@ -69,7 +69,6 @@ fn test_baldeagle_regression() {
     println!("Station 177 (RM 659.94) - Solved: {:.4} ft | HEC: 543.35 ft", wsel_177_calc);
     println!("  S1D Area: {:.2} sq ft | HEC Area: 4433.15 sq ft", s1d_area_177_ft);
     println!("  S1D Conv: {:.0} | HEC Conv: {:.0}", s1d_conv_177_us, 20000.0 / (0.001001f64).sqrt());
-    println!("  S1D Alpha: {:.4}", row_177.alpha);
 
     // Station 176 (RM 1212.86)
     let wsel_176_calc = result.wsel[idx_176];
@@ -79,7 +78,6 @@ fn test_baldeagle_regression() {
     println!("Station 176 (RM 1212.86) - Solved: {:.4} ft | HEC: 543.80 ft", wsel_176_calc);
     println!("  S1D Area: {:.2} sq ft | HEC Area: 3571.11 sq ft", s1d_area_176_ft);
     println!("  S1D Conv: {:.0} | HEC Conv: {:.0}", s1d_conv_176_us, 20000.0 / (0.000921f64).sqrt());
-    println!("  S1D Alpha: {:.4}", row_176.alpha);
 
     println!("{}", "=".repeat(50));
 

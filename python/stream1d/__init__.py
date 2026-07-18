@@ -12,6 +12,7 @@ CULVERT_SHAPE_CONSPAN = 3
 CULVERT_SHAPE_PIPE_ARCH = 4
 CULVERT_SHAPE_ELLIPTICAL = 5
 CULVERT_SHAPE_HORSESHOE = 6
+CULVERT_SHAPE_CUSTOM = 7
 
 # Import native binary solver
 try:
@@ -104,6 +105,8 @@ class SteadyInputs:
         culvert_depth_bottom_ns: Optional[List[float]] = None,
         culvert_depth_blockeds: Optional[List[float]] = None,
         culvert_inlet_types: Optional[List[int]] = None,
+        culvert_chart_numbers: Optional[List[int]] = None,
+        culvert_scale_numbers: Optional[List[int]] = None,
         culvert_z_ups: Optional[List[float]] = None,
         culvert_z_downs: Optional[List[float]] = None,
         culvert_crest_elevs: Optional[List[float]] = None,
@@ -113,6 +116,10 @@ class SteadyInputs:
         culvert_active_barrels: Optional[List[int]] = None,
         culvert_barrel_spans: Optional[List[List[float]]] = None,
         culvert_barrel_rises: Optional[List[List[float]]] = None,
+        culvert_custom_shape_tbl_ys: Optional[List[List[float]]] = None,
+        culvert_custom_shape_tbl_areas: Optional[List[List[float]]] = None,
+        culvert_custom_shape_tbl_perimeters: Optional[List[List[float]]] = None,
+        culvert_custom_shape_tbl_top_widths: Optional[List[List[float]]] = None,
         # Bridge parameters
         bridge_stations: Optional[List[float]] = None,
         bridge_low_chords: Optional[List[float]] = None,
@@ -207,6 +214,8 @@ class SteadyInputs:
         self.culvert_depth_bottom_ns = culvert_depth_bottom_ns or []
         self.culvert_depth_blockeds = culvert_depth_blockeds or []
         self.culvert_inlet_types = culvert_inlet_types or []
+        self.culvert_chart_numbers = culvert_chart_numbers or []
+        self.culvert_scale_numbers = culvert_scale_numbers or []
         self.culvert_z_ups = culvert_z_ups or []
         self.culvert_z_downs = culvert_z_downs or []
         self.culvert_crest_elevs = culvert_crest_elevs or []
@@ -216,6 +225,10 @@ class SteadyInputs:
         self.culvert_active_barrels = culvert_active_barrels or []
         self.culvert_barrel_spans = culvert_barrel_spans or []
         self.culvert_barrel_rises = culvert_barrel_rises or []
+        self.culvert_custom_shape_tbl_ys = culvert_custom_shape_tbl_ys or []
+        self.culvert_custom_shape_tbl_areas = culvert_custom_shape_tbl_areas or []
+        self.culvert_custom_shape_tbl_perimeters = culvert_custom_shape_tbl_perimeters or []
+        self.culvert_custom_shape_tbl_top_widths = culvert_custom_shape_tbl_top_widths or []
         self.bridge_stations = bridge_stations or []
         self.bridge_low_chords = bridge_low_chords or []
         self.bridge_high_chords = bridge_high_chords or []
@@ -309,6 +322,8 @@ class SteadyInputs:
             'culvert_depth_bottom_ns': self.culvert_depth_bottom_ns,
             'culvert_depth_blockeds': self.culvert_depth_blockeds,
             'culvert_inlet_types': self.culvert_inlet_types,
+            'culvert_chart_numbers': self.culvert_chart_numbers,
+            'culvert_scale_numbers': self.culvert_scale_numbers,
             'culvert_z_ups': self.culvert_z_ups,
             'culvert_z_downs': self.culvert_z_downs,
             'culvert_crest_elevs': self.culvert_crest_elevs,
@@ -318,6 +333,10 @@ class SteadyInputs:
             'culvert_active_barrels': self.culvert_active_barrels,
             'culvert_barrel_spans': self.culvert_barrel_spans,
             'culvert_barrel_rises': self.culvert_barrel_rises,
+            'culvert_custom_shape_tbl_ys': self.culvert_custom_shape_tbl_ys,
+            'culvert_custom_shape_tbl_areas': self.culvert_custom_shape_tbl_areas,
+            'culvert_custom_shape_tbl_perimeters': self.culvert_custom_shape_tbl_perimeters,
+            'culvert_custom_shape_tbl_top_widths': self.culvert_custom_shape_tbl_top_widths,
             'bridge_stations': self.bridge_stations,
             'bridge_low_chords': self.bridge_low_chords,
             'bridge_high_chords': self.bridge_high_chords,
