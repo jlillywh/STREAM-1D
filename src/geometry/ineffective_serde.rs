@@ -1,9 +1,7 @@
 use crate::geometry::{IneffectiveBlock, IneffectiveFlowAreas};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-fn blocks_from_station_elevation_pairs(
-    pairs: &[serde_json::Value],
-) -> Result<Vec<IneffectiveBlock>, String> {
+fn blocks_from_station_elevation_pairs(pairs: &[serde_json::Value]) -> Result<Vec<IneffectiveBlock>, String> {
     pairs
         .iter()
         .map(|pair| {
@@ -19,7 +17,10 @@ fn blocks_from_station_elevation_pairs(
             let elevation = arr[1]
                 .as_f64()
                 .ok_or_else(|| "ineffective elevation must be a number".to_string())?;
-            Ok(IneffectiveBlock { station, elevation })
+            Ok(IneffectiveBlock {
+                station,
+                elevation,
+            })
         })
         .collect()
 }
@@ -101,13 +102,15 @@ where
             }
             if obj.contains_key("left") || obj.contains_key("right") {
                 let left_blocks = match obj.get("left") {
-                    Some(serde_json::Value::Array(arr)) => blocks_from_station_elevation_pairs(arr)
-                        .map_err(serde::de::Error::custom)?,
+                    Some(serde_json::Value::Array(arr)) => {
+                        blocks_from_station_elevation_pairs(arr).map_err(serde::de::Error::custom)?
+                    }
                     _ => vec![],
                 };
                 let right_blocks = match obj.get("right") {
-                    Some(serde_json::Value::Array(arr)) => blocks_from_station_elevation_pairs(arr)
-                        .map_err(serde::de::Error::custom)?,
+                    Some(serde_json::Value::Array(arr)) => {
+                        blocks_from_station_elevation_pairs(arr).map_err(serde::de::Error::custom)?
+                    }
                     _ => vec![],
                 };
                 if left_blocks.is_empty() && right_blocks.is_empty() {
@@ -122,9 +125,7 @@ where
                 "ineffective areas must use left_blocks/right_blocks, left_stations/left_elevations pairs, or left/right [[station, elevation], ...]",
             ))
         }
-        _ => Err(serde::de::Error::custom(
-            "ineffective areas must be an object",
-        )),
+        _ => Err(serde::de::Error::custom("ineffective areas must be an object")),
     }
 }
 
@@ -311,8 +312,7 @@ mod tests {
 
     #[test]
     fn cross_section_ineffective_serializes_canonical_blocks() {
-        let areas =
-            IneffectiveFlowAreas::from_block_pairs(&[5.0], &[4.0], &[35.0], &[5.0]).unwrap();
+        let areas = IneffectiveFlowAreas::from_block_pairs(&[5.0], &[4.0], &[35.0], &[5.0]).unwrap();
         let out = serde_json::to_string(&XsOut {
             ineffective_flow_areas: Some(areas),
         })
@@ -323,15 +323,18 @@ mod tests {
 
     #[test]
     fn cross_section_rejects_mismatched_station_elevation_lengths() {
-        assert!(serde_json::from_str::<XsIneffective>(
-            r#"{"ineffective_flow_areas":{"left_stations":[5.0],"left_elevations":[4.0,4.5]}}"#,
-        )
-        .is_err());
+        assert!(
+            serde_json::from_str::<XsIneffective>(
+                r#"{"ineffective_flow_areas":{"left_stations":[5.0],"left_elevations":[4.0,4.5]}}"#,
+            )
+            .is_err()
+        );
     }
 
     #[test]
     fn cross_section_null_ineffective_deserializes_none() {
-        let xs: XsIneffective = serde_json::from_str(r#"{"ineffective_flow_areas":null}"#).unwrap();
+        let xs: XsIneffective =
+            serde_json::from_str(r#"{"ineffective_flow_areas":null}"#).unwrap();
         assert!(xs.ineffective_flow_areas.is_none());
     }
 

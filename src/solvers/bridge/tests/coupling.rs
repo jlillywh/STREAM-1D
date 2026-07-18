@@ -550,20 +550,8 @@ fn test_deck_profile_hump_raises_headwater_at_low_flow() {
         hw_profile >= hw_flat,
         "center deck hump should not reduce headwater, flat={hw_flat}, profile={hw_profile}"
     );
-    assert_eq!(
-        deck.low_elevations_m
-            .iter()
-            .cloned()
-            .fold(f64::INFINITY, f64::min),
-        5.0
-    );
-    assert_eq!(
-        deck.low_elevations_m
-            .iter()
-            .cloned()
-            .fold(f64::NEG_INFINITY, f64::max),
-        6.5
-    );
+    assert_eq!(deck.low_elevations_m.iter().cloned().fold(f64::INFINITY, f64::min), 5.0);
+    assert_eq!(deck.low_elevations_m.iter().cloned().fold(f64::NEG_INFINITY, f64::max), 6.5);
 }
 #[test]
 fn test_ineffective_flow_raises_bridge_headwater() {
@@ -588,7 +576,8 @@ fn test_ineffective_flow_raises_bridge_headwater() {
         guide_banks: None,
     };
     let sections_none = BridgeSectionContext::default();
-    let ineff = IneffectiveFlowAreas::from_block_pairs(&[30.0], &[3.0], &[], &[]).unwrap();
+    let ineff =
+        IneffectiveFlowAreas::from_block_pairs(&[30.0], &[3.0], &[], &[]).unwrap();
     let sections_ineff = BridgeSectionContext {
         ineffective_up: Some(ineff.clone()),
         ineffective_down: Some(ineff),
@@ -645,7 +634,7 @@ fn test_ineffective_flow_raises_bridge_headwater() {
 #[test]
 fn test_bu_section_ineffective_raises_bridge_headwater() {
     use crate::solvers::bridge_interior::{
-        resolve_bridge_face_solve_geometry, BridgeFaceSolveParams, BridgeInteriorInput,
+        BridgeFaceSolveParams, BridgeInteriorInput, resolve_bridge_face_solve_geometry,
     };
 
     let table_up = rectangular_table(10.0, 0.0, 50);
@@ -666,11 +655,12 @@ fn test_bu_section_ineffective_raises_bridge_headwater() {
         coeff_contraction: None,
         coeff_expansion: None,
         ineffective_flow_areas: None,
-        guide_banks: None,
+    guide_banks: None,
     };
     let mut bu = reach.clone();
-    bu.ineffective_flow_areas =
-        Some(IneffectiveFlowAreas::from_block_pairs(&[], &[], &[30.0], &[3.0]).unwrap());
+    bu.ineffective_flow_areas = Some(
+        IneffectiveFlowAreas::from_block_pairs(&[], &[], &[30.0], &[3.0]).unwrap(),
+    );
     let interior_none = BridgeInteriorInput {
         bu: Some(reach.clone()),
         bd: Some(reach.clone()),
@@ -838,10 +828,12 @@ fn test_multi_block_ineffective_raises_bridge_headwater() {
     };
     let multi = BridgeSectionContext {
         ineffective_up: Some(
-            IneffectiveFlowAreas::from_block_pairs(&[20.0, 30.0], &[2.0, 3.5], &[], &[]).unwrap(),
+            IneffectiveFlowAreas::from_block_pairs(&[20.0, 30.0], &[2.0, 3.5], &[], &[])
+                .unwrap(),
         ),
         ineffective_down: Some(
-            IneffectiveFlowAreas::from_block_pairs(&[20.0, 30.0], &[2.0, 3.5], &[], &[]).unwrap(),
+            IneffectiveFlowAreas::from_block_pairs(&[20.0, 30.0], &[2.0, 3.5], &[], &[])
+                .unwrap(),
         ),
         xs_up: Some(xs.clone()),
         xs_down: Some(xs),
@@ -849,44 +841,12 @@ fn test_multi_block_ineffective_raises_bridge_headwater() {
     };
 
     let hw_single = solve_bridge_wsel(
-        20.0,
-        5.0,
-        7.0,
-        0.0,
-        0,
-        0,
-        1.44,
-        0.5,
-        0.0,
-        0.0,
-        2.5,
-        UnitSystem::Metric,
-        &table_up,
-        &table_down,
-        &coupling,
-        50.0,
-        None,
-        Some(&single),
+        20.0, 5.0, 7.0, 0.0, 0, 0, 1.44, 0.5, 0.0, 0.0, 2.5,
+        UnitSystem::Metric, &table_up, &table_down, &coupling, 50.0, None, Some(&single),
     );
     let hw_multi = solve_bridge_wsel(
-        20.0,
-        5.0,
-        7.0,
-        0.0,
-        0,
-        0,
-        1.44,
-        0.5,
-        0.0,
-        0.0,
-        2.5,
-        UnitSystem::Metric,
-        &table_up,
-        &table_down,
-        &coupling,
-        50.0,
-        None,
-        Some(&multi),
+        20.0, 5.0, 7.0, 0.0, 0, 0, 1.44, 0.5, 0.0, 0.0, 2.5,
+        UnitSystem::Metric, &table_up, &table_down, &coupling, 50.0, None, Some(&multi),
     );
     assert!(
         hw_multi >= hw_single,
@@ -939,44 +899,12 @@ fn test_separate_us_ds_ineffective_elevations() {
     };
 
     let hw_split = solve_bridge_wsel(
-        20.0,
-        5.0,
-        7.0,
-        0.0,
-        0,
-        0,
-        1.44,
-        0.5,
-        0.0,
-        0.0,
-        2.5,
-        UnitSystem::Metric,
-        &table_up,
-        &table_down,
-        &coupling,
-        50.0,
-        None,
-        Some(&sections_split),
+        20.0, 5.0, 7.0, 0.0, 0, 0, 1.44, 0.5, 0.0, 0.0, 2.5,
+        UnitSystem::Metric, &table_up, &table_down, &coupling, 50.0, None, Some(&sections_split),
     );
     let hw_shared = solve_bridge_wsel(
-        20.0,
-        5.0,
-        7.0,
-        0.0,
-        0,
-        0,
-        1.44,
-        0.5,
-        0.0,
-        0.0,
-        2.5,
-        UnitSystem::Metric,
-        &table_up,
-        &table_down,
-        &coupling,
-        50.0,
-        None,
-        Some(&sections_shared),
+        20.0, 5.0, 7.0, 0.0, 0, 0, 1.44, 0.5, 0.0, 0.0, 2.5,
+        UnitSystem::Metric, &table_up, &table_down, &coupling, 50.0, None, Some(&sections_shared),
     );
     assert!(
         hw_split >= hw_shared,
@@ -1006,44 +934,12 @@ fn test_bridge_skew_increases_low_flow_headwater() {
         ..Default::default()
     };
     let hw_plain = solve_bridge_wsel(
-        20.0,
-        5.0,
-        7.0,
-        0.0,
-        0,
-        0,
-        1.44,
-        0.5,
-        0.0,
-        0.0,
-        2.5,
-        UnitSystem::Metric,
-        &table_up,
-        &table_down,
-        &coupling,
-        50.0,
-        None,
-        Some(&plain),
+        20.0, 5.0, 7.0, 0.0, 0, 0, 1.44, 0.5, 0.0, 0.0, 2.5,
+        UnitSystem::Metric, &table_up, &table_down, &coupling, 50.0, None, Some(&plain),
     );
     let hw_skew = solve_bridge_wsel(
-        20.0,
-        5.0,
-        7.0,
-        0.0,
-        0,
-        0,
-        1.44,
-        0.5,
-        0.0,
-        0.0,
-        2.5,
-        UnitSystem::Metric,
-        &table_up,
-        &table_down,
-        &coupling,
-        50.0,
-        None,
-        Some(&skewed),
+        20.0, 5.0, 7.0, 0.0, 0, 0, 1.44, 0.5, 0.0, 0.0, 2.5,
+        UnitSystem::Metric, &table_up, &table_down, &coupling, 50.0, None, Some(&skewed),
     );
     assert!(
         hw_skew >= hw_plain,
@@ -1076,44 +972,12 @@ fn test_explicit_pier_stations_increase_headwater_vs_even_spacing() {
         ..Default::default()
     };
     let hw_two = solve_bridge_wsel(
-        15.0,
-        5.0,
-        7.0,
-        0.5,
-        2,
-        0,
-        1.44,
-        0.5,
-        0.0,
-        0.0,
-        3.0,
-        UnitSystem::Metric,
-        &table_up,
-        &table_down,
-        &coupling,
-        50.0,
-        Some(&deck),
-        Some(&two_piers),
+        15.0, 5.0, 7.0, 0.5, 2, 0, 1.44, 0.5, 0.0, 0.0, 3.0,
+        UnitSystem::Metric, &table_up, &table_down, &coupling, 50.0, Some(&deck), Some(&two_piers),
     );
     let hw_three = solve_bridge_wsel(
-        15.0,
-        5.0,
-        7.0,
-        0.5,
-        3,
-        0,
-        1.44,
-        0.5,
-        0.0,
-        0.0,
-        3.0,
-        UnitSystem::Metric,
-        &table_up,
-        &table_down,
-        &coupling,
-        50.0,
-        Some(&deck),
-        Some(&three_piers),
+        15.0, 5.0, 7.0, 0.5, 3, 0, 1.44, 0.5, 0.0, 0.0, 3.0,
+        UnitSystem::Metric, &table_up, &table_down, &coupling, 50.0, Some(&deck), Some(&three_piers),
     );
     assert!(
         hw_three > hw_two,
@@ -1150,28 +1014,12 @@ fn test_guide_banks_narrow_approach_raises_energy_headwater() {
         None,
     );
     let hw_plain = solve_bridge_wsel(
-        args.0, args.1, args.2, args.3, args.4, args.5, args.6, args.7, args.8, args.9, args.10,
-        args.11, args.12, args.13, args.14, args.15, args.16, None,
+        args.0, args.1, args.2, args.3, args.4, args.5, args.6, args.7, args.8, args.9,
+        args.10, args.11, args.12, args.13, args.14, args.15, args.16, None,
     );
     let hw_guided = solve_bridge_wsel(
-        args.0,
-        args.1,
-        args.2,
-        args.3,
-        args.4,
-        args.5,
-        args.6,
-        args.7,
-        args.8,
-        args.9,
-        args.10,
-        args.11,
-        args.12,
-        args.13,
-        args.14,
-        args.15,
-        args.16,
-        Some(&sections),
+        args.0, args.1, args.2, args.3, args.4, args.5, args.6, args.7, args.8, args.9,
+        args.10, args.11, args.12, args.13, args.14, args.15, args.16, Some(&sections),
     );
     assert!(
         hw_guided > hw_plain + 0.001,
@@ -1234,15 +1082,7 @@ fn test_approach_narrowing_vs_reach_only_contraction_coefficient() {
     );
 
     let wsel = hw_guided;
-    let a_bu = obstructed_hydraulics(
-        &table_up,
-        wsel,
-        geom_guided.z_up_m,
-        &geom_guided,
-        true,
-        false,
-    )
-    .a_eff;
+    let a_bu = obstructed_hydraulics(&table_up, wsel, geom_guided.z_up_m, &geom_guided, true, false).a_eff;
     let a_guided = reach_cut_flow_area(&geom_guided, true, wsel).expect("guided approach area");
     let opening_wsel = wsel.min(tw).min(geom_guided.low_chord_m);
     let (props_open, _) =
@@ -1250,8 +1090,10 @@ fn test_approach_narrowing_vs_reach_only_contraction_coefficient() {
     let a_open = props_open.a_eff.max(1e-5);
     let k = coupling.coeff_contraction;
 
-    let h_reach_only = k * (velocity_head(q, a_bu) - velocity_head(q, a_open)).max(0.0);
-    let h_approach_narrowed = k * (velocity_head(q, a_guided) - velocity_head(q, a_open)).max(0.0);
+    let h_reach_only =
+        k * (velocity_head(q, a_bu) - velocity_head(q, a_open)).max(0.0);
+    let h_approach_narrowed =
+        k * (velocity_head(q, a_guided) - velocity_head(q, a_open)).max(0.0);
 
     assert!(
         a_guided < a_bu - 5.0,
@@ -1269,7 +1111,8 @@ fn test_approach_narrowing_vs_reach_only_contraction_coefficient() {
     // At the reach-only solution, applying the narrowed approach loss would require more headwater.
     let a_guided_at_reach_hw =
         reach_cut_flow_area(&geom_guided, true, hw_reach_only).expect("guided area at reach HW");
-    let h_extra = k * (velocity_head(q, a_guided_at_reach_hw) - velocity_head(q, a_bu)).max(0.0);
+    let h_extra = k
+        * (velocity_head(q, a_guided_at_reach_hw) - velocity_head(q, a_bu)).max(0.0);
     assert!(
         h_extra > 1e-4,
         "incremental contraction at reach-only HW should be positive"
@@ -1296,47 +1139,16 @@ fn test_wspro_guide_banks_narrow_approach_raises_headwater() {
         ..Default::default()
     };
     let args = (
-        20.0,
-        5.0,
-        7.0,
-        0.0,
-        0,
-        0,
-        1.44,
-        0.5,
-        0.0,
-        0.0,
-        2.5,
-        UnitSystem::Metric,
-        &table_up,
-        &table_down,
-        &coupling,
-        50.0,
-        None,
+        20.0, 5.0, 7.0, 0.0, 0, 0, 1.44, 0.5, 0.0, 0.0, 2.5,
+        UnitSystem::Metric, &table_up, &table_down, &coupling, 50.0, None,
     );
     let hw_plain = solve_bridge_wsel(
-        args.0, args.1, args.2, args.3, args.4, args.5, args.6, args.7, args.8, args.9, args.10,
-        args.11, args.12, args.13, args.14, args.15, args.16, None,
+        args.0, args.1, args.2, args.3, args.4, args.5, args.6, args.7, args.8, args.9,
+        args.10, args.11, args.12, args.13, args.14, args.15, args.16, None,
     );
     let hw_guided = solve_bridge_wsel(
-        args.0,
-        args.1,
-        args.2,
-        args.3,
-        args.4,
-        args.5,
-        args.6,
-        args.7,
-        args.8,
-        args.9,
-        args.10,
-        args.11,
-        args.12,
-        args.13,
-        args.14,
-        args.15,
-        args.16,
-        Some(&sections),
+        args.0, args.1, args.2, args.3, args.4, args.5, args.6, args.7, args.8, args.9,
+        args.10, args.11, args.12, args.13, args.14, args.15, args.16, Some(&sections),
     );
     assert!(
         hw_guided > hw_plain + 0.001,
@@ -1620,23 +1432,8 @@ fn bridge_flow_regime_label_covers_high_and_low_branches() {
     };
     assert_eq!(
         bridge_flow_regime_label(
-            6.0,
-            6.5,
-            5.0,
-            7.0,
-            UnitSystem::Metric,
-            20.0,
-            &table,
-            &table,
-            &coupling_energy,
-            50.0,
-            0.0,
-            0,
-            0,
-            1.44,
-            0.8,
-            0.0,
-            0.0,
+            6.0, 6.5, 5.0, 7.0, UnitSystem::Metric, 20.0, &table, &table, &coupling_energy,
+            50.0, 0.0, 0, 0, 1.44, 0.8, 0.0, 0.0,
         ),
         "energy"
     );
@@ -1644,45 +1441,15 @@ fn bridge_flow_regime_label_covers_high_and_low_branches() {
     let coupling_weir = BridgeCouplingParams::default();
     assert_eq!(
         bridge_flow_regime_label(
-            6.0,
-            7.5,
-            5.0,
-            7.0,
-            UnitSystem::Metric,
-            20.0,
-            &table,
-            &table,
-            &coupling_weir,
-            50.0,
-            0.0,
-            0,
-            0,
-            1.44,
-            0.8,
-            0.0,
-            0.0,
+            6.0, 7.5, 5.0, 7.0, UnitSystem::Metric, 20.0, &table, &table, &coupling_weir,
+            50.0, 0.0, 0, 0, 1.44, 0.8, 0.0, 0.0,
         ),
         "weir"
     );
     assert_eq!(
         bridge_flow_regime_label(
-            6.0,
-            6.2,
-            5.0,
-            7.0,
-            UnitSystem::Metric,
-            20.0,
-            &table,
-            &table,
-            &coupling_weir,
-            50.0,
-            0.0,
-            0,
-            0,
-            1.44,
-            0.8,
-            0.0,
-            0.0,
+            6.0, 6.2, 5.0, 7.0, UnitSystem::Metric, 20.0, &table, &table, &coupling_weir,
+            50.0, 0.0, 0, 0, 1.44, 0.8, 0.0, 0.0,
         ),
         "pressure"
     );
@@ -1692,23 +1459,8 @@ fn bridge_flow_regime_label_covers_high_and_low_branches() {
         ..Default::default()
     };
     let low_regime = bridge_flow_regime_label(
-        2.5,
-        3.0,
-        5.0,
-        7.0,
-        UnitSystem::Metric,
-        15.0,
-        &table,
-        &table,
-        &coupling_low,
-        50.0,
-        0.5,
-        1,
-        0,
-        1.44,
-        0.8,
-        0.0,
-        0.0,
+        2.5, 3.0, 5.0, 7.0, UnitSystem::Metric, 15.0, &table, &table, &coupling_low,
+        50.0, 0.5, 1, 0, 1.44, 0.8, 0.0, 0.0,
     );
     assert!(
         matches!(low_regime.as_str(), "low_a" | "low_b" | "low_c"),
@@ -1812,67 +1564,22 @@ fn bridge_flow_regime_label_each_low_class_and_us_customary() {
 
     assert_eq!(
         bridge_flow_regime_label(
-            3.0,
-            3.5,
-            5.0,
-            7.0,
-            UnitSystem::Metric,
-            15.0,
-            &table,
-            &table,
-            &coupling,
-            50.0,
-            0.5,
-            2,
-            0,
-            1.44,
-            0.8,
-            0.0,
-            0.0,
+            3.0, 3.5, 5.0, 7.0, UnitSystem::Metric, 15.0, &table, &table, &coupling,
+            50.0, 0.5, 2, 0, 1.44, 0.8, 0.0, 0.0,
         ),
         "low_a"
     );
 
     let (q_b, tw_b, pier_w, num_piers, table_up, table_down) = class_b_energy_case();
     let geom_b = build_bridge_geometry(
-        5.0,
-        7.0,
-        pier_w,
-        num_piers,
-        0,
-        1.44,
-        0.5,
-        0.0,
-        0.0,
-        UnitSystem::Metric,
-        &coupling,
-        15.0,
-        None,
-        None,
+        5.0, 7.0, pier_w, num_piers, 0, 1.44, 0.5, 0.0, 0.0,
+        UnitSystem::Metric, &coupling, 15.0, None, None,
     );
-    assert_eq!(
-        classify_low_flow(q_b, tw_b, &geom_b, &table_up, &table_down),
-        LowFlowClass::B
-    );
+    assert_eq!(classify_low_flow(q_b, tw_b, &geom_b, &table_up, &table_down), LowFlowClass::B);
     assert_eq!(
         bridge_flow_regime_label(
-            tw_b,
-            tw_b + 0.5,
-            5.0,
-            7.0,
-            UnitSystem::Metric,
-            q_b,
-            &table_up,
-            &table_down,
-            &coupling,
-            15.0,
-            pier_w,
-            num_piers,
-            0,
-            1.44,
-            0.5,
-            0.0,
-            0.0,
+            tw_b, tw_b + 0.5, 5.0, 7.0, UnitSystem::Metric, q_b, &table_up, &table_down, &coupling,
+            15.0, pier_w, num_piers, 0, 1.44, 0.5, 0.0, 0.0,
         ),
         "low_b"
     );
@@ -1882,41 +1589,14 @@ fn bridge_flow_regime_label_each_low_class_and_us_customary() {
     'search: for q in [40.0, 60.0, 80.0, 100.0] {
         for tw in [0.5, 0.75, 1.0, 1.25] {
             let geom_c = build_bridge_geometry(
-                5.0,
-                7.0,
-                0.0,
-                0,
-                0,
-                1.44,
-                0.5,
-                0.0,
-                0.0,
-                UnitSystem::Metric,
-                &coupling,
-                50.0,
-                None,
-                None,
+                5.0, 7.0, 0.0, 0, 0, 1.44, 0.5, 0.0, 0.0,
+                UnitSystem::Metric, &coupling, 50.0, None, None,
             );
             if classify_low_flow(q, tw, &geom_c, &table_narrow, &table_narrow) == LowFlowClass::C {
                 assert_eq!(
                     bridge_flow_regime_label(
-                        tw,
-                        tw + 0.2,
-                        5.0,
-                        7.0,
-                        UnitSystem::Metric,
-                        q,
-                        &table_narrow,
-                        &table_narrow,
-                        &coupling,
-                        50.0,
-                        0.0,
-                        0,
-                        0,
-                        1.44,
-                        0.5,
-                        0.0,
-                        0.0,
+                        tw, tw + 0.2, 5.0, 7.0, UnitSystem::Metric, q, &table_narrow, &table_narrow,
+                        &coupling, 50.0, 0.0, 0, 0, 1.44, 0.5, 0.0, 0.0,
                     ),
                     "low_c"
                 );
@@ -1925,29 +1605,11 @@ fn bridge_flow_regime_label_each_low_class_and_us_customary() {
             }
         }
     }
-    assert!(
-        found_c,
-        "expected a Class C low-flow case for regime label coverage"
-    );
+    assert!(found_c, "expected a Class C low-flow case for regime label coverage");
 
     let us_label = bridge_flow_regime_label(
-        8.0,
-        10.0,
-        16.0,
-        20.0,
-        UnitSystem::USCustomary,
-        100.0,
-        &table,
-        &table,
-        &coupling,
-        150.0,
-        0.0,
-        0,
-        0,
-        1.44,
-        0.8,
-        0.0,
-        0.0,
+        8.0, 10.0, 16.0, 20.0, UnitSystem::USCustomary, 100.0, &table, &table, &coupling,
+        150.0, 0.0, 0, 0, 1.44, 0.8, 0.0, 0.0,
     );
     assert!(matches!(us_label.as_str(), "low_a" | "low_b" | "low_c"));
 }

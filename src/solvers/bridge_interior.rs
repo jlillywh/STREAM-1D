@@ -2242,4 +2242,33 @@ mod tests {
             .unwrap();
         assert!(tables[idx].interpolate(3.0).area < flat_table().interpolate(3.0).area);
     }
+
+    #[test]
+    fn test_remove_internal_nodes_inside_bounds_direct() {
+        let mut stations = vec![100.0, 80.0, 50.0, 20.0, 0.0];
+        let mut tables = vec![
+            GeometryTable { rows: vec![] },
+            GeometryTable { rows: vec![] },
+            GeometryTable { rows: vec![] },
+            GeometryTable { rows: vec![] },
+            GeometryTable { rows: vec![] },
+        ];
+        let mut z_mins = vec![0.0, 0.0, 0.0, 0.0, 0.0];
+        let mut xs = vec![None, None, None, None, None];
+
+        remove_internal_nodes_inside_bounds(
+            &mut stations,
+            &mut tables,
+            &mut z_mins,
+            &mut xs,
+            80.0,
+            20.0,
+        );
+
+        assert_eq!(stations, vec![100.0, 80.0, 20.0, 0.0]);
+        assert_eq!(tables.len(), 4);
+        assert_eq!(z_mins.len(), 4);
+        assert_eq!(xs.len(), 4);
+    }
 }
+

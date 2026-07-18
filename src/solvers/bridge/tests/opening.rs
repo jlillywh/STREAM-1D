@@ -263,10 +263,7 @@ fn test_obstructed_area_hand_calc_asymmetric_and_one_sided() {
     };
     let props_asym = obstructed_hydraulics(&table, 2.5, 0.0, &asymmetric, false, false);
     let hand_asym = hand_rectangular_a_eff(10.0, 2.5, 0.0, &asymmetric);
-    assert!(
-        (hand_asym - 22.5).abs() < 1e-6,
-        "hand A_eff@2.5 = {hand_asym}"
-    );
+    assert!((hand_asym - 22.5).abs() < 1e-6, "hand A_eff@2.5 = {hand_asym}");
     assert!(
         (props_asym.a_eff - hand_asym).abs() < 1e-3,
         "obstructed_hydraulics {:.4} vs hand {:.4}",
@@ -390,7 +387,13 @@ fn test_wspro_headwater_hand_calc_reference_cases() {
     for (name, mut coupling, a_eff_tw, expected_hw) in cases {
         coupling.low_flow_method = 4;
         let geom = BridgeGeometry {
-            abutments: resolve_abutments(&coupling.abutment, 0.0, 10.0, 1.0, UnitSystem::Metric),
+            abutments: resolve_abutments(
+                &coupling.abutment,
+                0.0,
+                10.0,
+                1.0,
+                UnitSystem::Metric,
+            ),
             length_m: coupling.length,
             wspro_coeff_c: coupling.wspro_coeff,
             coeff_contraction: coupling.coeff_contraction,
@@ -403,24 +406,8 @@ fn test_wspro_headwater_hand_calc_reference_cases() {
         );
 
         let hw = solve_bridge_wsel(
-            q,
-            5.0,
-            7.0,
-            0.0,
-            0,
-            0,
-            1.44,
-            0.5,
-            0.0,
-            0.0,
-            tw,
-            UnitSystem::Metric,
-            &table,
-            &table,
-            &coupling,
-            50.0,
-            None,
-            None,
+            q, 5.0, 7.0, 0.0, 0, 0, 1.44, 0.5, 0.0, 0.0, tw,
+            UnitSystem::Metric, &table, &table, &coupling, 50.0, None, None,
         );
         assert!(
             (hw - expected_hw).abs() < 0.002,
@@ -578,10 +565,7 @@ fn test_profile_pier_obstructed_area_matches_tapered_trapezoid() {
     let wsel = 2.0;
     let a_taper = obstructed_hydraulics(&table, wsel, 0.0, &tapered, false, false).a_eff;
     let a_profile = obstructed_hydraulics(&table, wsel, 0.0, &profile, false, false).a_eff;
-    assert!(
-        (a_taper - a_profile).abs() < 1e-6,
-        "taper={a_taper}, profile={a_profile}"
-    );
+    assert!((a_taper - a_profile).abs() < 1e-6, "taper={a_taper}, profile={a_profile}");
 }
 #[test]
 fn test_tapered_pier_skew_increases_opening_plane_blockage() {
@@ -629,7 +613,14 @@ fn test_submerged_footing_reduces_opening_area() {
         ..Default::default()
     };
     let shaft_only = BridgeGeometry {
-        pier_specs: resolve_pier_width_specs(1.0, &[5.0], 0.0, &[4.0], Some(&shaft_user), None),
+        pier_specs: resolve_pier_width_specs(
+            1.0,
+            &[5.0],
+            0.0,
+            &[4.0],
+            Some(&shaft_user),
+            None,
+        ),
         ..rectangular.clone()
     };
     let with_footing = BridgeGeometry {
@@ -767,44 +758,12 @@ fn test_opening_blockage_factor_raises_headwater() {
     let q = 25.0;
     let tw = 2.5;
     let hw_clear = solve_bridge_wsel(
-        q,
-        5.0,
-        7.0,
-        0.0,
-        0,
-        0,
-        1.44,
-        0.5,
-        0.0,
-        0.0,
-        tw,
-        UnitSystem::Metric,
-        &table_up,
-        &table_down,
-        &base,
-        50.0,
-        None,
-        None,
+        q, 5.0, 7.0, 0.0, 0, 0, 1.44, 0.5, 0.0, 0.0, tw, UnitSystem::Metric, &table_up,
+        &table_down, &base, 50.0, None, None,
     );
     let hw_blocked = solve_bridge_wsel(
-        q,
-        5.0,
-        7.0,
-        0.0,
-        0,
-        0,
-        1.44,
-        0.5,
-        0.0,
-        0.0,
-        tw,
-        UnitSystem::Metric,
-        &table_up,
-        &table_down,
-        &blocked,
-        50.0,
-        None,
-        None,
+        q, 5.0, 7.0, 0.0, 0, 0, 1.44, 0.5, 0.0, 0.0, tw, UnitSystem::Metric, &table_up,
+        &table_down, &blocked, 50.0, None, None,
     );
     assert!(
         hw_blocked > hw_clear + 1e-4,
@@ -830,44 +789,12 @@ fn test_pier_debris_raises_headwater() {
     let q = 20.0;
     let tw = 2.5;
     let hw_clear = solve_bridge_wsel(
-        q,
-        5.0,
-        7.0,
-        1.0,
-        1,
-        0,
-        1.44,
-        0.5,
-        0.0,
-        0.0,
-        tw,
-        UnitSystem::Metric,
-        &table_up,
-        &table_down,
-        &base,
-        50.0,
-        None,
-        Some(&sections),
+        q, 5.0, 7.0, 1.0, 1, 0, 1.44, 0.5, 0.0, 0.0, tw, UnitSystem::Metric, &table_up,
+        &table_down, &base, 50.0, None, Some(&sections),
     );
     let hw_debris = solve_bridge_wsel(
-        q,
-        5.0,
-        7.0,
-        1.0,
-        1,
-        0,
-        1.44,
-        0.5,
-        0.0,
-        0.0,
-        tw,
-        UnitSystem::Metric,
-        &table_up,
-        &table_down,
-        &debris,
-        50.0,
-        None,
-        Some(&sections),
+        q, 5.0, 7.0, 1.0, 1, 0, 1.44, 0.5, 0.0, 0.0, tw, UnitSystem::Metric, &table_up,
+        &table_down, &debris, 50.0, None, Some(&sections),
     );
     assert!(
         hw_debris > hw_clear + 1e-4,
@@ -889,44 +816,12 @@ fn test_ice_thickness_raises_headwater() {
     let q = 22.0;
     let tw = 2.5;
     let hw_clear = solve_bridge_wsel(
-        q,
-        5.0,
-        7.0,
-        0.0,
-        0,
-        0,
-        1.44,
-        0.5,
-        0.0,
-        0.0,
-        tw,
-        UnitSystem::Metric,
-        &table_up,
-        &table_down,
-        &base,
-        50.0,
-        None,
-        None,
+        q, 5.0, 7.0, 0.0, 0, 0, 1.44, 0.5, 0.0, 0.0, tw, UnitSystem::Metric, &table_up,
+        &table_down, &base, 50.0, None, None,
     );
     let hw_iced = solve_bridge_wsel(
-        q,
-        5.0,
-        7.0,
-        0.0,
-        0,
-        0,
-        1.44,
-        0.5,
-        0.0,
-        0.0,
-        tw,
-        UnitSystem::Metric,
-        &table_up,
-        &table_down,
-        &iced,
-        50.0,
-        None,
-        None,
+        q, 5.0, 7.0, 0.0, 0, 0, 1.44, 0.5, 0.0, 0.0, tw, UnitSystem::Metric, &table_up,
+        &table_down, &iced, 50.0, None, None,
     );
     assert!(
         hw_iced > hw_clear + 1e-4,
@@ -990,12 +885,9 @@ fn internal_opening_friction_segments_direct_and_edge_cases() {
     assert_eq!(tables.len(), 1);
     assert_eq!(lengths.len(), 2);
     assert_eq!(z_m.len(), 1);
-    assert!(
-        lengths[0] > 45.0,
-        "skew should lengthen segments, got {}",
-        lengths[0]
-    );
+    assert!(lengths[0] > 45.0, "skew should lengthen segments, got {}", lengths[0]);
 
-    let too_few_nodes = internal_opening_friction_segments(Some(&bu), &[], None, 0.0);
+    let too_few_nodes =
+        internal_opening_friction_segments(Some(&bu), &[], None, 0.0);
     assert!(too_few_nodes.0.is_empty());
 }

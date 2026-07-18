@@ -98,10 +98,9 @@ fn coupling_for_case(case: &BenchmarkCase) -> BridgeCouplingParams {
 
 #[test]
 fn bridge_abutment_hecras_benchmarks() {
-    let file: BenchmarkFile = serde_json::from_str(include_str!(
-        "../verification/fixtures/bridge_abutment_hecras.json"
-    ))
-    .expect("bridge abutment benchmark JSON");
+    let file: BenchmarkFile =
+        serde_json::from_str(include_str!("../verification/fixtures/bridge_abutment_hecras.json"))
+            .expect("bridge abutment benchmark JSON");
     let table = rectangular_table(10.0, 0.0, 50);
 
     for case in &file.cases {

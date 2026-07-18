@@ -94,11 +94,7 @@ fn steady_inputs(case: &BenchmarkCase, with_guide_banks: bool) -> SteadyInputs {
 
 /// Upstream approach WSEL on the densified profile (node immediately above BU).
 fn upstream_approach_wsel(result: &stream1d::solvers::steady::SteadyResult) -> f64 {
-    assert!(
-        result.wsel.len() >= 2,
-        "expected ≥2 profile nodes, got {}",
-        result.wsel.len()
-    );
+    assert!(result.wsel.len() >= 2, "expected ≥2 profile nodes, got {}", result.wsel.len());
     result.wsel[1]
 }
 

@@ -128,7 +128,9 @@ pub fn interpolate_cross_section(
         n_breaks.dedup_by(|l, r| (*l - *r).abs() < 1e-6);
         let n_values: Vec<f64> = n_breaks
             .iter()
-            .map(|&st| (1.0 - t) * upstream.get_manning_n(st) + t * downstream.get_manning_n(st))
+            .map(|&st| {
+                (1.0 - t) * upstream.get_manning_n(st) + t * downstream.get_manning_n(st)
+            })
             .collect();
         let coeff_contraction =
             interpolate_opt_coeff(upstream.coeff_contraction, downstream.coeff_contraction, t);
@@ -170,7 +172,9 @@ pub fn interpolate_cross_section(
     n_breaks.dedup_by(|l, r| (*l - *r).abs() < 1e-6);
     let n_values: Vec<f64> = n_breaks
         .iter()
-        .map(|&st| (1.0 - t) * upstream.get_manning_n(st) + t * downstream.get_manning_n(st))
+        .map(|&st| {
+            (1.0 - t) * upstream.get_manning_n(st) + t * downstream.get_manning_n(st)
+        })
         .collect();
 
     let coeff_contraction =
@@ -243,8 +247,7 @@ pub fn densify_interior_node(
     policy: DensifyReachModifierPolicy,
 ) -> (GeometryTable, f64, Option<CrossSection>) {
     if policy == DensifyReachModifierPolicy::None {
-        let (table, z) =
-            interpolate_geometry_table(table_up, z_up, table_down, z_down, t, num_slices);
+        let (table, z) = interpolate_geometry_table(table_up, z_up, table_down, z_down, t, num_slices);
         return (table, z, None);
     }
 
@@ -293,8 +296,9 @@ mod tests {
         use crate::geometry::BlockedObstruction;
 
         let mut up = rect(100.0, 0.0, 10.0);
-        up.ineffective_flow_areas =
-            Some(IneffectiveFlowAreas::from_block_pairs(&[], &[], &[8.0], &[3.0]).unwrap());
+        up.ineffective_flow_areas = Some(
+            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[8.0], &[3.0]).unwrap(),
+        );
         up.blocked_obstructions = Some(vec![BlockedObstruction {
             stations: vec![2.0, 8.0],
             elevations: vec![1.0, 1.0],
@@ -463,8 +467,9 @@ mod tests {
         use crate::geometry::geometry_row_at_elevation;
 
         let mut up = rect(200.0, 0.0, 20.0);
-        up.ineffective_flow_areas =
-            Some(IneffectiveFlowAreas::from_block_pairs(&[], &[], &[18.0], &[3.0]).unwrap());
+        up.ineffective_flow_areas = Some(
+            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[18.0], &[3.0]).unwrap(),
+        );
         let mut down = rect(0.0, 0.0, 20.0);
         down.ineffective_flow_areas = up.ineffective_flow_areas.clone();
 
@@ -558,11 +563,13 @@ mod tests {
         use crate::geometry::IneffectiveFlowAreas;
 
         let mut up = rect(200.0, 0.0, 20.0);
-        up.ineffective_flow_areas =
-            Some(IneffectiveFlowAreas::from_block_pairs(&[], &[], &[18.0], &[3.0]).unwrap());
+        up.ineffective_flow_areas = Some(
+            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[18.0], &[3.0]).unwrap(),
+        );
         let mut down = rect(0.0, 0.0, 20.0);
-        down.ineffective_flow_areas =
-            Some(IneffectiveFlowAreas::from_block_pairs(&[], &[], &[2.0], &[3.0]).unwrap());
+        down.ineffective_flow_areas = Some(
+            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[2.0], &[3.0]).unwrap(),
+        );
         let table_up = up.generate_lookup_table(30);
         let table_down = down.generate_lookup_table(30);
         let (_, _, xs_near) = densify_interior_node(
@@ -614,10 +621,7 @@ mod tests {
             DensifyReachModifierPolicy::Upstream,
         );
         let interior = xs.expect("guide banks copied");
-        assert!(interior
-            .guide_banks
-            .as_ref()
-            .is_some_and(|g| g.is_configured()));
+        assert!(interior.guide_banks.as_ref().is_some_and(|g| g.is_configured()));
     }
 
     #[test]
@@ -651,18 +655,16 @@ mod tests {
             guide_banks: None,
         };
         let mid = interpolate_cross_section(&up, &down, 0.5, 50.0);
-        assert!(
-            mid.x.len() >= 4,
-            "merged lateral grid should union parent stations"
-        );
+        assert!(mid.x.len() >= 4, "merged lateral grid should union parent stations");
         assert!((min_bed(&mid) - 0.5).abs() < 1e-6);
     }
 
     #[test]
     fn none_policy_leaves_modifiers_empty_on_synthetic_xs() {
         let mut up = rect(100.0, 0.0, 10.0);
-        up.ineffective_flow_areas =
-            Some(IneffectiveFlowAreas::from_block_pairs(&[], &[], &[8.0], &[3.0]).unwrap());
+        up.ineffective_flow_areas = Some(
+            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[8.0], &[3.0]).unwrap(),
+        );
         let down = rect(0.0, 0.0, 10.0);
         let table_up = up.generate_lookup_table(20);
         let table_down = down.generate_lookup_table(20);
@@ -729,8 +731,9 @@ mod tests {
         let up = rect(100.0, 0.0, 10.0);
         let down = rect(0.0, 0.0, 10.0);
         let mut synthetic = rect(50.0, 0.0, 10.0);
-        synthetic.ineffective_flow_areas =
-            Some(IneffectiveFlowAreas::from_block_pairs(&[], &[], &[8.0], &[3.0]).unwrap());
+        synthetic.ineffective_flow_areas = Some(
+            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[8.0], &[3.0]).unwrap(),
+        );
         apply_reach_modifier_policy(
             &mut synthetic,
             &up,

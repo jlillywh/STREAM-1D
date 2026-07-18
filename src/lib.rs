@@ -1,6 +1,6 @@
+pub mod utils;
 pub mod geometry;
 pub mod solvers;
-pub mod utils;
 pub mod wasm_api;
 
 mod json_api;

@@ -3834,4 +3834,20 @@ mod tests {
             "total flow should equal barrel + weir flow"
         );
     }
+
+    #[test]
+    fn test_roadway_profile_overtopping() {
+        let mut params = us_circular_baseline();
+        params.q = 100.0;
+        params.roadway_stations = Some(vec![0.0, 50.0, 100.0]);
+        params.roadway_elevations = Some(vec![15.0, 13.0, 15.0]);
+        params.weir_coeff = 2.6;
+        params.weir_length = 2.0;
+
+        let solved = solve_culvert(&params);
+        assert_eq!(solved.control_type, "overtopping");
+        assert!(solved.q_weir > 0.0);
+        assert!(solved.q_barrel > 0.0);
+        assert!((solved.q_barrel + solved.q_weir - params.q).abs() < 1e-3);
+    }
 }

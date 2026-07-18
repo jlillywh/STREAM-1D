@@ -30,14 +30,13 @@ pub fn validate_steady_inputs_wasm(inputs_val: JsValue) -> Result<JsValue, JsVal
         .map_err(|e| JsValue::from_str(&format!("Invalid SteadyInputs: {}", e)))?;
     let json = serde_json::to_string(&inputs)
         .map_err(|e| JsValue::from_str(&format!("Failed to serialize SteadyInputs: {}", e)))?;
-    let out_json =
-        json_api::validate_steady_inputs_json(&json).map_err(|e| JsValue::from_str(&e))?;
+    let out_json = json_api::validate_steady_inputs_json(&json)
+        .map_err(|e| JsValue::from_str(&e))?;
     serde_json::from_str(&out_json)
         .map_err(|e| JsValue::from_str(&format!("Failed to parse validation result: {}", e)))
         .and_then(|v: serde_json::Value| {
-            serde_wasm_bindgen::to_value(&v).map_err(|e| {
-                JsValue::from_str(&format!("Failed to serialize validation result: {}", e))
-            })
+            serde_wasm_bindgen::to_value(&v)
+                .map_err(|e| JsValue::from_str(&format!("Failed to serialize validation result: {}", e)))
         })
 }
 
@@ -49,7 +48,8 @@ pub fn solve_steady_wasm(inputs_val: JsValue) -> Result<JsValue, JsValue> {
         .map_err(|e| JsValue::from_str(&format!("Failed to parse SteadyInputs: {}", e)))?;
     let json = serde_json::to_string(&inputs)
         .map_err(|e| JsValue::from_str(&format!("Failed to serialize SteadyInputs: {}", e)))?;
-    let out_json = json_api::steady_result_json(&json).map_err(|e| JsValue::from_str(&e))?;
+    let out_json = json_api::steady_result_json(&json)
+        .map_err(|e| JsValue::from_str(&e))?;
     serde_json::from_str(&out_json)
         .map_err(|e| JsValue::from_str(&format!("Failed to parse SteadyResult: {}", e)))
         .and_then(|v: serde_json::Value| {
@@ -61,54 +61,37 @@ pub fn solve_steady_wasm(inputs_val: JsValue) -> Result<JsValue, JsValue> {
 /// Compute culvert headwater vs discharge at fixed tailwater (rating curve).
 #[wasm_bindgen(js_name = computeCulvertRatingCurve)]
 pub fn compute_culvert_rating_curve_wasm(inputs_val: JsValue) -> Result<JsValue, JsValue> {
-    let inputs: crate::solvers::CulvertRatingCurveInputs =
-        serde_wasm_bindgen::from_value(inputs_val).map_err(|e| {
-            JsValue::from_str(&format!("Failed to parse CulvertRatingCurveInputs: {}", e))
-        })?;
-    let json = serde_json::to_string(&inputs).map_err(|e| {
-        JsValue::from_str(&format!(
-            "Failed to serialize CulvertRatingCurveInputs: {}",
-            e
-        ))
-    })?;
-    let out_json = json_api::culvert_rating_curve_json(&json).map_err(|e| JsValue::from_str(&e))?;
+    let inputs: crate::solvers::CulvertRatingCurveInputs = serde_wasm_bindgen::from_value(inputs_val)
+        .map_err(|e| JsValue::from_str(&format!("Failed to parse CulvertRatingCurveInputs: {}", e)))?;
+    let json = serde_json::to_string(&inputs)
+        .map_err(|e| JsValue::from_str(&format!("Failed to serialize CulvertRatingCurveInputs: {}", e)))?;
+    let out_json = json_api::culvert_rating_curve_json(&json)
+        .map_err(|e| JsValue::from_str(&e))?;
     serde_json::from_str(&out_json)
         .map_err(|e| JsValue::from_str(&format!("Failed to parse CulvertRatingCurveResult: {}", e)))
         .and_then(|v: serde_json::Value| {
-            serde_wasm_bindgen::to_value(&v).map_err(|e| {
-                JsValue::from_str(&format!(
-                    "Failed to serialize CulvertRatingCurveResult: {}",
-                    e
-                ))
-            })
+            serde_wasm_bindgen::to_value(&v)
+                .map_err(|e| JsValue::from_str(&format!("Failed to serialize CulvertRatingCurveResult: {}", e)))
         })
 }
 
 /// Compute bridge upstream headwater vs discharge at fixed tailwater (rating curve).
 #[wasm_bindgen(js_name = computeBridgeRatingCurve)]
 pub fn compute_bridge_rating_curve_wasm(inputs_val: JsValue) -> Result<JsValue, JsValue> {
-    let inputs: crate::solvers::BridgeRatingCurveInputs =
-        serde_wasm_bindgen::from_value(inputs_val).map_err(|e| {
-            JsValue::from_str(&format!("Failed to parse BridgeRatingCurveInputs: {}", e))
-        })?;
-    let json = serde_json::to_string(&inputs).map_err(|e| {
-        JsValue::from_str(&format!(
-            "Failed to serialize BridgeRatingCurveInputs: {}",
-            e
-        ))
-    })?;
-    let out_json = json_api::bridge_rating_curve_json(&json).map_err(|e| JsValue::from_str(&e))?;
+    let inputs: crate::solvers::BridgeRatingCurveInputs = serde_wasm_bindgen::from_value(inputs_val)
+        .map_err(|e| JsValue::from_str(&format!("Failed to parse BridgeRatingCurveInputs: {}", e)))?;
+    let json = serde_json::to_string(&inputs)
+        .map_err(|e| JsValue::from_str(&format!("Failed to serialize BridgeRatingCurveInputs: {}", e)))?;
+    let out_json = json_api::bridge_rating_curve_json(&json)
+        .map_err(|e| JsValue::from_str(&e))?;
     serde_json::from_str(&out_json)
         .map_err(|e| JsValue::from_str(&format!("Failed to parse BridgeRatingCurveResult: {}", e)))
         .and_then(|v: serde_json::Value| {
-            serde_wasm_bindgen::to_value(&v).map_err(|e| {
-                JsValue::from_str(&format!(
-                    "Failed to serialize BridgeRatingCurveResult: {}",
-                    e
-                ))
-            })
+            serde_wasm_bindgen::to_value(&v)
+                .map_err(|e| JsValue::from_str(&format!("Failed to serialize BridgeRatingCurveResult: {}", e)))
         })
 }
+
 
 #[cfg(test)]
 mod tests {

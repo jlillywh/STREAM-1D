@@ -45,20 +45,9 @@ fn pier_shape_coefficients_match_hecras_table() {
 fn test_pier_shape_4_twin_no_diaphragm_lower_momentum_drag_than_triangular_90() {
     let twin_open = momentum_drag_for_shape(PierShape::TwinCylinderNoDiaphragm);
     let triangular = momentum_drag_for_shape(PierShape::Triangular);
-    let yarnell_twin = yarnell_pier_head_loss(
-        15.0,
-        3.0,
-        0.0,
-        0.5,
-        2,
-        PierShape::TwinCylinderNoDiaphragm,
-        30.0,
-    );
+    let yarnell_twin = yarnell_pier_head_loss(15.0, 3.0, 0.0, 0.5, 2, PierShape::TwinCylinderNoDiaphragm, 30.0);
     let yarnell_tri = yarnell_pier_head_loss(15.0, 3.0, 0.0, 0.5, 2, PierShape::Triangular, 30.0);
-    assert!(
-        (yarnell_twin - yarnell_tri).abs() < 1e-9,
-        "same Yarnell K=1.05"
-    );
+    assert!((yarnell_twin - yarnell_tri).abs() < 1e-9, "same Yarnell K=1.05");
     assert!(
         twin_open < triangular - 1e-6,
         "C_D 1.33 vs 1.60: twin_open={twin_open}, triangular={triangular}"
@@ -105,19 +94,13 @@ fn test_pier_shape_10_triangular_60_between_30_and_90() {
     let t30 = momentum_drag_for_shape(PierShape::Triangular30);
     let t60 = momentum_drag_for_shape(PierShape::Triangular60);
     let t90 = momentum_drag_for_shape(PierShape::Triangular);
-    assert!(
-        t60 > t30 + 1e-6 && t60 < t90 - 1e-6,
-        "C_D 1.39 between 1.00 and 1.60"
-    );
+    assert!(t60 > t30 + 1e-6 && t60 < t90 - 1e-6, "C_D 1.39 between 1.00 and 1.60");
 }
 #[test]
 fn test_pier_shape_11_triangular_120_highest_triangular_drag() {
     let t120 = momentum_drag_for_shape(PierShape::Triangular120);
     let t90 = momentum_drag_for_shape(PierShape::Triangular);
-    assert!(
-        t120 > t90 + 1e-6,
-        "C_D 1.72 vs 1.60: t120={t120}, t90={t90}"
-    );
+    assert!(t120 > t90 + 1e-6, "C_D 1.72 vs 1.60: t120={t120}, t90={t90}");
 }
 #[test]
 fn test_yarnell_square_pier_loss_exceeds_semicircular() {
@@ -241,10 +224,22 @@ fn test_class_b_energy_friction_segments_raise_hw() {
     );
 
     let wsel_sample = (tw + 1.5).min(geom_segments.low_chord_m - 0.05);
-    let hf_opening =
-        bridge_energy_friction_loss(q, wsel_sample, tw, &geom_opening, &table_up, &table_down);
-    let hf_segments =
-        bridge_energy_friction_loss(q, wsel_sample, tw, &geom_segments, &table_up, &table_down);
+    let hf_opening = bridge_energy_friction_loss(
+        q,
+        wsel_sample,
+        tw,
+        &geom_opening,
+        &table_up,
+        &table_down,
+    );
+    let hf_segments = bridge_energy_friction_loss(
+        q,
+        wsel_sample,
+        tw,
+        &geom_segments,
+        &table_up,
+        &table_down,
+    );
     assert!(
         hf_segments > hf_opening + 1e-6,
         "Class B energy friction: segments={hf_segments} should exceed opening={hf_opening}"
@@ -396,10 +391,7 @@ fn test_tapered_vs_mean_constant_equal_net_area_at_low_chord() {
     let a_mean = net_opening_area_at_low_chord(&mean_const, &table, &table);
     let a_taper = net_opening_area_at_low_chord(&taper, &table, &table);
     assert!((a_mean - 34.0).abs() < 0.1, "mean constant net: {a_mean}");
-    assert!(
-        (a_taper - a_mean).abs() < 0.1,
-        "full pier: taper {a_taper} vs mean {a_mean}"
-    );
+    assert!((a_taper - a_mean).abs() < 0.1, "full pier: taper {a_taper} vs mean {a_mean}");
 }
 #[test]
 fn test_tapered_vs_mean_constant_partial_wsel_more_blockage() {
@@ -420,8 +412,7 @@ fn test_tapered_vs_mean_constant_yarnell_higher_at_partial_depth() {
     let tw = 2.5;
     let flow_mean = yarnell_downstream_flow_area_m2(&table, tw, mean_const.z_down_m, &mean_const);
     let flow_taper = yarnell_downstream_flow_area_m2(&table, tw, taper.z_down_m, &taper);
-    let hl_mean =
-        yarnell_pier_head_loss_integrated(q, tw, mean_const.z_down_m, &mean_const, flow_mean);
+    let hl_mean = yarnell_pier_head_loss_integrated(q, tw, mean_const.z_down_m, &mean_const, flow_mean);
     let hl_taper = yarnell_pier_head_loss_integrated(q, tw, taper.z_down_m, &taper, flow_taper);
     assert!(hl_taper > hl_mean + 1e-6);
 }

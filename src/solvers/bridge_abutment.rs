@@ -1,6 +1,6 @@
 //! Per-side bridge abutment geometry (HEC-RAS-style left/right abutments).
 
-use crate::utils::{UnitSystem, FT_TO_M};
+use crate::utils::{FT_TO_M, UnitSystem};
 
 /// User/API abutment fields for one bridge (user units until resolved to metric).
 #[derive(Debug, Clone, Default)]
@@ -68,11 +68,7 @@ impl BridgeAbutments {
     }
 
     /// Symmetric legacy split for tests and backward compatibility.
-    pub fn symmetric_total_width_m(
-        total_width_m: f64,
-        opening_s_min: f64,
-        opening_s_max: f64,
-    ) -> Self {
+    pub fn symmetric_total_width_m(total_width_m: f64, opening_s_min: f64, opening_s_max: f64) -> Self {
         if total_width_m <= 1e-6 {
             return Self::default();
         }
@@ -307,8 +303,7 @@ pub fn resolve_abutments(
     }
 
     if input.legacy_total_width > 1e-6 {
-        let total_m =
-            width_along_opening_m(to_metric_length(input.legacy_total_width, units), skew_cos);
+        let total_m = width_along_opening_m(to_metric_length(input.legacy_total_width, units), skew_cos);
         return BridgeAbutments::symmetric_total_width_m(total_m, opening_s_min_m, opening_s_max_m);
     }
 
@@ -320,8 +315,9 @@ pub fn remap_abutment_input_to_reach(
     input: &BridgeAbutmentUserInput,
     origin_user: f64,
 ) -> BridgeAbutmentUserInput {
-    let shift =
-        |s: f64| crate::solvers::bridge_interior::opening_station_to_reach_x(s, origin_user);
+    let shift = |s: f64| {
+        crate::solvers::bridge_interior::opening_station_to_reach_x(s, origin_user)
+    };
     BridgeAbutmentUserInput {
         left_station: input.left_station.map(shift),
         right_station: input.right_station.map(shift),
@@ -458,10 +454,7 @@ mod tests {
         let area = side.submerged_area_m2(2.5, 0.0, true);
         assert!((area - 1.5).abs() < 1e-6, "expected 1.5 m², got {area}");
         let width = side.submerged_width_at_wsel_m(2.5, 0.0, true);
-        assert!(
-            width > 2.0,
-            "sloped top should block more than the low half alone"
-        );
+        assert!(width > 2.0, "sloped top should block more than the low half alone");
     }
 
     #[test]

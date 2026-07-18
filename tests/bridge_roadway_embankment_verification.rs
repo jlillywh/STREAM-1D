@@ -3,12 +3,12 @@
 //! Benchmark: `verification/fixtures/bridge_roadway_embankment.json`
 
 use stream1d::geometry::CrossSection;
-use stream1d::solvers::bridge_interior::{
-    interior_from_steady, resolve_bridge_face_solve_geometry, BridgeFaceSolveParams,
-};
 use stream1d::solvers::bridge_roadway_compose::{
     composed_steady_inputs, steady_composed_embankment_blocked, BridgeDeckInput,
     BridgeRoadwayEmbankment, EmbankmentPolyline, RoadwayEmbankmentSide,
+};
+use stream1d::solvers::bridge_interior::{
+    interior_from_steady, resolve_bridge_face_solve_geometry, BridgeFaceSolveParams,
 };
 use stream1d::solvers::steady::bridge_ineffective_downstream_for;
 use stream1d::solvers::steady::bridge_ineffective_upstream_for;
@@ -82,7 +82,11 @@ fn base_bridge_steady_inputs(
     embankment: Option<BridgeRoadwayEmbankment>,
 ) -> SteadyInputs {
     let mut inputs = SteadyInputs::default();
-    inputs.cross_sections = vec![channel_face(200.0), channel_face(100.0), channel_face(0.0)];
+    inputs.cross_sections = vec![
+        channel_face(200.0),
+        channel_face(100.0),
+        channel_face(0.0),
+    ];
     inputs.flow_rate = 15.0;
     inputs.num_slices = Some(50);
     inputs.regime = 0;
@@ -122,11 +126,16 @@ fn decomposed_parity_steady_inputs(
 fn explicit_bu_has_no_manual_blocked_before_compose() {
     let bu = channel_face(52.0);
     assert!(bu.blocked_obstructions.is_none());
-    let inputs =
-        base_bridge_steady_inputs(bu, channel_face(48.0), Some(typical_roadway_embankment()));
-    assert!(inputs.bridge_upstream_cross_sections.as_ref().unwrap()[0]
-        .blocked_obstructions
-        .is_none());
+    let inputs = base_bridge_steady_inputs(
+        bu,
+        channel_face(48.0),
+        Some(typical_roadway_embankment()),
+    );
+    assert!(
+        inputs.bridge_upstream_cross_sections.as_ref().unwrap()[0]
+            .blocked_obstructions
+            .is_none()
+    );
 }
 
 #[test]
@@ -213,8 +222,11 @@ fn roadway_fill_raises_upstream_wsel_without_manual_blocked_input() {
 fn unified_embankment_matches_manual_blocked_and_ineffective() {
     let bu = channel_face(52.0);
     let bd = channel_face(48.0);
-    let unified =
-        base_bridge_steady_inputs(bu.clone(), bd.clone(), Some(typical_roadway_embankment()));
+    let unified = base_bridge_steady_inputs(
+        bu.clone(),
+        bd.clone(),
+        Some(typical_roadway_embankment()),
+    );
 
     let emb = typical_roadway_embankment();
     let manual = decomposed_parity_steady_inputs(bu, bd, emb);
@@ -260,10 +272,9 @@ fn interpolated_bu_gets_embankment_fill_without_manual_polylines() {
 
 #[test]
 fn benchmark_json_typical_roadway_fill() {
-    let file: BenchmarkFile = serde_json::from_str(include_str!(
-        "../verification/fixtures/bridge_roadway_embankment.json"
-    ))
-    .expect("benchmark JSON");
+    let file: BenchmarkFile =
+        serde_json::from_str(include_str!("../verification/fixtures/bridge_roadway_embankment.json"))
+            .expect("benchmark JSON");
     let case = file
         .cases
         .iter()

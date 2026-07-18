@@ -2,11 +2,9 @@ use crate::geometry::GeometryTable;
 use crate::utils::G_METRIC;
 
 use super::geometry::{
-    apply_opening_blockage, effective_z_bed_m, profile_opening_area_factor,
-    scale_base_area_for_ice, BridgeGeometry,
+    apply_opening_blockage, effective_z_bed_m, profile_opening_area_factor, scale_base_area_for_ice,
+    BridgeGeometry,
 };
-use super::high_flow::solve_high_flow;
-use super::opening::base_flow_area;
 use super::opening::{
     active_resolved_piers, approach_departure_cut_modifiers_active, bridge_energy_friction_loss,
     gross_projected_opening_width_m, ineffective_for_side, lookup_row, obstructed_hydraulics,
@@ -14,7 +12,9 @@ use super::opening::{
     reach_cut_flow_area, section_xs, specific_force, velocity_head, wspro_contraction_loss,
     yarnell_downstream_flow_area_m2,
 };
+use super::high_flow::solve_high_flow;
 use super::section::BridgeFrictionWeighting;
+use super::opening::base_flow_area;
 use super::types::{BridgeHeadwaterSolve, LowFlowClass, LowFlowMethod, PierShape};
 
 pub(crate) fn solve_low_flow_energy_or_wspro(
@@ -26,16 +26,14 @@ pub(crate) fn solve_low_flow_energy_or_wspro(
     use_wspro: bool,
     subtract_deck: bool,
 ) -> f64 {
-    let props_down =
-        obstructed_hydraulics(table_down, tw_m, geom.z_down_m, geom, false, subtract_deck);
+    let props_down = obstructed_hydraulics(table_down, tw_m, geom.z_down_m, geom, false, subtract_deck);
     if props_down.a_eff < 1e-6 {
         return tw_m;
     }
     let e_down = tw_m + velocity_head(q_metric, props_down.a_eff);
 
     let residual = |wsel_up: f64| -> f64 {
-        let props_up =
-            obstructed_hydraulics(table_up, wsel_up, geom.z_up_m, geom, true, subtract_deck);
+        let props_up = obstructed_hydraulics(table_up, wsel_up, geom.z_up_m, geom, true, subtract_deck);
         if props_up.a_eff < 1e-6 {
             return 1e6;
         }
@@ -61,7 +59,8 @@ pub(crate) fn solve_low_flow_energy_or_wspro(
                 obstructed_opening_at_wsel(geom, table_up, table_down, opening_wsel);
             let a_bridge = props_opening.a_eff.max(1e-5);
             let a_approach = reach_cut_flow_area(geom, true, wsel_up).unwrap_or(props_up.a_eff);
-            let a_departure = reach_cut_flow_area(geom, false, tw_m).unwrap_or(props_down.a_eff);
+            let a_departure =
+                reach_cut_flow_area(geom, false, tw_m).unwrap_or(props_down.a_eff);
             let hv_approach = velocity_head(q_metric, a_approach);
             let hv_bridge = velocity_head(q_metric, a_bridge);
             let hv_departure = velocity_head(q_metric, a_departure);
@@ -198,10 +197,7 @@ pub(crate) fn critical_specific_force(
 ) -> (f64, f64) {
     let yc = solve_critical_depth_obstructed(table, z_bed, q, geom, is_upstream);
     let wsel_crit = z_bed + yc;
-    (
-        wsel_crit,
-        specific_force(table, wsel_crit, z_bed, q, geom, is_upstream),
-    )
+    (wsel_crit, specific_force(table, wsel_crit, z_bed, q, geom, is_upstream))
 }
 
 /// Classify low flow per HEC-RAS: compare downstream momentum to critical momentum in the bridge.
@@ -213,12 +209,10 @@ pub fn classify_low_flow(
     table_down: &GeometryTable,
 ) -> LowFlowClass {
     let (_, m_crit_up) = critical_specific_force(table_up, geom.z_up_m, q_metric, geom, true);
-    let (_, m_crit_down) =
-        critical_specific_force(table_down, geom.z_down_m, q_metric, geom, false);
+    let (_, m_crit_down) = critical_specific_force(table_down, geom.z_down_m, q_metric, geom, false);
     let (wsel_crit, m_crit) = if m_crit_up >= m_crit_down {
         (
-            geom.z_up_m
-                + solve_critical_depth_obstructed(table_up, geom.z_up_m, q_metric, geom, true),
+            geom.z_up_m + solve_critical_depth_obstructed(table_up, geom.z_up_m, q_metric, geom, true),
             m_crit_up,
         )
     } else {
@@ -355,7 +349,10 @@ pub(crate) fn gross_opening_area_at_low_chord(
     let a_piers = pier_submerged_area_at_wsel(geom, wsel, z_bed);
     let a_abut = geom.abutments.submerged_area_m2(wsel, z_eff);
     let a_debris = pier_floating_debris_obstruction_m2(geom, wsel, z_bed);
-    apply_opening_blockage((a_gross - a_piers - a_abut - a_debris).max(1e-4), geom)
+    apply_opening_blockage(
+        (a_gross - a_piers - a_abut - a_debris).max(1e-4),
+        geom,
+    )
 }
 
 /// Net opening area at the low chord using HEC-RAS min(BU, BD) weighting.
@@ -504,8 +501,7 @@ pub(crate) fn solve_low_flow_class_b(
 
     if !use_energy {
         let (_, m_crit_up) = critical_specific_force(table_up, geom.z_up_m, q_metric, geom, true);
-        let (_, m_crit_down) =
-            critical_specific_force(table_down, geom.z_down_m, q_metric, geom, false);
+        let (_, m_crit_down) = critical_specific_force(table_down, geom.z_down_m, q_metric, geom, false);
         let m_crit = m_crit_up.max(m_crit_down);
         let z_control = if m_crit_up >= m_crit_down {
             geom.z_up_m
@@ -518,8 +514,7 @@ pub(crate) fn solve_low_flow_class_b(
             table_down
         };
         let is_upstream = m_crit_up >= m_crit_down;
-        let yc =
-            solve_critical_depth_obstructed(table_control, z_control, q_metric, geom, is_upstream);
+        let yc = solve_critical_depth_obstructed(table_control, z_control, q_metric, geom, is_upstream);
         let wsel_min = z_control + yc;
 
         let mut low = wsel_min;
@@ -527,8 +522,7 @@ pub(crate) fn solve_low_flow_class_b(
         let mut best = low;
         for _ in 0..50 {
             let mid = 0.5 * (low + high);
-            let drag =
-                pier_drag_momentum_with_table(table_up, q_metric, mid, geom.z_up_m, geom, true);
+            let drag = pier_drag_momentum_with_table(table_up, q_metric, mid, geom.z_up_m, geom, true);
             let m_up = specific_force(table_up, mid, geom.z_up_m, q_metric, geom, true);
             let residual = m_up - drag - m_crit;
             if residual.abs() < 1e-5 {
@@ -594,7 +588,9 @@ pub(crate) fn solve_low_flow(
         LowFlowClass::B => solve_low_flow_class_b(q_metric, tw_m, geom, table_up, table_down),
         LowFlowClass::C => solve_low_flow_class_c(q_metric, tw_m, geom, table_up, table_down),
     };
-    reconcile_low_flow_with_high_flow(q_metric, tw_m, wsel_up, class, geom, table_up, table_down)
+    reconcile_low_flow_with_high_flow(
+        q_metric, tw_m, wsel_up, class, geom, table_up, table_down,
+    )
 }
 
 pub(crate) fn reconcile_low_flow_with_high_flow(

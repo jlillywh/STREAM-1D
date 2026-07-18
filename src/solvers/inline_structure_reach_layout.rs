@@ -446,4 +446,19 @@ mod tests {
         );
         assert!(res.is_empty());
     }
+
+    #[test]
+    fn test_re_resolve_inline_structure_intervals_direct() {
+        let mut inputs = crate::solvers::steady::SteadyInputs::default();
+        assert_eq!(
+            re_resolve_inline_structure_intervals(&inputs, UnitSystem::Metric, &[]),
+            vec![] as Vec<Option<usize>>
+        );
+
+        inputs.inline_structure_stations = Some(vec![50.0]);
+        let stations = vec![100.0, 60.0, 40.0, 0.0];
+        let res = re_resolve_inline_structure_intervals(&inputs, UnitSystem::Metric, &stations);
+        assert_eq!(res, vec![Some(1)]);
+    }
 }
+

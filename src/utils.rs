@@ -22,29 +22,17 @@ pub enum UnitSystem {
 /// Helper structure for 2x2 matrices to support the block Thomas algorithm.
 #[derive(Debug, Copy, Clone)]
 pub struct Mat2 {
-    pub m11: f64,
-    pub m12: f64,
-    pub m21: f64,
-    pub m22: f64,
+    pub m11: f64, pub m12: f64,
+    pub m21: f64, pub m22: f64,
 }
 
 impl Mat2 {
     pub fn zero() -> Self {
-        Self {
-            m11: 0.0,
-            m12: 0.0,
-            m21: 0.0,
-            m22: 0.0,
-        }
+        Self { m11: 0.0, m12: 0.0, m21: 0.0, m22: 0.0 }
     }
 
     pub fn identity() -> Self {
-        Self {
-            m11: 1.0,
-            m12: 0.0,
-            m21: 0.0,
-            m22: 1.0,
-        }
+        Self { m11: 1.0, m12: 0.0, m21: 0.0, m22: 1.0 }
     }
 
     pub fn inv(&self) -> Option<Self> {
@@ -176,7 +164,12 @@ pub fn solve_block_tridiagonal(
 
 /// Solves a standard scalar tridiagonal matrix system of the form:
 /// a_i * x_{i-1} + b_i * x_i + c_i * x_{i+1} = d_i
-pub fn solve_scalar_tridiagonal(a: &[f64], b: &[f64], c: &[f64], d: &[f64]) -> Option<Vec<f64>> {
+pub fn solve_scalar_tridiagonal(
+    a: &[f64],
+    b: &[f64],
+    c: &[f64],
+    d: &[f64],
+) -> Option<Vec<f64>> {
     let n = b.len();
     if n == 0 {
         return Some(vec![]);
@@ -248,11 +241,7 @@ mod tests {
         let matches: Vec<_> = (0..stations.len() - 1)
             .filter(|&i| structure_in_reach_interval(st, &stations, i))
             .collect();
-        assert_eq!(
-            matches,
-            vec![2],
-            "station 500 should match only interval 500->250"
-        );
+        assert_eq!(matches, vec![2], "station 500 should match only interval 500->250");
     }
 
     #[test]
@@ -262,10 +251,6 @@ mod tests {
         let matches: Vec<_> = (0..stations.len() - 1)
             .filter(|&i| structure_in_reach_interval(st, &stations, i))
             .collect();
-        assert_eq!(
-            matches,
-            vec![3],
-            "station 250 should match only interval 250->0"
-        );
+        assert_eq!(matches, vec![3], "station 250 should match only interval 250->0");
     }
 }

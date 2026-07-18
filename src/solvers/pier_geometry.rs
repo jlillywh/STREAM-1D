@@ -89,8 +89,7 @@ impl ResolvedPier {
 
     /// Total submerged opening-plane pier area including nosing.
     pub fn submerged_area_m2(&self, wsel_m: f64, z_bed_m: f64) -> f64 {
-        self.shaft_submerged_area_m2(wsel_m, z_bed_m)
-            + self.nosing_submerged_area_m2(wsel_m, z_bed_m)
+        self.shaft_submerged_area_m2(wsel_m, z_bed_m) + self.nosing_submerged_area_m2(wsel_m, z_bed_m)
     }
 
     /// Opening-plane top width at WSEL (shaft + nosing length when wet).
@@ -274,11 +273,7 @@ pub fn evenly_spaced_pier_stations(
         .collect()
 }
 
-fn spec_to_profile_points(
-    spec: &PierWidthSpec,
-    z_bed_m: f64,
-    z_cap_m: f64,
-) -> (Vec<f64>, Vec<f64>) {
+fn spec_to_profile_points(spec: &PierWidthSpec, z_bed_m: f64, z_cap_m: f64) -> (Vec<f64>, Vec<f64>) {
     match spec {
         PierWidthSpec::Constant { width_perp_m } => (
             vec![z_bed_m, z_cap_m.max(z_bed_m + 1e-9)],
@@ -327,11 +322,7 @@ fn merge_footing_profile(
         out_w.push(w_shaft);
     }
     for i in 1..elevs.len() {
-        if out_e
-            .last()
-            .map(|&z| (z - elevs[i]).abs() < 1e-9)
-            .unwrap_or(false)
-        {
+        if out_e.last().map(|&z| (z - elevs[i]).abs() < 1e-9).unwrap_or(false) {
             *out_w.last_mut().unwrap() = widths[i];
         } else {
             out_e.push(elevs[i]);
@@ -377,11 +368,7 @@ fn resolve_nosing(
     if length <= 1e-9 {
         return None;
     }
-    let width = u
-        .nosing_widths
-        .as_ref()
-        .and_then(|v| v.get(pier_idx))
-        .copied();
+    let width = u.nosing_widths.as_ref().and_then(|v| v.get(pier_idx)).copied();
     Some(ResolvedPierNosing {
         length_perp_m: length,
         width_perp_m: width.filter(|&w| w > 1e-9),
@@ -416,7 +403,9 @@ fn valid_profile(elevations: &[f64], widths: &[f64]) -> bool {
     if widths.iter().any(|&w| w <= 1e-6) {
         return false;
     }
-    elevations.windows(2).all(|w| w[1] > w[0] + 1e-9)
+    elevations
+        .windows(2)
+        .all(|w| w[1] > w[0] + 1e-9)
 }
 
 fn resolve_one_pier(
@@ -437,14 +426,7 @@ fn resolve_one_pier(
     if let Some((z_foot_top, z_foot_bot, w_foot)) =
         resolve_footing_for_pier(pier_idx, z_bed_m, z_top_default_m, attachments_user)
     {
-        spec = apply_footing_to_spec(
-            spec,
-            z_bed_m,
-            z_top_default_m,
-            z_foot_top,
-            z_foot_bot,
-            w_foot,
-        );
+        spec = apply_footing_to_spec(spec, z_bed_m, z_top_default_m, z_foot_top, z_foot_bot, w_foot);
     }
     ResolvedPier {
         station_m: 0.0,
@@ -460,6 +442,7 @@ fn resolve_one_pier_spec(
     z_top_default_m: f64,
     user: Option<&PierWidthUserInput>,
 ) -> PierWidthSpec {
+
     if let Some(u) = user {
         if let (Some(elevs), Some(widths)) = (
             u.width_elevations.as_ref().and_then(|v| v.get(pier_idx)),
@@ -554,10 +537,7 @@ fn nested_bridge_row<T: Clone>(rows: &Option<Vec<Vec<T>>>, b_idx: usize) -> Opti
     rows.as_ref().and_then(|r| r.get(b_idx)).cloned()
 }
 
-fn nested_pier_profile_rows(
-    rows: &Option<Vec<Vec<Vec<f64>>>>,
-    b_idx: usize,
-) -> Option<Vec<Vec<f64>>> {
+fn nested_pier_profile_rows(rows: &Option<Vec<Vec<Vec<f64>>>>, b_idx: usize) -> Option<Vec<Vec<f64>>> {
     rows.as_ref().and_then(|r| r.get(b_idx)).cloned()
 }
 
@@ -772,14 +752,8 @@ mod tests {
         let a_taper = tapered.submerged_area_m2(wsel, 0.0);
         let a_mean = mean_constant.submerged_area_m2(wsel, 0.0);
         // 0.5 * (2 + 1.375) * 2.5 = 4.21875 vs 1.5 * 2.5 = 3.75
-        assert!(
-            (a_taper - 4.218_75).abs() < 1e-6,
-            "taper partial: {a_taper}"
-        );
-        assert!(
-            (a_mean - 3.75).abs() < 1e-6,
-            "mean constant partial: {a_mean}"
-        );
+        assert!((a_taper - 4.218_75).abs() < 1e-6, "taper partial: {a_taper}");
+        assert!((a_mean - 3.75).abs() < 1e-6, "mean constant partial: {a_mean}");
         assert!(a_taper > a_mean);
     }
 
@@ -806,14 +780,22 @@ mod tests {
     fn pier_width_user_for_bridge_index_extracts_row() {
         let top = Some(vec![vec![1.0, 1.0]]);
         let bottom = Some(vec![vec![2.0, 2.0]]);
-        let user = pier_width_user_for_bridge_index(&top, &bottom, &None, &None, &None, &None, 0)
-            .expect("pier width user");
+        let user = pier_width_user_for_bridge_index(
+            &top,
+            &bottom,
+            &None,
+            &None,
+            &None,
+            &None,
+            0,
+        )
+        .expect("pier width user");
         assert_eq!(user.top_widths.as_deref(), Some([1.0, 1.0].as_ref()));
         assert_eq!(user.bottom_widths.as_deref(), Some([2.0, 2.0].as_ref()));
-        assert!(
-            pier_width_user_for_bridge_index(&top, &bottom, &None, &None, &None, &None, 1)
-                .is_none()
-        );
+        assert!(pier_width_user_for_bridge_index(
+            &top, &bottom, &None, &None, &None, &None, 1
+        )
+        .is_none());
     }
 
     #[test]
@@ -910,9 +892,7 @@ mod tests {
         };
         let specs = resolve_pier_width_specs(1.5, &[5.0], 99.0, &[104.0], Some(&user), None);
         match &specs[0].spec {
-            PierWidthSpec::Tapered {
-                z_top_m, z_base_m, ..
-            } => {
+            PierWidthSpec::Tapered { z_top_m, z_base_m, .. } => {
                 assert!((z_top_m - 103.0).abs() < 1e-9);
                 assert!((z_base_m - 100.0).abs() < 1e-9);
             }
@@ -937,9 +917,10 @@ mod tests {
 
     #[test]
     fn pier_width_user_from_rating_params_empty_is_none() {
-        assert!(
-            pier_width_user_from_rating_params(&None, &None, &None, &None, &None, &None).is_none()
-        );
+        assert!(pier_width_user_from_rating_params(
+            &None, &None, &None, &None, &None, &None
+        )
+        .is_none());
     }
 
     #[test]
@@ -1007,23 +988,27 @@ mod tests {
     fn pier_attachments_user_for_bridge_index_extracts_row() {
         let footing = Some(vec![vec![1.0], vec![2.0]]);
         let nosing = Some(vec![vec![0.5]]);
-        let user =
-            pier_attachments_user_for_bridge_index(&footing, &None, &None, &nosing, &None, 0)
-                .expect("attachments user");
+        let user = pier_attachments_user_for_bridge_index(
+            &footing,
+            &None,
+            &None,
+            &nosing,
+            &None,
+            0,
+        )
+        .expect("attachments user");
         assert_eq!(user.footing_top_elevations.as_deref(), Some([1.0].as_ref()));
         assert_eq!(user.nosing_lengths.as_deref(), Some([0.5].as_ref()));
-        let user1 =
-            pier_attachments_user_for_bridge_index(&footing, &None, &None, &nosing, &None, 1)
-                .expect("second bridge footing");
-        assert_eq!(
-            user1.footing_top_elevations.as_deref(),
-            Some([2.0].as_ref())
-        );
+        let user1 = pier_attachments_user_for_bridge_index(
+            &footing, &None, &None, &nosing, &None, 1,
+        )
+        .expect("second bridge footing");
+        assert_eq!(user1.footing_top_elevations.as_deref(), Some([2.0].as_ref()));
         assert!(user1.nosing_lengths.is_none());
-        assert!(
-            pier_attachments_user_for_bridge_index(&footing, &None, &None, &nosing, &None, 2,)
-                .is_none()
-        );
+        assert!(pier_attachments_user_for_bridge_index(
+            &footing, &None, &None, &nosing, &None, 2,
+        )
+        .is_none());
     }
 
     #[test]
@@ -1039,7 +1024,10 @@ mod tests {
         assert_eq!(user.footing_top_elevations.as_deref(), Some([1.0].as_ref()));
         assert_eq!(user.footing_widths.as_deref(), Some([3.0].as_ref()));
         assert_eq!(user.nosing_lengths.as_deref(), Some([0.5].as_ref()));
-        assert!(pier_attachments_from_rating_params(&None, &None, &None, &None, &None).is_none());
+        assert!(pier_attachments_from_rating_params(
+            &None, &None, &None, &None, &None
+        )
+        .is_none());
     }
 
     #[test]

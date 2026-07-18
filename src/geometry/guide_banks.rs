@@ -12,7 +12,9 @@ pub struct GuideBankPolyline {
 impl GuideBankPolyline {
     pub fn is_valid(&self) -> bool {
         let n = self.stations.len();
-        n >= 2 && n == self.elevations.len() && self.stations.windows(2).all(|w| w[1] > w[0])
+        n >= 2
+            && n == self.elevations.len()
+            && self.stations.windows(2).all(|w| w[1] > w[0])
     }
 }
 
@@ -132,7 +134,11 @@ pub fn lateral_limits_at_wsel(gb: &GuideBanks, wsel: f64) -> Option<(f64, f64)> 
     let mut left = f64::NEG_INFINITY;
     let mut right = f64::INFINITY;
 
-    for poly in gb.left_polylines.iter().filter(|p| p.is_valid()) {
+    for poly in gb
+        .left_polylines
+        .iter()
+        .filter(|p| p.is_valid())
+    {
         if let Some(s) = polyline_crossing_station_at_wsel(poly, wsel) {
             left = left.max(s);
         }
@@ -143,7 +149,11 @@ pub fn lateral_limits_at_wsel(gb: &GuideBanks, wsel: f64) -> Option<(f64, f64)> 
         }
     }
 
-    for poly in gb.right_polylines.iter().filter(|p| p.is_valid()) {
+    for poly in gb
+        .right_polylines
+        .iter()
+        .filter(|p| p.is_valid())
+    {
         if let Some(s) = polyline_crossing_station_at_wsel(poly, wsel) {
             right = right.min(s);
         }
@@ -157,16 +167,8 @@ pub fn lateral_limits_at_wsel(gb: &GuideBanks, wsel: f64) -> Option<(f64, f64)> 
     if !left.is_finite() && !right.is_finite() {
         return None;
     }
-    let left = if left.is_finite() {
-        left
-    } else {
-        f64::NEG_INFINITY
-    };
-    let right = if right.is_finite() {
-        right
-    } else {
-        f64::INFINITY
-    };
+    let left = if left.is_finite() { left } else { f64::NEG_INFINITY };
+    let right = if right.is_finite() { right } else { f64::INFINITY };
     if left >= right {
         return None;
     }
