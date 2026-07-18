@@ -1905,7 +1905,6 @@ fn solve_culvert_barrel_internal(params: &CulvertSolveParams, q: f64) -> BarrelS
         us_vel_hd,
     );
 
-
     let wsel_up_ft = wsel_inlet.max(wsel_outlet);
 
     let wsel_user = if params.units == UnitSystem::Metric {
@@ -4314,6 +4313,5 @@ mod tests {
         assert!(solved.q_weir > 0.0);
         assert!(solved.q_barrel > 0.0);
         assert!((solved.q_barrel + solved.q_weir - params.q).abs() < 1e-3);
-
     }
 }

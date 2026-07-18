@@ -490,15 +490,6 @@ pub struct SteadyInputs {
     #[serde(default)]
     pub upstream_bc_rating_wsel: Option<Vec<f64>>,
 
-    /// Optional tributary reach joining the main channel (steady subcritical today).
-    #[serde(default)]
-    pub tributary_cross_sections: Option<Vec<CrossSection>>,
-    /// Tributary inflow (same units as `flow_rate`) added at the junction.
-    #[serde(default)]
-    pub tributary_flow_rate: Option<f64>,
-    /// Main-channel station where the tributary mouth connects (must match a main cross-section).
-    #[serde(default)]
-    pub junction_main_station: Option<f64>,
     /// Left levee stations per cross section (optional, in user units)
     #[serde(default)]
     pub levee_left_stations: Option<Vec<f64>>,
@@ -511,6 +502,16 @@ pub struct SteadyInputs {
     /// Right levee elevations per cross section (optional, in user units)
     #[serde(default)]
     pub levee_right_elevations: Option<Vec<f64>>,
+
+    /// Optional tributary reach joining the main channel (steady subcritical today).
+    #[serde(default)]
+    pub tributary_cross_sections: Option<Vec<CrossSection>>,
+    /// Tributary inflow (same units as `flow_rate`) added at the junction.
+    #[serde(default)]
+    pub tributary_flow_rate: Option<f64>,
+    /// Main-channel station where the tributary mouth connects (must match a main cross-section).
+    #[serde(default)]
+    pub junction_main_station: Option<f64>,
 }
 
 /// Output results from the steady-state solver.
@@ -2156,7 +2157,6 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                             let tapered_face_scale_number = inputs.culvert_tapered_face_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
                             let tapered_throat_chart_number = inputs.culvert_tapered_throat_chart_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
                             let tapered_throat_scale_number = inputs.culvert_tapered_throat_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
-
                             let mut p = crate::solvers::culvert::CulvertSolveParams {
                                 q: inputs.flow_rate,
                                 shape_type,
@@ -2923,7 +2923,6 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                             us_row.channel_area
                         };
                         let us_velocity_user = inputs.flow_rate / us_area_user.max(1e-9);
-
                         let mut tw_wsel_user = hw_wsel_user;
                         let mut final_result = None;
                         for _ in 0..3 {
@@ -3226,7 +3225,6 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                             let tapered_face_scale_number = inputs.culvert_tapered_face_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
                             let tapered_throat_chart_number = inputs.culvert_tapered_throat_chart_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
                             let tapered_throat_scale_number = inputs.culvert_tapered_throat_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
-
                             let z_down_user = inputs
                                 .culvert_z_downs
                                 .as_ref()

@@ -726,7 +726,6 @@ impl CrossSection {
         } else {
             lob.top_width + ch.top_width + rob.top_width
         };
-
         let get_conveyance = |zone: &ZoneProperties| -> f64 {
             if zone.perimeter > 1e-9 {
                 let comp_n = (zone.sum_pn15 / zone.perimeter).powf(2.0 / 3.0);
@@ -740,6 +739,7 @@ impl CrossSection {
                 0.0
             }
         };
+
 
         let active_area = if clip_active {
             lob_active.area + ch_active.area + rob_active.area
