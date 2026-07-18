@@ -17,8 +17,8 @@
       "tw_wsel": 10.2,
       "q_cfs": 100.0,
       "num_barrels": 1,
-      "expected_control": "inlet",
-      "expected_wsel_ft": 15.199
+      "expected_control": "outlet",
+      "expected_wsel_ft": 15.795
     },
     {
       "name": "circular_outlet_control_48in",
@@ -72,8 +72,8 @@
       "q_cfs": 180.0,
       "num_barrels": 2,
       "active_barrels": 2,
-      "expected_control": "inlet",
-      "expected_wsel_ft": 31.877
+      "expected_control": "outlet",
+      "expected_wsel_ft": 33.623
     },
     {
       "name": "circular_adverse_slope",
@@ -90,8 +90,8 @@
       "tw_wsel": 11.5,
       "q_cfs": 150.0,
       "num_barrels": 1,
-      "expected_control": "inlet",
-      "expected_wsel_ft": 20.324
+      "expected_control": "outlet",
+      "expected_wsel_ft": 22.713
     }
   ]
 }

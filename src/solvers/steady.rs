@@ -1,9 +1,9 @@
-use crate::utils::{G_METRIC, UnitSystem, FT_TO_M, CFS_TO_CMS};
 use crate::geometry::{
     flow_area_for_row, geometry_row_at_elevation, section_needs_dynamic_geometry,
     specific_force_at_elevation, CrossSection, DensifyReachModifierPolicy, GeometryRow,
     GeometryTable, IneffectiveFlowAreas,
 };
+use crate::utils::{UnitSystem, CFS_TO_CMS, FT_TO_M, G_METRIC};
 
 /// Input parameters for the steady-state solver.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -291,35 +291,83 @@ pub struct SteadyInputs {
     #[serde(default)]
     pub bridge_deck_high_elevations: Option<Vec<Vec<f64>>>,
     /// Bridge ineffective stations (`s` frame). See `docs/reference/equations.md` §H0.
-    #[serde(default, deserialize_with = "crate::geometry::ineffective_serde::deserialize_bridge_block_arrays", serialize_with = "crate::geometry::ineffective_serde::serialize_bridge_block_arrays")]
+    #[serde(
+        default,
+        deserialize_with = "crate::geometry::ineffective_serde::deserialize_bridge_block_arrays",
+        serialize_with = "crate::geometry::ineffective_serde::serialize_bridge_block_arrays"
+    )]
     pub bridge_ineffective_left_stations: Option<Vec<Vec<f64>>>,
     /// Activation elevations for left ineffective blocks per bridge `[bridge][block]`.
-    #[serde(default, deserialize_with = "crate::geometry::ineffective_serde::deserialize_bridge_block_arrays", serialize_with = "crate::geometry::ineffective_serde::serialize_bridge_block_arrays")]
+    #[serde(
+        default,
+        deserialize_with = "crate::geometry::ineffective_serde::deserialize_bridge_block_arrays",
+        serialize_with = "crate::geometry::ineffective_serde::serialize_bridge_block_arrays"
+    )]
     pub bridge_ineffective_left_elevations: Option<Vec<Vec<f64>>>,
     /// Right ineffective-flow stations per bridge `[bridge][block]`.
-    #[serde(default, deserialize_with = "crate::geometry::ineffective_serde::deserialize_bridge_block_arrays", serialize_with = "crate::geometry::ineffective_serde::serialize_bridge_block_arrays")]
+    #[serde(
+        default,
+        deserialize_with = "crate::geometry::ineffective_serde::deserialize_bridge_block_arrays",
+        serialize_with = "crate::geometry::ineffective_serde::serialize_bridge_block_arrays"
+    )]
     pub bridge_ineffective_right_stations: Option<Vec<Vec<f64>>>,
     /// Activation elevations for right ineffective blocks per bridge `[bridge][block]`.
-    #[serde(default, deserialize_with = "crate::geometry::ineffective_serde::deserialize_bridge_block_arrays", serialize_with = "crate::geometry::ineffective_serde::serialize_bridge_block_arrays")]
+    #[serde(
+        default,
+        deserialize_with = "crate::geometry::ineffective_serde::deserialize_bridge_block_arrays",
+        serialize_with = "crate::geometry::ineffective_serde::serialize_bridge_block_arrays"
+    )]
     pub bridge_ineffective_right_elevations: Option<Vec<Vec<f64>>>,
     /// Upstream-face left ineffective stations (falls back to `bridge_ineffective_left_stations`).
-    #[serde(default, deserialize_with = "crate::geometry::ineffective_serde::deserialize_bridge_block_arrays", serialize_with = "crate::geometry::ineffective_serde::serialize_bridge_block_arrays")]
+    #[serde(
+        default,
+        deserialize_with = "crate::geometry::ineffective_serde::deserialize_bridge_block_arrays",
+        serialize_with = "crate::geometry::ineffective_serde::serialize_bridge_block_arrays"
+    )]
     pub bridge_ineffective_left_stations_upstream: Option<Vec<Vec<f64>>>,
     /// Upstream-face left ineffective elevations (falls back to `bridge_ineffective_left_elevations`).
-    #[serde(default, deserialize_with = "crate::geometry::ineffective_serde::deserialize_bridge_block_arrays", serialize_with = "crate::geometry::ineffective_serde::serialize_bridge_block_arrays")]
+    #[serde(
+        default,
+        deserialize_with = "crate::geometry::ineffective_serde::deserialize_bridge_block_arrays",
+        serialize_with = "crate::geometry::ineffective_serde::serialize_bridge_block_arrays"
+    )]
     pub bridge_ineffective_left_elevations_upstream: Option<Vec<Vec<f64>>>,
-    #[serde(default, deserialize_with = "crate::geometry::ineffective_serde::deserialize_bridge_block_arrays", serialize_with = "crate::geometry::ineffective_serde::serialize_bridge_block_arrays")]
+    #[serde(
+        default,
+        deserialize_with = "crate::geometry::ineffective_serde::deserialize_bridge_block_arrays",
+        serialize_with = "crate::geometry::ineffective_serde::serialize_bridge_block_arrays"
+    )]
     pub bridge_ineffective_right_stations_upstream: Option<Vec<Vec<f64>>>,
-    #[serde(default, deserialize_with = "crate::geometry::ineffective_serde::deserialize_bridge_block_arrays", serialize_with = "crate::geometry::ineffective_serde::serialize_bridge_block_arrays")]
+    #[serde(
+        default,
+        deserialize_with = "crate::geometry::ineffective_serde::deserialize_bridge_block_arrays",
+        serialize_with = "crate::geometry::ineffective_serde::serialize_bridge_block_arrays"
+    )]
     pub bridge_ineffective_right_elevations_upstream: Option<Vec<Vec<f64>>>,
     /// Downstream-face ineffective blocks (each falls back to legacy shared fields).
-    #[serde(default, deserialize_with = "crate::geometry::ineffective_serde::deserialize_bridge_block_arrays", serialize_with = "crate::geometry::ineffective_serde::serialize_bridge_block_arrays")]
+    #[serde(
+        default,
+        deserialize_with = "crate::geometry::ineffective_serde::deserialize_bridge_block_arrays",
+        serialize_with = "crate::geometry::ineffective_serde::serialize_bridge_block_arrays"
+    )]
     pub bridge_ineffective_left_stations_downstream: Option<Vec<Vec<f64>>>,
-    #[serde(default, deserialize_with = "crate::geometry::ineffective_serde::deserialize_bridge_block_arrays", serialize_with = "crate::geometry::ineffective_serde::serialize_bridge_block_arrays")]
+    #[serde(
+        default,
+        deserialize_with = "crate::geometry::ineffective_serde::deserialize_bridge_block_arrays",
+        serialize_with = "crate::geometry::ineffective_serde::serialize_bridge_block_arrays"
+    )]
     pub bridge_ineffective_left_elevations_downstream: Option<Vec<Vec<f64>>>,
-    #[serde(default, deserialize_with = "crate::geometry::ineffective_serde::deserialize_bridge_block_arrays", serialize_with = "crate::geometry::ineffective_serde::serialize_bridge_block_arrays")]
+    #[serde(
+        default,
+        deserialize_with = "crate::geometry::ineffective_serde::deserialize_bridge_block_arrays",
+        serialize_with = "crate::geometry::ineffective_serde::serialize_bridge_block_arrays"
+    )]
     pub bridge_ineffective_right_stations_downstream: Option<Vec<Vec<f64>>>,
-    #[serde(default, deserialize_with = "crate::geometry::ineffective_serde::deserialize_bridge_block_arrays", serialize_with = "crate::geometry::ineffective_serde::serialize_bridge_block_arrays")]
+    #[serde(
+        default,
+        deserialize_with = "crate::geometry::ineffective_serde::deserialize_bridge_block_arrays",
+        serialize_with = "crate::geometry::ineffective_serde::serialize_bridge_block_arrays"
+    )]
     pub bridge_ineffective_right_elevations_downstream: Option<Vec<Vec<f64>>>,
     /// Bridge skew from normal to flow, degrees per bridge (0–59°).
     #[serde(default)]
@@ -409,14 +457,12 @@ pub struct SteadyInputs {
     pub bridge_departure_guide_banks: Option<Vec<crate::geometry::GuideBanks>>,
     /// Unified roadway embankment per bridge (API v26). Composes deck, abutment, ineffective, blocked.
     #[serde(default)]
-    pub bridge_roadway_embankments: Option<
-        Vec<Option<crate::solvers::bridge_roadway_compose::BridgeRoadwayEmbankment>>,
-    >,
+    pub bridge_roadway_embankments:
+        Option<Vec<Option<crate::solvers::bridge_roadway_compose::BridgeRoadwayEmbankment>>>,
     /// Opening-frame embankment blocked tops composed from `bridge_roadway_embankments` (runtime).
     #[serde(default, skip_serializing)]
-    pub(crate) bridge_composed_embankment_blocked: Option<
-        Vec<Option<crate::solvers::bridge_roadway_compose::ComposedEmbankmentBlocked>>,
-    >,
+    pub(crate) bridge_composed_embankment_blocked:
+        Option<Vec<Option<crate::solvers::bridge_roadway_compose::ComposedEmbankmentBlocked>>>,
 
     /// Downstream boundary condition type (0 = Known WSEL, 1 = Critical Depth, 2 = Normal Depth, 3 = Rating Curve)
     #[serde(default)]
@@ -640,7 +686,12 @@ pub fn interpolate_rating_curve(q: f64, rating_q: &[f64], rating_wsel: &[f64]) -
     }
 
     // Zip and sort by flow rate Q
-    let mut pairs: Vec<(f64, f64)> = rating_q.iter().zip(rating_wsel.iter()).take(n).map(|(&qi, &wi)| (qi, wi)).collect();
+    let mut pairs: Vec<(f64, f64)> = rating_q
+        .iter()
+        .zip(rating_wsel.iter())
+        .take(n)
+        .map(|(&qi, &wi)| (qi, wi))
+        .collect();
     pairs.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
 
     // Clamp to nearest if out of bounds
@@ -670,14 +721,13 @@ pub fn interpolate_rating_curve(q: f64, rating_q: &[f64], rating_wsel: &[f64]) -
     Some(pairs[0].1)
 }
 
-
 fn step_flow_area(
     row: &GeometryRow,
     use_channel: bool,
     ineffective: Option<&IneffectiveFlowAreas>,
 ) -> f64 {
-    let has_ineffective = ineffective.filter(|i| i.is_configured()).is_some()
-        || row.active_area + 1e-6 < row.area;
+    let has_ineffective =
+        ineffective.filter(|i| i.is_configured()).is_some() || row.active_area + 1e-6 < row.area;
     if use_channel && row.channel_area > 1e-6 {
         if has_ineffective {
             row.active_channel_area
@@ -762,8 +812,8 @@ pub fn solve_step(
 
 
     // Define search bounds based on flow regime to prevent conjugate depth crossing
-    let upstream_has_reach_modifiers = xs2
-        .is_some_and(|xs| section_needs_dynamic_geometry(xs, ineffective2));
+    let upstream_has_reach_modifiers =
+        xs2.is_some_and(|xs| section_needs_dynamic_geometry(xs, ineffective2));
     let (mut low, mut high) = if is_subcritical {
         let l = if upstream_has_reach_modifiers {
             y1.max(z2_min + 1e-5)
@@ -898,7 +948,9 @@ pub fn solve_step(
     Some(best_y)
 }
 
-pub(crate) fn bridge_reach_fields(inputs: &SteadyInputs) -> crate::solvers::bridge::reach_coupling::BridgeReachFields<'_> {
+pub(crate) fn bridge_reach_fields(
+    inputs: &SteadyInputs,
+) -> crate::solvers::bridge::reach_coupling::BridgeReachFields<'_> {
     crate::solvers::bridge::reach_coupling::BridgeReachFields {
         low_chords: &inputs.bridge_low_chords,
         high_chords: &inputs.bridge_high_chords,
@@ -914,9 +966,11 @@ pub(crate) fn bridge_reach_fields(inputs: &SteadyInputs) -> crate::solvers::brid
         ineffective_right_stations_upstream: &inputs.bridge_ineffective_right_stations_upstream,
         ineffective_right_elevations_upstream: &inputs.bridge_ineffective_right_elevations_upstream,
         ineffective_left_stations_downstream: &inputs.bridge_ineffective_left_stations_downstream,
-        ineffective_left_elevations_downstream: &inputs.bridge_ineffective_left_elevations_downstream,
+        ineffective_left_elevations_downstream: &inputs
+            .bridge_ineffective_left_elevations_downstream,
         ineffective_right_stations_downstream: &inputs.bridge_ineffective_right_stations_downstream,
-        ineffective_right_elevations_downstream: &inputs.bridge_ineffective_right_elevations_downstream,
+        ineffective_right_elevations_downstream: &inputs
+            .bridge_ineffective_right_elevations_downstream,
         abutment_block_widths: &inputs.bridge_abutment_block_widths,
         abutment_left_widths: &inputs.bridge_abutment_left_widths,
         abutment_right_widths: &inputs.bridge_abutment_right_widths,
@@ -975,21 +1029,31 @@ fn bridge_deck_profile_for(
     b_idx: usize,
     raw_units: UnitSystem,
 ) -> Option<crate::solvers::bridge::BridgeDeckProfile> {
-    crate::solvers::bridge::reach_coupling::deck_profile_for(&bridge_reach_fields(inputs), b_idx, raw_units)
+    crate::solvers::bridge::reach_coupling::deck_profile_for(
+        &bridge_reach_fields(inputs),
+        b_idx,
+        raw_units,
+    )
 }
 
 pub fn bridge_ineffective_upstream_for(
     inputs: &SteadyInputs,
     b_idx: usize,
 ) -> Option<IneffectiveFlowAreas> {
-    crate::solvers::bridge::reach_coupling::ineffective_upstream_for(&bridge_reach_fields(inputs), b_idx)
+    crate::solvers::bridge::reach_coupling::ineffective_upstream_for(
+        &bridge_reach_fields(inputs),
+        b_idx,
+    )
 }
 
 pub fn bridge_ineffective_downstream_for(
     inputs: &SteadyInputs,
     b_idx: usize,
 ) -> Option<IneffectiveFlowAreas> {
-    crate::solvers::bridge::reach_coupling::ineffective_downstream_for(&bridge_reach_fields(inputs), b_idx)
+    crate::solvers::bridge::reach_coupling::ineffective_downstream_for(
+        &bridge_reach_fields(inputs),
+        b_idx,
+    )
 }
 
 fn bridge_face_geometry_for(
@@ -1006,16 +1070,14 @@ fn bridge_face_geometry_for(
 ) -> crate::solvers::bridge_interior::BridgeFaceSolveGeometry {
     let fields = bridge_reach_fields(inputs);
     let interior = crate::solvers::bridge_interior::interior_from_steady(inputs, b_idx);
-    let anchor_reach_xs = interior
-        .opening_anchor_reach_station
-        .and_then(|st| {
-            crate::solvers::bridge_interior::cross_section_at_reach_station(
-                densified_stations,
-                densified_xs,
-                st,
-                raw_units,
-            )
-        });
+    let anchor_reach_xs = interior.opening_anchor_reach_station.and_then(|st| {
+        crate::solvers::bridge_interior::cross_section_at_reach_station(
+            densified_stations,
+            densified_xs,
+            st,
+            raw_units,
+        )
+    });
     crate::solvers::bridge::reach_coupling::face_geometry_for(
         crate::solvers::bridge::reach_coupling::BridgeFaceGeometryRequest {
             fields: &fields,
@@ -1034,7 +1096,10 @@ fn bridge_face_geometry_for(
     )
 }
 
-fn bridge_coupling_for(inputs: &SteadyInputs, b_idx: usize) -> crate::solvers::bridge::BridgeCouplingParams {
+fn bridge_coupling_for(
+    inputs: &SteadyInputs,
+    b_idx: usize,
+) -> crate::solvers::bridge::BridgeCouplingParams {
     crate::solvers::bridge::reach_coupling::coupling_for(&bridge_reach_fields(inputs), b_idx)
 }
 
@@ -1049,7 +1114,11 @@ pub fn solve_steady(inputs: &SteadyInputs) -> SteadyResult {
 
 /// Single-reach steady solver (no tributary junction).
 pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
-    let raw_units = inputs.cross_sections.first().map(|xs| xs.unit_system).unwrap_or(UnitSystem::Metric);
+    let raw_units = inputs
+        .cross_sections
+        .first()
+        .map(|xs| xs.unit_system)
+        .unwrap_or(UnitSystem::Metric);
     let q = if raw_units == UnitSystem::USCustomary {
         inputs.flow_rate * crate::utils::CFS_TO_CMS
     } else {
@@ -1059,15 +1128,19 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
     let q_mag = q.abs();
 
     let num_slices = inputs.num_slices.unwrap_or(100);
-    let c_contraction = inputs.coeff_contraction.unwrap_or(crate::geometry::DEFAULT_COEFF_CONTRACTION);
-    let c_expansion = inputs.coeff_expansion.unwrap_or(crate::geometry::DEFAULT_COEFF_EXPANSION);
+    let c_contraction = inputs
+        .coeff_contraction
+        .unwrap_or(crate::geometry::DEFAULT_COEFF_CONTRACTION);
+    let c_expansion = inputs
+        .coeff_expansion
+        .unwrap_or(crate::geometry::DEFAULT_COEFF_EXPANSION);
 
     // Convert all cross sections to metric internally, zipping with their original index
     let mut xs_with_indices: Vec<(usize, CrossSection)> = inputs.cross_sections.iter()
         .enumerate()
         .map(|(idx, xs)| (idx, xs.to_metric()))
         .collect();
-    
+
     // Sort descending by station (upstream to downstream)
     // Upstream has larger station numbers, index 0 is most upstream.
     xs_with_indices.sort_by(|a, b| b.1.station.partial_cmp(&a.1.station).unwrap());
@@ -1098,11 +1171,17 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
 
     let z_mins: Vec<f64> = xs_list.iter().map(|xs| xs.y.iter().cloned().fold(f64::INFINITY, f64::min)).collect();
 
+
     // DENSIFICATION STEP: Automatic Reach Interpolation
     let max_sp = inputs.max_spacing.map(|sp| {
-        if raw_units == UnitSystem::USCustomary { sp * FT_TO_M } else { sp }
+        if raw_units == UnitSystem::USCustomary {
+            sp * FT_TO_M
+        } else {
+            sp
+        }
     });
-    let densify_policy = DensifyReachModifierPolicy::from_option(inputs.densify_reach_modifier_policy);
+    let densify_policy =
+        DensifyReachModifierPolicy::from_option(inputs.densify_reach_modifier_policy);
 
     let mut densified_tables = Vec::new();
     let mut densified_z_mins = Vec::new();
@@ -1129,19 +1208,18 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                         let t = k as f64 / num_spaces as f64;
                         let s_interp = xs_list[i].station - k as f64 * ds;
 
-                        let (t_interp, z_interp, xs_opt) =
-                            crate::geometry::densify_interior_node(
-                                &xs_list[i],
-                                &xs_list[i + 1],
-                                &tables[i],
-                                z_mins[i],
-                                &tables[i + 1],
-                                z_mins[i + 1],
-                                s_interp,
-                                t,
-                                num_slices,
-                                densify_policy,
-                            );
+                        let (t_interp, z_interp, xs_opt) = crate::geometry::densify_interior_node(
+                            &xs_list[i],
+                            &xs_list[i + 1],
+                            &tables[i],
+                            z_mins[i],
+                            &tables[i + 1],
+                            z_mins[i + 1],
+                            s_interp,
+                            t,
+                            num_slices,
+                            densify_policy,
+                        );
 
                         densified_tables.push(t_interp);
                         densified_z_mins.push(z_interp);
@@ -1153,7 +1231,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
         }
     }
 
-    let bridge_face_intervals = crate::solvers::bridge_interior::apply_bridge_reach_layout_steady(
+    let _bridge_face_intervals = crate::solvers::bridge_interior::apply_bridge_reach_layout_steady(
         inputs,
         raw_units,
         num_slices,
@@ -1162,30 +1240,52 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
         &mut densified_z_mins,
         &mut densified_xs,
     );
-    let culvert_face_intervals = crate::solvers::culvert_reach_layout::apply_culvert_reach_layout_steady(
-        inputs,
-        raw_units,
-        num_slices,
-        &mut densified_stations,
-        &mut densified_tables,
-        &mut densified_z_mins,
-        &mut densified_xs,
-    );
-    let inline_structure_face_intervals = crate::solvers::inline_structure_reach_layout::apply_inline_structure_reach_layout_steady(
-        inputs,
-        raw_units,
-        num_slices,
-        &mut densified_stations,
-        &mut densified_tables,
-        &mut densified_z_mins,
-        &mut densified_xs,
-    );
+    let _culvert_face_intervals =
+        crate::solvers::culvert_reach_layout::apply_culvert_reach_layout_steady(
+            inputs,
+            raw_units,
+            num_slices,
+            &mut densified_stations,
+            &mut densified_tables,
+            &mut densified_z_mins,
+            &mut densified_xs,
+        );
+    let _inline_structure_face_intervals =
+        crate::solvers::inline_structure_reach_layout::apply_inline_structure_reach_layout_steady(
+            inputs,
+            raw_units,
+            num_slices,
+            &mut densified_stations,
+            &mut densified_tables,
+            &mut densified_z_mins,
+            &mut densified_xs,
+        );
     let original_stations: Vec<f64> = xs_list.iter().map(|xs| xs.station).collect();
     crate::solvers::bridge_interior::refresh_original_to_densified(
         &original_stations,
         &densified_stations,
         &mut original_to_densified,
     );
+
+    // Re-resolve the bridge, culvert, and inline structure face intervals on the final post-layout stations vector.
+    // This is critical because layouts may remove internal nodes inside structure intervals, changing their indices.
+    let bridge_face_intervals = crate::solvers::bridge_interior::re_resolve_bridge_intervals(
+        inputs,
+        raw_units,
+        &densified_stations,
+    );
+    let culvert_face_intervals = crate::solvers::culvert_reach_layout::re_resolve_culvert_intervals(
+        inputs,
+        raw_units,
+        &densified_stations,
+    );
+    let inline_structure_face_intervals =
+        crate::solvers::inline_structure_reach_layout::re_resolve_inline_structure_intervals(
+            inputs,
+            raw_units,
+            &densified_stations,
+        );
+
     let bridge_at_interval: std::collections::HashMap<usize, usize> = bridge_face_intervals
         .iter()
         .enumerate()
@@ -1193,10 +1293,15 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
         .collect();
     let mut culvert_at_interval: std::collections::HashMap<usize, Vec<usize>> =
         std::collections::HashMap::new();
-    for (i, c_idx) in crate::solvers::culvert_reach_layout::culvert_intervals_from_faces(&culvert_face_intervals) {
+    for (i, c_idx) in
+        crate::solvers::culvert_reach_layout::culvert_intervals_from_faces(&culvert_face_intervals)
+    {
         culvert_at_interval.entry(i).or_default().push(c_idx);
     }
-    let inline_structure_at_interval: std::collections::HashMap<usize, usize> = crate::solvers::inline_structure_reach_layout::inline_structure_intervals_from_faces(&inline_structure_face_intervals)
+    let inline_structure_at_interval: std::collections::HashMap<usize, usize> =
+        crate::solvers::inline_structure_reach_layout::inline_structure_intervals_from_faces(
+            &inline_structure_face_intervals,
+        )
         .into_iter()
         .collect();
 
@@ -1207,7 +1312,11 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
         .iter()
         .map(|table| solve_critical_depth_table(table, q_mag))
         .collect();
-    let critical_wsels: Vec<f64> = densified_z_mins.iter().zip(&ycs).map(|(&z, &yc)| z + yc).collect();
+    let critical_wsels: Vec<f64> = densified_z_mins
+        .iter()
+        .zip(&ycs)
+        .map(|(&z, &yc)| z + yc)
+        .collect();
 
     let regime = inputs.regime; // 0=Subcritical, 1=Supercritical, 2=Mixed
     let mut wsel_metric = vec![0.0; dm];
@@ -1218,19 +1327,37 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
         1 => Some(critical_wsels[dm - 1]),
         2 => {
             let slope = inputs.downstream_bc_slope.unwrap_or(0.01);
-            Some(solve_normal_depth_table(&densified_tables[dm - 1], q, slope))
+            Some(solve_normal_depth_table(
+                &densified_tables[dm - 1],
+                q,
+                slope,
+            ))
         }
         3 => {
-            if let (Some(rq), Some(rw)) = (&inputs.downstream_bc_rating_q, &inputs.downstream_bc_rating_wsel) {
+            if let (Some(rq), Some(rw)) = (
+                &inputs.downstream_bc_rating_q,
+                &inputs.downstream_bc_rating_wsel,
+            ) {
                 interpolate_rating_curve(inputs.flow_rate, rq, rw).map(|w| {
-                    if raw_units == UnitSystem::USCustomary { w * FT_TO_M } else { w }
+                    if raw_units == UnitSystem::USCustomary {
+                        w * FT_TO_M
+                    } else {
+                        w
+                    }
                 })
             } else {
                 None
             }
         }
-        _ => inputs.downstream_wsel.map(|w| if raw_units == UnitSystem::USCustomary { w * FT_TO_M } else { w }),
-    }.unwrap_or(critical_wsels[dm - 1]);
+        _ => inputs.downstream_wsel.map(|w| {
+            if raw_units == UnitSystem::USCustomary {
+                w * FT_TO_M
+            } else {
+                w
+            }
+        }),
+    }
+    .unwrap_or(critical_wsels[dm - 1]);
 
     let us_bc_type = inputs.upstream_bc_type.unwrap_or(0);
     let us_wsel_metric = match us_bc_type {
@@ -1240,16 +1367,30 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
             Some(solve_normal_depth_table(&densified_tables[0], q, slope))
         }
         3 => {
-            if let (Some(rq), Some(rw)) = (&inputs.upstream_bc_rating_q, &inputs.upstream_bc_rating_wsel) {
+            if let (Some(rq), Some(rw)) = (
+                &inputs.upstream_bc_rating_q,
+                &inputs.upstream_bc_rating_wsel,
+            ) {
                 interpolate_rating_curve(inputs.flow_rate, rq, rw).map(|w| {
-                    if raw_units == UnitSystem::USCustomary { w * FT_TO_M } else { w }
+                    if raw_units == UnitSystem::USCustomary {
+                        w * FT_TO_M
+                    } else {
+                        w
+                    }
                 })
             } else {
                 None
             }
         }
-        _ => inputs.upstream_wsel.map(|w| if raw_units == UnitSystem::USCustomary { w * FT_TO_M } else { w }),
-    }.unwrap_or(critical_wsels[0]);
+        _ => inputs.upstream_wsel.map(|w| {
+            if raw_units == UnitSystem::USCustomary {
+                w * FT_TO_M
+            } else {
+                w
+            }
+        }),
+    }
+    .unwrap_or(critical_wsels[0]);
 
     let culvert_count = inputs.culvert_stations.as_ref().map(|s| s.len());
     let mut culvert_control_types: Option<Vec<String>> =
@@ -1263,9 +1404,38 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
     let mut culvert_barrel_froude: Option<Vec<f64>> = culvert_count.map(|n| vec![0.0; n]);
 
     let inline_structure_count = inputs.inline_structure_stations.as_ref().map(|s| s.len());
-    let mut inline_structure_wsel_inlet: Option<Vec<f64>> = inline_structure_count.map(|n| vec![0.0; n]);
-    let mut inline_structure_wsel_outlet: Option<Vec<f64>> = inline_structure_count.map(|n| vec![0.0; n]);
-    let mut inline_structure_q_weirs: Option<Vec<f64>> = inline_structure_count.map(|n| vec![0.0; n]);
+    let mut inline_structure_wsel_inlet: Option<Vec<f64>> =
+        inline_structure_count.map(|n| vec![0.0; n]);
+    let mut inline_structure_wsel_outlet: Option<Vec<f64>> =
+        inline_structure_count.map(|n| vec![0.0; n]);
+    let mut inline_structure_q_weirs: Option<Vec<f64>> =
+        inline_structure_count.map(|n| vec![0.0; n]);
+
+    let mut sub_culvert_control_types = culvert_control_types.clone();
+    let mut sub_culvert_wsel_inlet = culvert_wsel_inlet.clone();
+    let mut sub_culvert_wsel_outlet = culvert_wsel_outlet.clone();
+    let mut sub_culvert_q_barrels = culvert_q_barrels.clone();
+    let mut sub_culvert_q_weirs = culvert_q_weirs.clone();
+    let mut sub_culvert_barrel_depths = culvert_barrel_depths.clone();
+    let mut sub_culvert_barrel_velocities = culvert_barrel_velocities.clone();
+    let mut sub_culvert_barrel_froude = culvert_barrel_froude.clone();
+
+    let mut sub_inline_structure_wsel_inlet = inline_structure_wsel_inlet.clone();
+    let mut sub_inline_structure_wsel_outlet = inline_structure_wsel_outlet.clone();
+    let mut sub_inline_structure_q_weirs = inline_structure_q_weirs.clone();
+
+    let mut super_culvert_control_types = culvert_control_types.clone();
+    let mut super_culvert_wsel_inlet = culvert_wsel_inlet.clone();
+    let mut super_culvert_wsel_outlet = culvert_wsel_outlet.clone();
+    let mut super_culvert_q_barrels = culvert_q_barrels.clone();
+    let mut super_culvert_q_weirs = culvert_q_weirs.clone();
+    let mut super_culvert_barrel_depths = culvert_barrel_depths.clone();
+    let mut super_culvert_barrel_velocities = culvert_barrel_velocities.clone();
+    let mut super_culvert_barrel_froude = culvert_barrel_froude.clone();
+
+    let mut super_inline_structure_wsel_inlet = inline_structure_wsel_inlet.clone();
+    let mut super_inline_structure_wsel_outlet = inline_structure_wsel_outlet.clone();
+    let mut super_inline_structure_q_weirs = inline_structure_q_weirs.clone();
 
     let mut structure_adjacent_indices = std::collections::HashSet::new();
     let mut structure_ineffective: std::collections::HashMap<usize, IneffectiveFlowAreas> =
@@ -1301,11 +1471,13 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                 ineff
             };
             match opening_origin {
-                Some(origin) => crate::solvers::bridge_interior::remap_ineffective_opening_to_reach(
-                    Some(metric.clone()),
-                    origin,
-                )
-                .unwrap_or(metric),
+                Some(origin) => {
+                    crate::solvers::bridge_interior::remap_ineffective_opening_to_reach(
+                        Some(metric.clone()),
+                        origin,
+                    )
+                    .unwrap_or(metric)
+                }
                 None => metric,
             }
         }) {
@@ -1318,11 +1490,13 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                 ineff
             };
             match opening_origin {
-                Some(origin) => crate::solvers::bridge_interior::remap_ineffective_opening_to_reach(
-                    Some(metric.clone()),
-                    origin,
-                )
-                .unwrap_or(metric),
+                Some(origin) => {
+                    crate::solvers::bridge_interior::remap_ineffective_opening_to_reach(
+                        Some(metric.clone()),
+                        origin,
+                    )
+                    .unwrap_or(metric)
+                }
                 None => metric,
             }
         }) {
@@ -1334,209 +1508,656 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
     let mut sub_wsel = vec![0.0; dm];
     if regime == 0 || regime == 2 {
         if !flow_reverses {
-        sub_wsel[dm - 1] = ds_wsel_metric;
-        if sub_wsel[dm - 1] < critical_wsels[dm - 1] {
-            sub_wsel[dm - 1] = critical_wsels[dm - 1];
-        }
+            sub_wsel[dm - 1] = ds_wsel_metric;
+            if sub_wsel[dm - 1] < critical_wsels[dm - 1] {
+                sub_wsel[dm - 1] = critical_wsels[dm - 1];
+            }
 
-        for i in (0..dm - 1).rev() {
-            let length = densified_stations[i] - densified_stations[i + 1];
+            for i in (0..dm - 1).rev() {
+                let length = densified_stations[i] - densified_stations[i + 1];
 
-            let bridge_idx = bridge_at_interval.get(&i).copied();
+                let bridge_idx = bridge_at_interval.get(&i).copied();
 
-            let culvert_indices = culvert_at_interval.get(&i);
+                let culvert_indices = culvert_at_interval.get(&i);
 
-            if let Some(b_idx) = bridge_idx {
-                let low_chord = inputs.bridge_low_chords.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0.0);
-                let high_chord = inputs.bridge_high_chords.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0.0);
-                let pier_width = inputs.bridge_pier_widths.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0.0);
-                let num_piers = inputs.bridge_num_piers.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0);
-                let pier_shape = inputs.bridge_pier_shapes.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0);
-                let weir_coeff = inputs.bridge_weir_coeffs.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(if raw_units == UnitSystem::USCustomary { 2.6 } else { 1.44 });
-                let orifice_coeff = inputs.bridge_orifice_coeffs.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0.5);
-                let coupling = bridge_coupling_for(inputs, b_idx);
-                let deck = bridge_deck_profile_for(inputs, b_idx, raw_units);
-                let deck_ref = deck.as_ref();
-
-                let tw_wsel_user = if raw_units == UnitSystem::USCustomary {
-                    sub_wsel[i + 1] / FT_TO_M
-                } else {
-                    sub_wsel[i + 1]
-                };
-
-                let face_geo = bridge_face_geometry_for(
-                    inputs,
-                    b_idx,
-                    i,
-                    raw_units,
-                    num_slices,
-                    &densified_stations,
-                    &densified_tables,
-                    &densified_xs,
-                    &densified_z_mins,
-                    length,
-                );
-                let coupled = crate::solvers::bridge::solve_bridge_coupled(
-                    inputs.flow_rate,
-                    low_chord,
-                    high_chord,
-                    pier_width,
-                    num_piers,
-                    pier_shape,
-                    weir_coeff,
-                    orifice_coeff,
-                    face_geo.z_down_user,
-                    face_geo.z_up_user,
-                    tw_wsel_user,
-                    raw_units,
-                    &face_geo.table_up,
-                    &face_geo.table_down,
-                    &coupling,
-                    length,
-                    deck_ref,
-                    Some(&face_geo.sections),
-                );
-
-                sub_wsel[i] = if raw_units == UnitSystem::USCustomary {
-                    coupled.wsel_up * FT_TO_M
-                } else {
-                    coupled.wsel_up
-                };
-            } else if let Some(c_indices) = culvert_indices {
-                if c_indices.len() == 1 {
-                    let c_idx = c_indices[0];
-                    let shape_type = inputs.culvert_shape_types.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0);
-                    let span = inputs.culvert_spans.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(4.0);
-                    let rise = inputs.culvert_rises.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(4.0);
-                    let roughness_n = inputs.culvert_roughness_ns.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.013);
-                    let culv_len = inputs.culvert_lengths.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(100.0);
-                    let entrance_loss_coeff = inputs.culvert_entrance_loss_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.5);
-                    let exit_loss_coeff = inputs.culvert_exit_loss_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(1.0);
-                    let manning_n_bottom = inputs.culvert_roughness_n_bottoms.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(roughness_n);
-                    let depth_bottom_n = inputs.culvert_depth_bottom_ns.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
-                    let depth_blocked = inputs.culvert_depth_blockeds.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
-                    let inlet_type = inputs.culvert_inlet_types.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0);
-                    let crest_elev = inputs.culvert_crest_elevs.as_ref().and_then(|v| v.get(c_idx)).copied();
-                    let chart_number = inputs.culvert_chart_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
-                    let scale_number = inputs.culvert_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
-                    let tapered_type = inputs.culvert_tapered_types.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0);
-                    let tapered_face_span = inputs.culvert_tapered_face_spans.as_ref().and_then(|v| v.get(c_idx)).copied();
-                    let tapered_face_rise = inputs.culvert_tapered_face_rises.as_ref().and_then(|v| v.get(c_idx)).copied();
-                    let tapered_fall = inputs.culvert_tapered_falls.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
-                    let tapered_crest_weir_length = inputs.culvert_tapered_crest_weir_lengths.as_ref().and_then(|v| v.get(c_idx)).copied();
-                    let tapered_crest_weir_coeff = inputs.culvert_tapered_crest_weir_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied();
-                    let tapered_face_chart_number = inputs.culvert_tapered_face_chart_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
-                    let tapered_face_scale_number = inputs.culvert_tapered_face_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
-                    let tapered_throat_chart_number = inputs.culvert_tapered_throat_chart_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
-                    let tapered_throat_scale_number = inputs.culvert_tapered_throat_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
-                    let weir_coeff = inputs.culvert_weir_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
-                    let weir_length = inputs.culvert_weir_lengths.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
-                    let num_barrels = inputs.culvert_barrels.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(1).max(1);
-                    let active_barrels = inputs
-                        .culvert_active_barrels
+                if let Some(b_idx) = bridge_idx {
+                    let low_chord = inputs
+                        .bridge_low_chords
                         .as_ref()
-                        .and_then(|v| v.get(c_idx))
-                        .copied()
-                        .unwrap_or(0);
-                    let skew_deg = inputs
-                        .culvert_skew_angles
-                        .as_ref()
-                        .and_then(|v| v.get(c_idx))
+                        .and_then(|v| v.get(b_idx))
                         .copied()
                         .unwrap_or(0.0);
-                    let barrel_spans = inputs
-                        .culvert_barrel_spans
+                    let high_chord = inputs
+                        .bridge_high_chords
                         .as_ref()
-                        .and_then(|v| v.get(c_idx))
-                        .cloned();
-                    let barrel_rises = inputs
-                        .culvert_barrel_rises
+                        .and_then(|v| v.get(b_idx))
+                        .copied()
+                        .unwrap_or(0.0);
+                    let pier_width = inputs
+                        .bridge_pier_widths
                         .as_ref()
-                        .and_then(|v| v.get(c_idx))
-                        .cloned();
+                        .and_then(|v| v.get(b_idx))
+                        .copied()
+                        .unwrap_or(0.0);
+                    let num_piers = inputs
+                        .bridge_num_piers
+                        .as_ref()
+                        .and_then(|v| v.get(b_idx))
+                        .copied()
+                        .unwrap_or(0);
+                    let pier_shape = inputs
+                        .bridge_pier_shapes
+                        .as_ref()
+                        .and_then(|v| v.get(b_idx))
+                        .copied()
+                        .unwrap_or(0);
+                    let weir_coeff = inputs
+                        .bridge_weir_coeffs
+                        .as_ref()
+                        .and_then(|v| v.get(b_idx))
+                        .copied()
+                        .unwrap_or(if raw_units == UnitSystem::USCustomary {
+                            2.6
+                        } else {
+                            1.44
+                        });
+                    let orifice_coeff = inputs
+                        .bridge_orifice_coeffs
+                        .as_ref()
+                        .and_then(|v| v.get(b_idx))
+                        .copied()
+                        .unwrap_or(0.5);
+                    let coupling = bridge_coupling_for(inputs, b_idx);
+                    let deck = bridge_deck_profile_for(inputs, b_idx, raw_units);
+                    let deck_ref = deck.as_ref();
 
                     let tw_wsel_user = if raw_units == UnitSystem::USCustomary {
                         sub_wsel[i + 1] / FT_TO_M
                     } else {
                         sub_wsel[i + 1]
                     };
-                    let bed_z_down = if raw_units == UnitSystem::USCustomary {
-                        densified_z_mins[i + 1] / FT_TO_M
-                    } else {
-                        densified_z_mins[i + 1]
-                    };
-                    let bed_z_up = if raw_units == UnitSystem::USCustomary {
-                        densified_z_mins[i] / FT_TO_M
-                    } else {
-                        densified_z_mins[i]
-                    };
-                    let z_down_user = inputs
-                        .culvert_z_downs
-                        .as_ref()
-                        .and_then(|v| v.get(c_idx))
-                        .copied()
-                        .unwrap_or(bed_z_down);
-                    let z_up_user = inputs
-                        .culvert_z_ups
-                        .as_ref()
-                        .and_then(|v| v.get(c_idx))
-                        .copied()
-                        .unwrap_or(bed_z_up);
 
-                    // Compute downstream velocity for exit loss calculation (using channel_area for contracted flow)
-                    let ds_row = densified_tables[i + 1].interpolate(sub_wsel[i + 1]);
-                    let ds_area_user = if raw_units == UnitSystem::USCustomary {
-                        ds_row.channel_area / (FT_TO_M * FT_TO_M)
-                    } else {
-                        ds_row.channel_area
-                    };
-                    let ds_velocity_user = if ds_area_user > 1e-9 {
-                        inputs.flow_rate / ds_area_user
-                    } else {
-                        0.0
-                    };
+                    let face_geo = bridge_face_geometry_for(
+                        inputs,
+                        b_idx,
+                        i,
+                        raw_units,
+                        num_slices,
+                        &densified_stations,
+                        &densified_tables,
+                        &densified_xs,
+                        &densified_z_mins,
+                        length,
+                    );
+                    let coupled = crate::solvers::bridge::solve_bridge_coupled(
+                        inputs.flow_rate,
+                        low_chord,
+                        high_chord,
+                        pier_width,
+                        num_piers,
+                        pier_shape,
+                        weir_coeff,
+                        orifice_coeff,
+                        face_geo.z_down_user,
+                        face_geo.z_up_user,
+                        tw_wsel_user,
+                        raw_units,
+                        &face_geo.table_up,
+                        &face_geo.table_down,
+                        &coupling,
+                        length,
+                        deck_ref,
+                        Some(&face_geo.sections),
+                    );
 
-                    let mut wsel_up_user = tw_wsel_user;
-                    let mut culvert_result = crate::solvers::culvert::CulvertSolveResult {
-                        wsel: tw_wsel_user,
-                        control_type: String::new(),
-                        wsel_inlet: 0.0,
-                        wsel_outlet: 0.0,
-                        q_barrel: 0.0,
-                        q_weir: 0.0,
-                        barrel_depth: 0.0,
-                        barrel_velocity: 0.0,
-                        barrel_froude: 0.0,
+                    sub_wsel[i] = if raw_units == UnitSystem::USCustomary {
+                        coupled.wsel_up * FT_TO_M
+                    } else {
+                        coupled.wsel_up
                     };
-                    let table_up = &densified_tables[i];
+                } else if let Some(c_indices) = culvert_indices {
+                    if c_indices.len() == 1 {
+                        let c_idx = c_indices[0];
+                        let shape_type = inputs
+                            .culvert_shape_types
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied()
+                            .unwrap_or(0);
+                        let span = inputs
+                            .culvert_spans
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied()
+                            .unwrap_or(4.0);
+                        let rise = inputs
+                            .culvert_rises
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied()
+                            .unwrap_or(4.0);
+                        let roughness_n = inputs
+                            .culvert_roughness_ns
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied()
+                            .unwrap_or(0.013);
+                        let culv_len = inputs
+                            .culvert_lengths
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied()
+                            .unwrap_or(100.0);
+                        let entrance_loss_coeff = inputs
+                            .culvert_entrance_loss_coeffs
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied()
+                            .unwrap_or(0.5);
+                        let exit_loss_coeff = inputs
+                            .culvert_exit_loss_coeffs
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied()
+                            .unwrap_or(1.0);
+                        let manning_n_bottom = inputs
+                            .culvert_roughness_n_bottoms
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied()
+                            .unwrap_or(roughness_n);
+                        let depth_bottom_n = inputs
+                            .culvert_depth_bottom_ns
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied()
+                            .unwrap_or(0.0);
+                        let depth_blocked = inputs
+                            .culvert_depth_blockeds
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied()
+                            .unwrap_or(0.0);
+                        let inlet_type = inputs
+                            .culvert_inlet_types
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied()
+                            .unwrap_or(0);
+                        let crest_elev = inputs
+                            .culvert_crest_elevs
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied();
+                        let chart_number = inputs
+                            .culvert_chart_numbers
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied();
+                        let scale_number = inputs
+                            .culvert_scale_numbers
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied();
+                        let weir_coeff = inputs
+                            .culvert_weir_coeffs
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied()
+                            .unwrap_or(0.0);
+                        let weir_length = inputs
+                            .culvert_weir_lengths
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied()
+                            .unwrap_or(0.0);
+                        let num_barrels = inputs
+                            .culvert_barrels
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied()
+                            .unwrap_or(1)
+                            .max(1);
+                        let active_barrels = inputs
+                            .culvert_active_barrels
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied()
+                            .unwrap_or(0);
+                        let skew_deg = inputs
+                            .culvert_skew_angles
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied()
+                            .unwrap_or(0.0);
+                        let barrel_spans = inputs
+                            .culvert_barrel_spans
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .cloned();
+                        let barrel_rises = inputs
+                            .culvert_barrel_rises
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .cloned();
+                        let tapered_type = inputs.culvert_tapered_types.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0);
+                        let tapered_face_span = inputs.culvert_tapered_face_spans.as_ref().and_then(|v| v.get(c_idx)).copied();
+                        let tapered_face_rise = inputs.culvert_tapered_face_rises.as_ref().and_then(|v| v.get(c_idx)).copied();
+                        let tapered_fall = inputs.culvert_tapered_falls.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
+                        let tapered_crest_weir_length = inputs.culvert_tapered_crest_weir_lengths.as_ref().and_then(|v| v.get(c_idx)).copied();
+                        let tapered_crest_weir_coeff = inputs.culvert_tapered_crest_weir_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied();
+                        let tapered_face_chart_number = inputs.culvert_tapered_face_chart_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
+                        let tapered_face_scale_number = inputs.culvert_tapered_face_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
+                        let tapered_throat_chart_number = inputs.culvert_tapered_throat_chart_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
+                        let tapered_throat_scale_number = inputs.culvert_tapered_throat_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
 
-                    for _ in 0..3 {
-                        let wsel_up_metric = if raw_units == UnitSystem::USCustomary {
-                            wsel_up_user * FT_TO_M
+                        let tw_wsel_user = if raw_units == UnitSystem::USCustomary {
+                            sub_wsel[i + 1] / FT_TO_M
                         } else {
-                            wsel_up_user
+                            sub_wsel[i + 1]
                         };
-                        let us_row = table_up.interpolate(wsel_up_metric);
-                        let us_area_user = if raw_units == UnitSystem::USCustomary {
-                            us_row.channel_area / (FT_TO_M * FT_TO_M)
+                        let bed_z_down = if raw_units == UnitSystem::USCustomary {
+                            densified_z_mins[i + 1] / FT_TO_M
                         } else {
-                            us_row.channel_area
+                            densified_z_mins[i + 1]
                         };
-                        let us_velocity_user = if us_area_user > 1e-9 {
-                            inputs.flow_rate / us_area_user
+                        let bed_z_up = if raw_units == UnitSystem::USCustomary {
+                            densified_z_mins[i] / FT_TO_M
+                        } else {
+                            densified_z_mins[i]
+                        };
+                        let z_down_user = inputs
+                            .culvert_z_downs
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied()
+                            .unwrap_or(bed_z_down);
+                        let z_up_user = inputs
+                            .culvert_z_ups
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied()
+                            .unwrap_or(bed_z_up);
+
+                        // Compute downstream velocity for exit loss calculation (using channel_area for contracted flow)
+                        let ds_row = densified_tables[i + 1].interpolate(sub_wsel[i + 1]);
+                        let ds_area_user = if raw_units == UnitSystem::USCustomary {
+                            ds_row.channel_area / (FT_TO_M * FT_TO_M)
+                        } else {
+                            ds_row.channel_area
+                        };
+                        let ds_velocity_user = if ds_area_user > 1e-9 {
+                            (inputs.flow_rate / ds_area_user).min(
+                                if raw_units == UnitSystem::Metric {
+                                    9.144
+                                } else {
+                                    30.0
+                                },
+                            )
                         } else {
                             0.0
                         };
 
-                        let custom_shape_tbl_y = inputs.culvert_custom_shape_tbl_ys.as_ref().and_then(|v| v.get(c_idx)).cloned();
-                        let custom_shape_tbl_area = inputs.culvert_custom_shape_tbl_areas.as_ref().and_then(|v| v.get(c_idx)).cloned();
-                        let custom_shape_tbl_perimeter = inputs.culvert_custom_shape_tbl_perimeters.as_ref().and_then(|v| v.get(c_idx)).cloned();
-                        let custom_shape_tbl_top_width = inputs.culvert_custom_shape_tbl_top_widths.as_ref().and_then(|v| v.get(c_idx)).cloned();
-                        let roadway_stations = inputs.culvert_roadway_stations.as_ref().and_then(|v| v.get(c_idx)).cloned();
-                        let roadway_elevations = inputs.culvert_roadway_elevations.as_ref().and_then(|v| v.get(c_idx)).cloned();
+                        let mut wsel_up_user = tw_wsel_user;
+                        let mut culvert_result = crate::solvers::culvert::CulvertSolveResult {
+                            wsel: tw_wsel_user,
+                            control_type: String::new(),
+                            wsel_inlet: 0.0,
+                            wsel_outlet: 0.0,
+                            q_barrel: 0.0,
+                            q_weir: 0.0,
+                            barrel_depth: 0.0,
+                            barrel_velocity: 0.0,
+                            barrel_froude: 0.0,
+                        };
+                        let table_up = &densified_tables[i];
 
-                        culvert_result = crate::solvers::culvert::solve_culvert(
-                            &crate::solvers::culvert::CulvertSolveParams {
+                        for _ in 0..3 {
+                            let wsel_up_metric = if raw_units == UnitSystem::USCustomary {
+                                wsel_up_user * FT_TO_M
+                            } else {
+                                wsel_up_user
+                            };
+                            let us_row = table_up.interpolate(wsel_up_metric);
+                            let us_area_user = if raw_units == UnitSystem::USCustomary {
+                                us_row.channel_area / (FT_TO_M * FT_TO_M)
+                            } else {
+                                us_row.channel_area
+                            };
+                            let us_velocity_user = if us_area_user > 1e-9 {
+                                inputs.flow_rate / us_area_user
+                            } else {
+                                0.0
+                            };
+
+                            let custom_shape_tbl_y = inputs
+                                .culvert_custom_shape_tbl_ys
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .cloned();
+                            let custom_shape_tbl_area = inputs
+                                .culvert_custom_shape_tbl_areas
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .cloned();
+                            let custom_shape_tbl_perimeter = inputs
+                                .culvert_custom_shape_tbl_perimeters
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .cloned();
+                            let custom_shape_tbl_top_width = inputs
+                                .culvert_custom_shape_tbl_top_widths
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .cloned();
+                            let roadway_stations = inputs
+                                .culvert_roadway_stations
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .cloned();
+                            let roadway_elevations = inputs
+                                .culvert_roadway_elevations
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .cloned();
+                            culvert_result = crate::solvers::culvert::solve_culvert(
+                                &crate::solvers::culvert::CulvertSolveParams {
+                                    q: inputs.flow_rate,
+                                    shape_type,
+                                    inlet_type,
+                                    span,
+                                    rise,
+                                    roughness_n,
+                                    length: culv_len,
+                                    entrance_loss_coeff,
+                                    exit_loss_coeff,
+                                    z_down: z_down_user,
+                                    z_up: z_up_user,
+                                    tw_wsel: tw_wsel_user,
+                                    units: raw_units,
+                                    manning_n_bottom,
+                                    depth_bottom_n,
+                                    depth_blocked,
+                                    ds_velocity: ds_velocity_user,
+                                    us_velocity: us_velocity_user,
+                                    crest_elev,
+                                    weir_coeff,
+                                    weir_length,
+                                    num_barrels,
+                                    active_barrels,
+                                    skew_deg,
+                                    barrel_spans: barrel_spans.clone(),
+                                    barrel_rises: barrel_rises.clone(),
+                                    custom_shape_tbl_y,
+                                    custom_shape_tbl_area,
+                                    custom_shape_tbl_perimeter,
+                                    custom_shape_tbl_top_width,
+                                    roadway_stations,
+                                    roadway_elevations,
+                                    chart_number,
+                                    scale_number,
+                                    tapered_type,
+                                    tapered_face_span,
+                                    tapered_face_rise,
+                                    tapered_fall,
+                                    tapered_crest_weir_length,
+                                    tapered_crest_weir_coeff,
+                                    tapered_face_chart_number,
+                                    tapered_face_scale_number,
+                                    tapered_throat_chart_number,
+                                    tapered_throat_scale_number,
+                                },
+                            );
+                            wsel_up_user = culvert_result.wsel;
+                        }
+
+                        if let Some(ref mut controls) = sub_culvert_control_types {
+                            controls[c_idx] = culvert_result.control_type.clone();
+                        }
+                        if let Some(ref mut v) = sub_culvert_wsel_inlet {
+                            v[c_idx] = culvert_result.wsel_inlet;
+                        }
+                        if let Some(ref mut v) = sub_culvert_wsel_outlet {
+                            v[c_idx] = culvert_result.wsel_outlet;
+                        }
+                        if let Some(ref mut v) = sub_culvert_q_barrels {
+                            v[c_idx] = culvert_result.q_barrel;
+                        }
+                        if let Some(ref mut v) = sub_culvert_q_weirs {
+                            v[c_idx] = culvert_result.q_weir;
+                        }
+                        if let Some(ref mut v) = sub_culvert_barrel_depths {
+                            v[c_idx] = culvert_result.barrel_depth;
+                        }
+                        if let Some(ref mut v) = sub_culvert_barrel_velocities {
+                            v[c_idx] = culvert_result.barrel_velocity;
+                        }
+                        if let Some(ref mut v) = sub_culvert_barrel_froude {
+                            v[c_idx] = culvert_result.barrel_froude;
+                        }
+
+                        sub_wsel[i] = if raw_units == UnitSystem::USCustomary {
+                            wsel_up_user * FT_TO_M
+                        } else {
+                            wsel_up_user
+                        };
+                    } else {
+                        let tw_wsel_user = if raw_units == UnitSystem::USCustomary {
+                            sub_wsel[i + 1] / FT_TO_M
+                        } else {
+                            sub_wsel[i + 1]
+                        };
+
+                        let bed_z_down = if raw_units == UnitSystem::USCustomary {
+                            densified_z_mins[i + 1] / FT_TO_M
+                        } else {
+                            densified_z_mins[i + 1]
+                        };
+                        let bed_z_up = if raw_units == UnitSystem::USCustomary {
+                            densified_z_mins[i] / FT_TO_M
+                        } else {
+                            densified_z_mins[i]
+                        };
+
+                        let ds_row = densified_tables[i + 1].interpolate(sub_wsel[i + 1]);
+                        let ds_area_user = if raw_units == UnitSystem::USCustomary {
+                            ds_row.channel_area / (FT_TO_M * FT_TO_M)
+                        } else {
+                            ds_row.channel_area
+                        };
+                        let ds_velocity_user = if ds_area_user > 1e-9 {
+                            (inputs.flow_rate / ds_area_user).min(
+                                if raw_units == UnitSystem::Metric {
+                                    9.144
+                                } else {
+                                    30.0
+                                },
+                            )
+                        } else {
+                            0.0
+                        };
+
+                        let mut compound_params = Vec::new();
+                        for &c_idx in c_indices {
+                            let shape_type = inputs
+                                .culvert_shape_types
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied()
+                                .unwrap_or(0);
+                            let span = inputs
+                                .culvert_spans
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied()
+                                .unwrap_or(4.0);
+                            let rise = inputs
+                                .culvert_rises
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied()
+                                .unwrap_or(4.0);
+                            let roughness_n = inputs
+                                .culvert_roughness_ns
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied()
+                                .unwrap_or(0.013);
+                            let culv_len = inputs
+                                .culvert_lengths
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied()
+                                .unwrap_or(100.0);
+                            let entrance_loss_coeff = inputs
+                                .culvert_entrance_loss_coeffs
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied()
+                                .unwrap_or(0.5);
+                            let exit_loss_coeff = inputs
+                                .culvert_exit_loss_coeffs
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied()
+                                .unwrap_or(1.0);
+                            let manning_n_bottom = inputs
+                                .culvert_roughness_n_bottoms
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied()
+                                .unwrap_or(roughness_n);
+                            let depth_bottom_n = inputs
+                                .culvert_depth_bottom_ns
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied()
+                                .unwrap_or(0.0);
+                            let depth_blocked = inputs
+                                .culvert_depth_blockeds
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied()
+                                .unwrap_or(0.0);
+                            let inlet_type = inputs
+                                .culvert_inlet_types
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied()
+                                .unwrap_or(0);
+                            let crest_elev = inputs
+                                .culvert_crest_elevs
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied();
+                            let chart_number = inputs
+                                .culvert_chart_numbers
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied();
+                            let scale_number = inputs
+                                .culvert_scale_numbers
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied();
+                            let weir_coeff = inputs
+                                .culvert_weir_coeffs
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied()
+                                .unwrap_or(0.0);
+                            let weir_length = inputs
+                                .culvert_weir_lengths
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied()
+                                .unwrap_or(0.0);
+                            let num_barrels = inputs
+                                .culvert_barrels
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied()
+                                .unwrap_or(1)
+                                .max(1);
+                            let active_barrels = inputs
+                                .culvert_active_barrels
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied()
+                                .unwrap_or(0);
+                            let skew_deg = inputs
+                                .culvert_skew_angles
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied()
+                                .unwrap_or(0.0);
+                            let barrel_spans = inputs
+                                .culvert_barrel_spans
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .cloned();
+                            let barrel_rises = inputs
+                                .culvert_barrel_rises
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .cloned();
+
+                            let z_down_user = inputs
+                                .culvert_z_downs
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied()
+                                .unwrap_or(bed_z_down);
+                            let z_up_user = inputs
+                                .culvert_z_ups
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied()
+                                .unwrap_or(bed_z_up);
+
+                            let custom_shape_tbl_y = inputs
+                                .culvert_custom_shape_tbl_ys
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .cloned();
+                            let custom_shape_tbl_area = inputs
+                                .culvert_custom_shape_tbl_areas
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .cloned();
+                            let custom_shape_tbl_perimeter = inputs
+                                .culvert_custom_shape_tbl_perimeters
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .cloned();
+                            let custom_shape_tbl_top_width = inputs
+                                .culvert_custom_shape_tbl_top_widths
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .cloned();
+                            let roadway_stations = inputs
+                                .culvert_roadway_stations
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .cloned();
+                            let roadway_elevations = inputs
+                                .culvert_roadway_elevations
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .cloned();
+
+                            let tapered_type = inputs.culvert_tapered_types.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0);
+                            let tapered_face_span = inputs.culvert_tapered_face_spans.as_ref().and_then(|v| v.get(c_idx)).copied();
+                            let tapered_face_rise = inputs.culvert_tapered_face_rises.as_ref().and_then(|v| v.get(c_idx)).copied();
+                            let tapered_fall = inputs.culvert_tapered_falls.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
+                            let tapered_crest_weir_length = inputs.culvert_tapered_crest_weir_lengths.as_ref().and_then(|v| v.get(c_idx)).copied();
+                            let tapered_crest_weir_coeff = inputs.culvert_tapered_crest_weir_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied();
+                            let tapered_face_chart_number = inputs.culvert_tapered_face_chart_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
+                            let tapered_face_scale_number = inputs.culvert_tapered_face_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
+                            let tapered_throat_chart_number = inputs.culvert_tapered_throat_chart_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
+                            let tapered_throat_scale_number = inputs.culvert_tapered_throat_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
+
+                            let mut p = crate::solvers::culvert::CulvertSolveParams {
                                 q: inputs.flow_rate,
                                 shape_type,
                                 inlet_type,
@@ -1554,15 +2175,15 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                                 depth_bottom_n,
                                 depth_blocked,
                                 ds_velocity: ds_velocity_user,
-                                us_velocity: us_velocity_user,
+                                us_velocity: 0.0,
                                 crest_elev,
                                 weir_coeff,
                                 weir_length,
                                 num_barrels,
                                 active_barrels,
                                 skew_deg,
-                                barrel_spans: barrel_spans.clone(),
-                                barrel_rises: barrel_rises.clone(),
+                                barrel_spans,
+                                barrel_rises,
                                 custom_shape_tbl_y,
                                 custom_shape_tbl_area,
                                 custom_shape_tbl_perimeter,
@@ -1581,174 +2202,117 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                                 tapered_face_scale_number,
                                 tapered_throat_chart_number,
                                 tapered_throat_scale_number,
-                            },
-                        );
-                        wsel_up_user = culvert_result.wsel;
-                    }
+                            };
+                            crate::solvers::culvert::normalize_culvert_params(&mut p);
+                            compound_params.push(p);
+                        }
 
-                    if let Some(ref mut controls) = culvert_control_types {
-                        controls[c_idx] = culvert_result.control_type.clone();
-                    }
-                    if let Some(ref mut v) = culvert_wsel_inlet {
-                        v[c_idx] = culvert_result.wsel_inlet;
-                    }
-                    if let Some(ref mut v) = culvert_wsel_outlet {
-                        v[c_idx] = culvert_result.wsel_outlet;
-                    }
-                    if let Some(ref mut v) = culvert_q_barrels {
-                        v[c_idx] = culvert_result.q_barrel;
-                    }
-                    if let Some(ref mut v) = culvert_q_weirs {
-                        v[c_idx] = culvert_result.q_weir;
-                    }
-                    if let Some(ref mut v) = culvert_barrel_depths {
-                        v[c_idx] = culvert_result.barrel_depth;
-                    }
-                    if let Some(ref mut v) = culvert_barrel_velocities {
-                        v[c_idx] = culvert_result.barrel_velocity;
-                    }
-                    if let Some(ref mut v) = culvert_barrel_froude {
-                        v[c_idx] = culvert_result.barrel_froude;
-                    }
+                        let table_up = &densified_tables[i];
+                        let mut low = tw_wsel_user;
+                        let mut high = tw_wsel_user
+                            + if raw_units == UnitSystem::USCustomary {
+                                200.0
+                            } else {
+                                60.0
+                            };
 
-                    sub_wsel[i] = if raw_units == UnitSystem::USCustomary {
-                        wsel_up_user * FT_TO_M
-                    } else {
-                        wsel_up_user
-                    };
-                } else {
-                    let tw_wsel_user = if raw_units == UnitSystem::USCustomary {
-                        sub_wsel[i + 1] / FT_TO_M
-                    } else {
-                        sub_wsel[i + 1]
-                    };
-                    let bed_z_down = if raw_units == UnitSystem::USCustomary {
-                        densified_z_mins[i + 1] / FT_TO_M
-                    } else {
-                        densified_z_mins[i + 1]
-                    };
-                    let bed_z_up = if raw_units == UnitSystem::USCustomary {
-                        densified_z_mins[i] / FT_TO_M
-                    } else {
-                        densified_z_mins[i]
-                    };
+                        for _ in 0..45 {
+                            let mid = 0.5 * (low + high);
+                            let wsel_up_metric = if raw_units == UnitSystem::USCustomary {
+                                mid * FT_TO_M
+                            } else {
+                                mid
+                            };
+                            let us_row = table_up.interpolate(wsel_up_metric);
+                            let us_area_user = if raw_units == UnitSystem::USCustomary {
+                                us_row.channel_area / (FT_TO_M * FT_TO_M)
+                            } else {
+                                us_row.channel_area
+                            };
+                            let us_velocity_user = if us_area_user > 1e-9 {
+                                inputs.flow_rate / us_area_user
+                            } else {
+                                0.0
+                            };
 
-                    let ds_row = densified_tables[i + 1].interpolate(sub_wsel[i + 1]);
-                    let ds_area_user = if raw_units == UnitSystem::USCustomary {
-                        ds_row.channel_area / (FT_TO_M * FT_TO_M)
-                    } else {
-                        ds_row.channel_area
-                    };
-                    let ds_velocity_user = if ds_area_user > 1e-9 {
-                        inputs.flow_rate / ds_area_user
-                    } else {
-                        0.0
-                    };
+                            let mut sum_q = 0.0;
+                            for p in &compound_params {
+                                let mut p_temp = p.clone();
+                                p_temp.us_velocity = us_velocity_user;
+                                let q_barrel =
+                                    crate::solvers::culvert::barrel_q_for_wsel(&p_temp, mid);
+                                let q_weir = if let Some(crest_elev) = p_temp.crest_elev {
+                                    let (crest_ft, cw_us, length_ft) = if p_temp.units
+                                        == UnitSystem::Metric
+                                    {
+                                        (
+                                            crest_elev / FT_TO_M,
+                                            if p_temp.weir_coeff > 0.0 {
+                                                p_temp.weir_coeff / CFS_TO_CMS * FT_TO_M.powf(2.5)
+                                            } else {
+                                                2.6
+                                            },
+                                            if p_temp.weir_length > 0.0 {
+                                                p_temp.weir_length / FT_TO_M
+                                            } else {
+                                                crate::solvers::culvert::default_weir_length_user(
+                                                    &p_temp,
+                                                ) / FT_TO_M
+                                            },
+                                        )
+                                    } else {
+                                        (
+                                            crest_elev,
+                                            if p_temp.weir_coeff > 0.0 {
+                                                p_temp.weir_coeff
+                                            } else {
+                                                2.6
+                                            },
+                                            if p_temp.weir_length > 0.0 {
+                                                p_temp.weir_length
+                                            } else {
+                                                crate::solvers::culvert::default_weir_length_user(
+                                                    &p_temp,
+                                                )
+                                            },
+                                        )
+                                    };
+                                    let hw_ft = if p_temp.units == UnitSystem::Metric {
+                                        mid / FT_TO_M
+                                    } else {
+                                        mid
+                                    };
+                                    let tw_ft = if p_temp.units == UnitSystem::Metric {
+                                        p_temp.tw_wsel / FT_TO_M
+                                    } else {
+                                        p_temp.tw_wsel
+                                    };
+                                    let q_weir_cfs = crate::solvers::culvert::weir_flow_us(
+                                        cw_us, length_ft, hw_ft, crest_ft, tw_ft,
+                                    );
+                                    if p_temp.units == UnitSystem::Metric {
+                                        q_weir_cfs * CFS_TO_CMS
+                                    } else {
+                                        q_weir_cfs
+                                    }
+                                } else {
+                                    0.0
+                                };
+                                sum_q += q_barrel + q_weir;
+                            }
 
-                    let mut compound_params = Vec::new();
-                    for &c_idx in c_indices {
-                        let shape_type = inputs.culvert_shape_types.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0);
-                        let span = inputs.culvert_spans.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(4.0);
-                        let rise = inputs.culvert_rises.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(4.0);
-                        let roughness_n = inputs.culvert_roughness_ns.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.013);
-                        let culv_len = inputs.culvert_lengths.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(100.0);
-                        let entrance_loss_coeff = inputs.culvert_entrance_loss_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.5);
-                        let exit_loss_coeff = inputs.culvert_exit_loss_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(1.0);
-                        let manning_n_bottom = inputs.culvert_roughness_n_bottoms.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(roughness_n);
-                        let depth_bottom_n = inputs.culvert_depth_bottom_ns.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
-                        let depth_blocked = inputs.culvert_depth_blockeds.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
-                        let inlet_type = inputs.culvert_inlet_types.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0);
-                        let crest_elev = inputs.culvert_crest_elevs.as_ref().and_then(|v| v.get(c_idx)).copied();
-                        let chart_number = inputs.culvert_chart_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
-                        let scale_number = inputs.culvert_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
-                        let tapered_type = inputs.culvert_tapered_types.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0);
-                        let tapered_face_span = inputs.culvert_tapered_face_spans.as_ref().and_then(|v| v.get(c_idx)).copied();
-                        let tapered_face_rise = inputs.culvert_tapered_face_rises.as_ref().and_then(|v| v.get(c_idx)).copied();
-                        let tapered_fall = inputs.culvert_tapered_falls.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
-                        let tapered_crest_weir_length = inputs.culvert_tapered_crest_weir_lengths.as_ref().and_then(|v| v.get(c_idx)).copied();
-                        let tapered_crest_weir_coeff = inputs.culvert_tapered_crest_weir_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied();
-                        let tapered_face_chart_number = inputs.culvert_tapered_face_chart_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
-                        let tapered_face_scale_number = inputs.culvert_tapered_face_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
-                        let tapered_throat_chart_number = inputs.culvert_tapered_throat_chart_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
-                        let tapered_throat_scale_number = inputs.culvert_tapered_throat_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
-                        let weir_coeff = inputs.culvert_weir_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
-                        let weir_length = inputs.culvert_weir_lengths.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
-                        let num_barrels = inputs.culvert_barrels.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(1).max(1);
-                        let active_barrels = inputs.culvert_active_barrels.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0);
-                        let skew_deg = inputs.culvert_skew_angles.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
-                        let barrel_spans = inputs.culvert_barrel_spans.as_ref().and_then(|v| v.get(c_idx)).cloned();
-                        let barrel_rises = inputs.culvert_barrel_rises.as_ref().and_then(|v| v.get(c_idx)).cloned();
+                            if sum_q < inputs.flow_rate {
+                                low = mid;
+                            } else {
+                                high = mid;
+                            }
+                        }
 
-                        let z_down_user = inputs.culvert_z_downs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(bed_z_down);
-                        let z_up_user = inputs.culvert_z_ups.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(bed_z_up);
-
-                        let custom_shape_tbl_y = inputs.culvert_custom_shape_tbl_ys.as_ref().and_then(|v| v.get(c_idx)).cloned();
-                        let custom_shape_tbl_area = inputs.culvert_custom_shape_tbl_areas.as_ref().and_then(|v| v.get(c_idx)).cloned();
-                        let custom_shape_tbl_perimeter = inputs.culvert_custom_shape_tbl_perimeters.as_ref().and_then(|v| v.get(c_idx)).cloned();
-                        let custom_shape_tbl_top_width = inputs.culvert_custom_shape_tbl_top_widths.as_ref().and_then(|v| v.get(c_idx)).cloned();
-                        let roadway_stations = inputs.culvert_roadway_stations.as_ref().and_then(|v| v.get(c_idx)).cloned();
-                        let roadway_elevations = inputs.culvert_roadway_elevations.as_ref().and_then(|v| v.get(c_idx)).cloned();
-
-                        let mut p = crate::solvers::culvert::CulvertSolveParams {
-                            q: inputs.flow_rate,
-                            shape_type,
-                            inlet_type,
-                            span,
-                            rise,
-                            roughness_n,
-                            length: culv_len,
-                            entrance_loss_coeff,
-                            exit_loss_coeff,
-                            z_down: z_down_user,
-                            z_up: z_up_user,
-                            tw_wsel: tw_wsel_user,
-                            units: raw_units,
-                            manning_n_bottom,
-                            depth_bottom_n,
-                            depth_blocked,
-                            ds_velocity: ds_velocity_user,
-                            us_velocity: 0.0,
-                            crest_elev,
-                            weir_coeff,
-                            weir_length,
-                            num_barrels,
-                            active_barrels,
-                            skew_deg,
-                            barrel_spans,
-                            barrel_rises,
-                            custom_shape_tbl_y,
-                            custom_shape_tbl_area,
-                            custom_shape_tbl_perimeter,
-                            custom_shape_tbl_top_width,
-                            roadway_stations,
-                            roadway_elevations,
-                            chart_number,
-                            scale_number,
-                            tapered_type,
-                            tapered_face_span,
-                            tapered_face_rise,
-                            tapered_fall,
-                            tapered_crest_weir_length,
-                            tapered_crest_weir_coeff,
-                            tapered_face_chart_number,
-                            tapered_face_scale_number,
-                            tapered_throat_chart_number,
-                            tapered_throat_scale_number,
-                        };
-                        crate::solvers::culvert::normalize_culvert_params(&mut p);
-                        compound_params.push(p);
-                    }
-
-                    let table_up = &densified_tables[i];
-                    let mut low = tw_wsel_user;
-                    let mut high = tw_wsel_user + if raw_units == UnitSystem::USCustomary { 200.0 } else { 60.0 };
-
-                    for _ in 0..45 {
-                        let mid = 0.5 * (low + high);
+                        let solved_hw = 0.5 * (low + high);
                         let wsel_up_metric = if raw_units == UnitSystem::USCustomary {
-                            mid * FT_TO_M
+                            solved_hw * FT_TO_M
                         } else {
-                            mid
+                            solved_hw
                         };
                         let us_row = table_up.interpolate(wsel_up_metric);
                         let us_area_user = if raw_units == UnitSystem::USCustomary {
@@ -1762,28 +2326,60 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                             0.0
                         };
 
-                        let mut sum_q = 0.0;
-                        for p in &compound_params {
+                        for (idx_in_indices, &c_idx) in c_indices.iter().enumerate() {
+                            let p = &compound_params[idx_in_indices];
                             let mut p_temp = p.clone();
                             p_temp.us_velocity = us_velocity_user;
-                            let q_barrel = crate::solvers::culvert::barrel_q_for_wsel(&p_temp, mid);
+                            let q_barrel =
+                                crate::solvers::culvert::barrel_q_for_wsel(&p_temp, solved_hw);
                             let q_weir = if let Some(crest_elev) = p_temp.crest_elev {
-                                let (crest_ft, cw_us, length_ft) = if p_temp.units == UnitSystem::Metric {
-                                    (
-                                        crest_elev / FT_TO_M,
-                                        if p_temp.weir_coeff > 0.0 { p_temp.weir_coeff / CFS_TO_CMS * FT_TO_M.powf(2.5) } else { 2.6 },
-                                        if p_temp.weir_length > 0.0 { p_temp.weir_length / FT_TO_M } else { crate::solvers::culvert::default_weir_length_user(&p_temp) / FT_TO_M },
-                                    )
+                                let (crest_ft, cw_us, length_ft) =
+                                    if p_temp.units == UnitSystem::Metric {
+                                        (
+                                            crest_elev / FT_TO_M,
+                                            if p_temp.weir_coeff > 0.0 {
+                                                p_temp.weir_coeff / CFS_TO_CMS * FT_TO_M.powf(2.5)
+                                            } else {
+                                                2.6
+                                            },
+                                            if p_temp.weir_length > 0.0 {
+                                                p_temp.weir_length / FT_TO_M
+                                            } else {
+                                                crate::solvers::culvert::default_weir_length_user(
+                                                    &p_temp,
+                                                ) / FT_TO_M
+                                            },
+                                        )
+                                    } else {
+                                        (
+                                            crest_elev,
+                                            if p_temp.weir_coeff > 0.0 {
+                                                p_temp.weir_coeff
+                                            } else {
+                                                2.6
+                                            },
+                                            if p_temp.weir_length > 0.0 {
+                                                p_temp.weir_length
+                                            } else {
+                                                crate::solvers::culvert::default_weir_length_user(
+                                                    &p_temp,
+                                                )
+                                            },
+                                        )
+                                    };
+                                let hw_ft = if p_temp.units == UnitSystem::Metric {
+                                    solved_hw / FT_TO_M
                                 } else {
-                                    (
-                                        crest_elev,
-                                        if p_temp.weir_coeff > 0.0 { p_temp.weir_coeff } else { 2.6 },
-                                        if p_temp.weir_length > 0.0 { p_temp.weir_length } else { crate::solvers::culvert::default_weir_length_user(&p_temp) },
-                                    )
+                                    solved_hw
                                 };
-                                let hw_ft = if p_temp.units == UnitSystem::Metric { mid / FT_TO_M } else { mid };
-                                let tw_ft = if p_temp.units == UnitSystem::Metric { p_temp.tw_wsel / FT_TO_M } else { p_temp.tw_wsel };
-                                let q_weir_cfs = crate::solvers::culvert::weir_flow_us(cw_us, length_ft, hw_ft, crest_ft, tw_ft);
+                                let tw_ft = if p_temp.units == UnitSystem::Metric {
+                                    p_temp.tw_wsel / FT_TO_M
+                                } else {
+                                    p_temp.tw_wsel
+                                };
+                                let q_weir_cfs = crate::solvers::culvert::weir_flow_us(
+                                    cw_us, length_ft, hw_ft, crest_ft, tw_ft,
+                                );
                                 if p_temp.units == UnitSystem::Metric {
                                     q_weir_cfs * CFS_TO_CMS
                                 } else {
@@ -1792,250 +2388,222 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                             } else {
                                 0.0
                             };
-                            sum_q += q_barrel + q_weir;
+                            p_temp.q = (q_barrel + q_weir).max(1e-9);
+
+                            let culvert_result = crate::solvers::culvert::solve_culvert(&p_temp);
+
+                            if let Some(ref mut controls) = sub_culvert_control_types {
+                                controls[c_idx] = culvert_result.control_type.clone();
+                            }
+                            if let Some(ref mut v) = sub_culvert_wsel_inlet {
+                                v[c_idx] = culvert_result.wsel_inlet;
+                            }
+                            if let Some(ref mut v) = sub_culvert_wsel_outlet {
+                                v[c_idx] = culvert_result.wsel_outlet;
+                            }
+                            if let Some(ref mut v) = sub_culvert_q_barrels {
+                                v[c_idx] = culvert_result.q_barrel;
+                            }
+                            if let Some(ref mut v) = sub_culvert_q_weirs {
+                                v[c_idx] = culvert_result.q_weir;
+                            }
+                            if let Some(ref mut v) = sub_culvert_barrel_depths {
+                                v[c_idx] = culvert_result.barrel_depth;
+                            }
+                            if let Some(ref mut v) = sub_culvert_barrel_velocities {
+                                v[c_idx] = culvert_result.barrel_velocity;
+                            }
+                            if let Some(ref mut v) = sub_culvert_barrel_froude {
+                                v[c_idx] = culvert_result.barrel_froude;
+                            }
                         }
 
-                        if sum_q < inputs.flow_rate {
+                        sub_wsel[i] = if raw_units == UnitSystem::USCustomary {
+                            solved_hw * FT_TO_M
+                        } else {
+                            solved_hw
+                        };
+                    }
+                } else if let Some(&is_idx) = inline_structure_at_interval.get(&i) {
+                    let crest_user = inputs
+                        .inline_structure_crest_elevs
+                        .as_ref()
+                        .and_then(|v| v.get(is_idx))
+                        .copied()
+                        .unwrap_or(0.0);
+                    let coeff_user = inputs
+                        .inline_structure_weir_coeffs
+                        .as_ref()
+                        .and_then(|v| v.get(is_idx))
+                        .copied()
+                        .unwrap_or(if raw_units == UnitSystem::USCustomary {
+                            2.6
+                        } else {
+                            1.44
+                        });
+                    let length_user = inputs
+                        .inline_structure_weir_lengths
+                        .as_ref()
+                        .and_then(|v| v.get(is_idx))
+                        .copied()
+                        .unwrap_or(0.0);
+
+                    let tw_wsel_user = if raw_units == UnitSystem::USCustomary {
+                        sub_wsel[i + 1] / FT_TO_M
+                    } else {
+                        sub_wsel[i + 1]
+                    };
+
+                    let (mut crest_ft, cw_us, length_ft) = if raw_units == UnitSystem::Metric {
+                        (
+                            crest_user / FT_TO_M,
+                            coeff_user / CFS_TO_CMS * FT_TO_M.powf(2.5),
+                            length_user / FT_TO_M,
+                        )
+                    } else {
+                        (crest_user, coeff_user, length_user)
+                    };
+
+                    let length_ft = if length_ft < 1e-9 { 10.0 } else { length_ft };
+
+                    let roadway_stations_ft: Option<Vec<f64>> = inputs
+                        .inline_structure_roadway_stations
+                        .as_ref()
+                        .and_then(|v| v.get(is_idx))
+                        .map(|v| {
+                            if raw_units == UnitSystem::Metric {
+                                v.iter().map(|&x| x / FT_TO_M).collect()
+                            } else {
+                                v.clone()
+                            }
+                        });
+                    let roadway_elevations_ft: Option<Vec<f64>> = inputs
+                        .inline_structure_roadway_elevations
+                        .as_ref()
+                        .and_then(|v| v.get(is_idx))
+                        .map(|v| {
+                            if raw_units == UnitSystem::Metric {
+                                v.iter().map(|&y| y / FT_TO_M).collect()
+                            } else {
+                                v.clone()
+                            }
+                        });
+
+                    if let Some(ref elevs_ft) = roadway_elevations_ft {
+                        if !elevs_ft.is_empty() {
+                            crest_ft = elevs_ft.iter().copied().fold(f64::INFINITY, f64::min);
+                        }
+                    }
+
+                    let q_target_cfs = if raw_units == UnitSystem::Metric {
+                        inputs.flow_rate / CFS_TO_CMS
+                    } else {
+                        inputs.flow_rate
+                    };
+
+                    let tw_ft = sub_wsel[i + 1] / FT_TO_M;
+
+                    let mut low = crest_ft.max(tw_ft);
+                    let mut high = low + 200.0;
+                    for _ in 0..45 {
+                        let mid = 0.5 * (low + high);
+                        let q_weir = if let (Some(ref sts), Some(ref els)) =
+                            (&roadway_stations_ft, &roadway_elevations_ft)
+                        {
+                            crate::solvers::culvert::roadway_profile_weir_flow(
+                                cw_us, mid, tw_ft, sts, els, 0.0,
+                            )
+                        } else {
+                            crate::solvers::culvert::weir_flow_us(
+                                cw_us, length_ft, mid, crest_ft, tw_ft,
+                            )
+                        };
+                        if q_weir < q_target_cfs {
                             low = mid;
                         } else {
                             high = mid;
                         }
                     }
-
-                    let solved_hw = 0.5 * (low + high);
-                    let wsel_up_metric = if raw_units == UnitSystem::USCustomary {
-                        solved_hw * FT_TO_M
+                    let solved_hw_ft = 0.5 * (low + high);
+                    let solved_hw_user = if raw_units == UnitSystem::Metric {
+                        solved_hw_ft * FT_TO_M
                     } else {
-                        solved_hw
-                    };
-                    let us_row = table_up.interpolate(wsel_up_metric);
-                    let us_area_user = if raw_units == UnitSystem::USCustomary {
-                        us_row.channel_area / (FT_TO_M * FT_TO_M)
-                    } else {
-                        us_row.channel_area
-                    };
-                    let us_velocity_user = if us_area_user > 1e-9 {
-                        inputs.flow_rate / us_area_user
-                    } else {
-                        0.0
+                        solved_hw_ft
                     };
 
-                    for (idx_in_indices, &c_idx) in c_indices.iter().enumerate() {
-                        let p = &compound_params[idx_in_indices];
-                        let mut p_temp = p.clone();
-                        p_temp.us_velocity = us_velocity_user;
-                        let q_barrel = crate::solvers::culvert::barrel_q_for_wsel(&p_temp, solved_hw);
-                        let q_weir = if let Some(crest_elev) = p_temp.crest_elev {
-                            let (crest_ft, cw_us, length_ft) = if p_temp.units == UnitSystem::Metric {
-                                (
-                                    crest_elev / FT_TO_M,
-                                    if p_temp.weir_coeff > 0.0 { p_temp.weir_coeff / CFS_TO_CMS * FT_TO_M.powf(2.5) } else { 2.6 },
-                                    if p_temp.weir_length > 0.0 { p_temp.weir_length / FT_TO_M } else { crate::solvers::culvert::default_weir_length_user(&p_temp) / FT_TO_M },
-                                )
-                            } else {
-                                (
-                                    crest_elev,
-                                    if p_temp.weir_coeff > 0.0 { p_temp.weir_coeff } else { 2.6 },
-                                    if p_temp.weir_length > 0.0 { p_temp.weir_length } else { crate::solvers::culvert::default_weir_length_user(&p_temp) },
-                                )
-                            };
-                            let hw_ft = if p_temp.units == UnitSystem::Metric { solved_hw / FT_TO_M } else { solved_hw };
-                            let tw_ft = if p_temp.units == UnitSystem::Metric { p_temp.tw_wsel / FT_TO_M } else { p_temp.tw_wsel };
-                            let q_weir_cfs = crate::solvers::culvert::weir_flow_us(cw_us, length_ft, hw_ft, crest_ft, tw_ft);
-                            if p_temp.units == UnitSystem::Metric {
-                                q_weir_cfs * CFS_TO_CMS
-                            } else {
-                                q_weir_cfs
-                            }
+                    if let Some(ref mut v) = sub_inline_structure_wsel_inlet {
+                        v[is_idx] = solved_hw_user;
+                    }
+                    if let Some(ref mut v) = sub_inline_structure_wsel_outlet {
+                        v[is_idx] = if raw_units == UnitSystem::Metric {
+                            tw_ft * FT_TO_M
                         } else {
-                            0.0
+                            tw_ft
                         };
-                        p_temp.q = (q_barrel + q_weir).max(1e-9);
-
-                        let culvert_result = crate::solvers::culvert::solve_culvert(&p_temp);
-
-                        if let Some(ref mut controls) = culvert_control_types {
-                            controls[c_idx] = culvert_result.control_type.clone();
-                        }
-                        if let Some(ref mut v) = culvert_wsel_inlet {
-                            v[c_idx] = culvert_result.wsel_inlet;
-                        }
-                        if let Some(ref mut v) = culvert_wsel_outlet {
-                            v[c_idx] = culvert_result.wsel_outlet;
-                        }
-                        if let Some(ref mut v) = culvert_q_barrels {
-                            v[c_idx] = culvert_result.q_barrel;
-                        }
-                        if let Some(ref mut v) = culvert_q_weirs {
-                            v[c_idx] = culvert_result.q_weir;
-                        }
-                        if let Some(ref mut v) = culvert_barrel_depths {
-                            v[c_idx] = culvert_result.barrel_depth;
-                        }
-                        if let Some(ref mut v) = culvert_barrel_velocities {
-                            v[c_idx] = culvert_result.barrel_velocity;
-                        }
-                        if let Some(ref mut v) = culvert_barrel_froude {
-                            v[c_idx] = culvert_result.barrel_froude;
-                        }
+                    }
+                    if let Some(ref mut v) = sub_inline_structure_q_weirs {
+                        v[is_idx] = inputs.flow_rate;
                     }
 
                     sub_wsel[i] = if raw_units == UnitSystem::USCustomary {
-                        solved_hw * FT_TO_M
+                        solved_hw_user * FT_TO_M
                     } else {
-                        solved_hw
+                        solved_hw_user
                     };
-                }
-            } else if let Some(&is_idx) = inline_structure_at_interval.get(&i) {
-                let crest_user = inputs.inline_structure_crest_elevs.as_ref().and_then(|v| v.get(is_idx)).copied().unwrap_or(0.0);
-                let coeff_user = inputs.inline_structure_weir_coeffs.as_ref().and_then(|v| v.get(is_idx)).copied().unwrap_or(if raw_units == UnitSystem::USCustomary { 2.6 } else { 1.44 });
-                let length_user = inputs.inline_structure_weir_lengths.as_ref().and_then(|v| v.get(is_idx)).copied().unwrap_or(0.0);
-
-                let _tw_wsel_user = if raw_units == UnitSystem::USCustomary {
-                    sub_wsel[i + 1] / FT_TO_M
                 } else {
-                    sub_wsel[i + 1]
-                };
-
-                let (mut crest_ft, cw_us, length_ft) = if raw_units == UnitSystem::Metric {
-                    (
-                        crest_user / FT_TO_M,
-                        coeff_user / CFS_TO_CMS * FT_TO_M.powf(2.5),
-                        length_user / FT_TO_M,
+                    sub_wsel[i] = solve_step(
+                        &densified_tables[i + 1],
+                        densified_xs[i + 1].as_ref(),
+                        structure_ineffective.get(&(i + 1)),
+                        sub_wsel[i + 1],
+                        &densified_tables[i],
+                        densified_xs[i].as_ref(),
+                        structure_ineffective.get(&i),
+                        densified_z_mins[i],
+                        ycs[i],
+                        q_mag,
+                        length,
+                        c_contraction,
+                        c_expansion,
+                        true,
+                        structure_adjacent_indices.contains(&(i + 1)),
+                        structure_adjacent_indices.contains(&i),
                     )
-                } else {
-                    (
-                        crest_user,
-                        coeff_user,
-                        length_user,
-                    )
-                };
+                    .unwrap_or_else(|| {
+                        // solve_step failed — typically because the upstream XS needs a WSE
+                        // above its geometry table maximum (e.g. survey is too short for the flow).
+                        // Fallback: extrapolate the upstream WSE from the downstream EGL using
+                        // the average friction slope rather than snapping to critical depth.
+                        //
+                        // EGL_ds = y_ds + Q²/(2g·A_ds²)
+                        // EGL_us ≈ EGL_ds + S_f · L   (subcritical: us energy > ds energy)
+                        // y_us   = EGL_us − Q²/(2g·A_us²)
+                        //
+                        // We seed A_us from the downstream area as a first approximation
+                        // (iterate once to improve), which is conservative but smooth.
+                        let ds_row = densified_tables[i + 1].interpolate(sub_wsel[i + 1]);
+                        let ds_area = ds_row.area.max(1e-6);
+                        let hv_ds = (q_mag * q_mag) / (2.0 * G_METRIC * ds_area * ds_area);
+                        let egl_ds = sub_wsel[i + 1] + hv_ds;
 
-                let length_ft = if length_ft < 1e-9 { 10.0 } else { length_ft };
+                        // Estimate friction slope from downstream conveyance
+                        let k_ds = ds_row.conveyance.max(1e-9);
+                        let sf = (q_mag / k_ds).powi(2);
+                        let egl_us = egl_ds + sf * length;
 
-                let roadway_stations_ft: Option<Vec<f64>> = inputs.inline_structure_roadway_stations.as_ref()
-                    .and_then(|v| v.get(is_idx))
-                    .map(|v| {
-                        if raw_units == UnitSystem::Metric {
-                            v.iter().map(|&x| x / FT_TO_M).collect()
-                        } else {
-                            v.clone()
-                        }
+                        // First-pass upstream WSE (assume same velocity head as DS)
+                        let y_us_guess = (egl_us - hv_ds).max(densified_z_mins[i] + ycs[i]);
+
+                        // One refinement: use upstream area at y_us_guess
+                        let us_row = densified_tables[i].interpolate(y_us_guess);
+                        let us_area = us_row.area.max(1e-6);
+                        let hv_us = (q_mag * q_mag) / (2.0 * G_METRIC * us_area * us_area);
+                        let y_us = (egl_us - hv_us).max(densified_z_mins[i] + ycs[i]);
+
+                        y_us
                     });
-                let roadway_elevations_ft: Option<Vec<f64>> = inputs.inline_structure_roadway_elevations.as_ref()
-                    .and_then(|v| v.get(is_idx))
-                    .map(|v| {
-                        if raw_units == UnitSystem::Metric {
-                            v.iter().map(|&y| y / FT_TO_M).collect()
-                        } else {
-                            v.clone()
-                        }
-                    });
-
-                if let Some(ref elevs_ft) = roadway_elevations_ft {
-                    if !elevs_ft.is_empty() {
-                        crest_ft = elevs_ft.iter().copied().fold(f64::INFINITY, f64::min);
-                    }
                 }
-
-                let q_target_cfs = if raw_units == UnitSystem::Metric {
-                    inputs.flow_rate / CFS_TO_CMS
-                } else {
-                    inputs.flow_rate
-                };
-
-                let tw_ft = sub_wsel[i + 1] / FT_TO_M;
-
-                let mut low = crest_ft.max(tw_ft);
-                let mut high = low + 200.0;
-                for _ in 0..45 {
-                    let mid = 0.5 * (low + high);
-                    let q_weir = if let (Some(ref sts), Some(ref els)) = (&roadway_stations_ft, &roadway_elevations_ft) {
-                        crate::solvers::culvert::roadway_profile_weir_flow(cw_us, mid, tw_ft, sts, els, 0.0)
-                    } else {
-                        crate::solvers::culvert::weir_flow_us(cw_us, length_ft, mid, crest_ft, tw_ft)
-                    };
-                    if q_weir < q_target_cfs {
-                        low = mid;
-                    } else {
-                        high = mid;
-                    }
-                }
-                let solved_hw_ft = 0.5 * (low + high);
-                let solved_hw_user = if raw_units == UnitSystem::Metric {
-                    solved_hw_ft * FT_TO_M
-                } else {
-                    solved_hw_ft
-                };
-
-                if let Some(ref mut v) = inline_structure_wsel_inlet {
-                    v[is_idx] = solved_hw_user;
-                }
-                if let Some(ref mut v) = inline_structure_wsel_outlet {
-                    v[is_idx] = if raw_units == UnitSystem::Metric { tw_ft * FT_TO_M } else { tw_ft };
-                }
-                if let Some(ref mut v) = inline_structure_q_weirs {
-                    v[is_idx] = inputs.flow_rate;
-                }
-
-                sub_wsel[i] = if raw_units == UnitSystem::USCustomary {
-                    solved_hw_user * FT_TO_M
-                } else {
-                    solved_hw_user
-                };
-            } else {
-                sub_wsel[i] = solve_step(
-                    &densified_tables[i + 1],
-                    densified_xs[i + 1].as_ref(),
-                    structure_ineffective.get(&(i + 1)),
-                    sub_wsel[i + 1],
-                    &densified_tables[i],
-                    densified_xs[i].as_ref(),
-                    structure_ineffective.get(&i),
-                    densified_z_mins[i],
-                    ycs[i],
-                    q_mag,
-                    length,
-                    c_contraction,
-                    c_expansion,
-                    true,
-                    structure_adjacent_indices.contains(&(i + 1)),
-                    structure_adjacent_indices.contains(&i),
-                ).unwrap_or_else(|| {
-                    // solve_step failed — typically because the upstream XS needs a WSE
-                    // above its geometry table maximum (e.g. survey is too short for the flow).
-                    // Fallback: extrapolate the upstream WSE from the downstream EGL using
-                    // the average friction slope rather than snapping to critical depth.
-                    //
-                    // EGL_ds = y_ds + Q²/(2g·A_ds²)
-                    // EGL_us ≈ EGL_ds + S_f · L   (subcritical: us energy > ds energy)
-                    // y_us   = EGL_us − Q²/(2g·A_us²)
-                    //
-                    // We seed A_us from the downstream area as a first approximation
-                    // (iterate once to improve), which is conservative but smooth.
-                    let ds_row = densified_tables[i + 1].interpolate(sub_wsel[i + 1]);
-                    let ds_area = ds_row.area.max(1e-6);
-                    let hv_ds   = (q_mag * q_mag) / (2.0 * G_METRIC * ds_area * ds_area);
-                    let egl_ds  = sub_wsel[i + 1] + hv_ds;
-
-                    // Estimate friction slope from downstream conveyance
-                    let k_ds  = ds_row.conveyance.max(1e-9);
-                    let sf    = (q_mag / k_ds).powi(2);
-                    let egl_us = egl_ds + sf * length;
-
-                    // First-pass upstream WSE (assume same velocity head as DS)
-                    let y_us_guess = (egl_us - hv_ds).max(densified_z_mins[i] + ycs[i]);
-
-                    // One refinement: use upstream area at y_us_guess
-                    let us_row  = densified_tables[i].interpolate(y_us_guess);
-                    let us_area = us_row.area.max(1e-6);
-                    let hv_us   = (q_mag * q_mag) / (2.0 * G_METRIC * us_area * us_area);
-                    let y_us    = (egl_us - hv_us).max(densified_z_mins[i] + ycs[i]);
-
-                    y_us
-                });
             }
-        }
         }
 
         if flow_reverses {
@@ -2049,13 +2617,52 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                 let bridge_idx = bridge_at_interval.get(&i).copied();
 
                 if let Some(b_idx) = bridge_idx {
-                    let low_chord = inputs.bridge_low_chords.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0.0);
-                    let high_chord = inputs.bridge_high_chords.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0.0);
-                    let pier_width = inputs.bridge_pier_widths.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0.0);
-                    let num_piers = inputs.bridge_num_piers.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0);
-                    let pier_shape = inputs.bridge_pier_shapes.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0);
-                    let weir_coeff = inputs.bridge_weir_coeffs.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(if raw_units == UnitSystem::USCustomary { 2.6 } else { 1.44 });
-                    let orifice_coeff = inputs.bridge_orifice_coeffs.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0.5);
+                    let low_chord = inputs
+                        .bridge_low_chords
+                        .as_ref()
+                        .and_then(|v| v.get(b_idx))
+                        .copied()
+                        .unwrap_or(0.0);
+                    let high_chord = inputs
+                        .bridge_high_chords
+                        .as_ref()
+                        .and_then(|v| v.get(b_idx))
+                        .copied()
+                        .unwrap_or(0.0);
+                    let pier_width = inputs
+                        .bridge_pier_widths
+                        .as_ref()
+                        .and_then(|v| v.get(b_idx))
+                        .copied()
+                        .unwrap_or(0.0);
+                    let num_piers = inputs
+                        .bridge_num_piers
+                        .as_ref()
+                        .and_then(|v| v.get(b_idx))
+                        .copied()
+                        .unwrap_or(0);
+                    let pier_shape = inputs
+                        .bridge_pier_shapes
+                        .as_ref()
+                        .and_then(|v| v.get(b_idx))
+                        .copied()
+                        .unwrap_or(0);
+                    let weir_coeff = inputs
+                        .bridge_weir_coeffs
+                        .as_ref()
+                        .and_then(|v| v.get(b_idx))
+                        .copied()
+                        .unwrap_or(if raw_units == UnitSystem::USCustomary {
+                            2.6
+                        } else {
+                            1.44
+                        });
+                    let orifice_coeff = inputs
+                        .bridge_orifice_coeffs
+                        .as_ref()
+                        .and_then(|v| v.get(b_idx))
+                        .copied()
+                        .unwrap_or(0.5);
                     let coupling = bridge_coupling_for(inputs, b_idx);
                     let deck = bridge_deck_profile_for(inputs, b_idx, raw_units);
                     let deck_ref = deck.as_ref();
@@ -2130,259 +2737,144 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
     let mut super_wsel = vec![0.0; dm];
     if regime == 1 || regime == 2 {
         if !flow_reverses {
-        super_wsel[0] = us_wsel_metric;
-        if super_wsel[0] > critical_wsels[0] {
-            super_wsel[0] = critical_wsels[0];
-        }
+            super_wsel[0] = us_wsel_metric;
+            if super_wsel[0] > critical_wsels[0] {
+                super_wsel[0] = critical_wsels[0];
+            }
 
-        for i in 0..dm - 1 {
-            let length = densified_stations[i] - densified_stations[i + 1];
+            for i in 0..dm - 1 {
+                let length = densified_stations[i] - densified_stations[i + 1];
 
-            let bridge_idx = bridge_at_interval.get(&i).copied();
+                let bridge_idx = bridge_at_interval.get(&i).copied();
 
-            let culvert_indices = culvert_at_interval.get(&i);
+                let culvert_indices = culvert_at_interval.get(&i);
 
-            if let Some(c_indices) = culvert_indices {
-                if c_indices.len() == 1 {
-                    let c_idx = c_indices[0];
-                    let shape_type = inputs.culvert_shape_types.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0);
-                    let span = inputs.culvert_spans.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(4.0);
-                    let rise = inputs.culvert_rises.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(4.0);
-                    let roughness_n = inputs.culvert_roughness_ns.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.013);
-                    let culv_len = inputs.culvert_lengths.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(100.0);
-                    let entrance_loss_coeff = inputs.culvert_entrance_loss_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.5);
-                    let exit_loss_coeff = inputs.culvert_exit_loss_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(1.0);
-                    let manning_n_bottom = inputs.culvert_roughness_n_bottoms.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(roughness_n);
-                    let depth_bottom_n = inputs.culvert_depth_bottom_ns.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
-                    let depth_blocked = inputs.culvert_depth_blockeds.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
-                    let inlet_type = inputs.culvert_inlet_types.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0);
-                    let crest_elev = inputs.culvert_crest_elevs.as_ref().and_then(|v| v.get(c_idx)).copied();
-                    let chart_number = inputs.culvert_chart_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
-                    let scale_number = inputs.culvert_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
-                    let tapered_type = inputs.culvert_tapered_types.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0);
-                    let tapered_face_span = inputs.culvert_tapered_face_spans.as_ref().and_then(|v| v.get(c_idx)).copied();
-                    let tapered_face_rise = inputs.culvert_tapered_face_rises.as_ref().and_then(|v| v.get(c_idx)).copied();
-                    let tapered_fall = inputs.culvert_tapered_falls.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
-                    let tapered_crest_weir_length = inputs.culvert_tapered_crest_weir_lengths.as_ref().and_then(|v| v.get(c_idx)).copied();
-                    let tapered_crest_weir_coeff = inputs.culvert_tapered_crest_weir_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied();
-                    let tapered_face_chart_number = inputs.culvert_tapered_face_chart_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
-                    let tapered_face_scale_number = inputs.culvert_tapered_face_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
-                    let tapered_throat_chart_number = inputs.culvert_tapered_throat_chart_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
-                    let tapered_throat_scale_number = inputs.culvert_tapered_throat_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
-                    let weir_coeff = inputs.culvert_weir_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
-                    let weir_length = inputs.culvert_weir_lengths.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
-                    let num_barrels = inputs.culvert_barrels.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(1).max(1);
-                    let active_barrels = inputs
-                        .culvert_active_barrels
-                        .as_ref()
-                        .and_then(|v| v.get(c_idx))
-                        .copied()
-                        .unwrap_or(0);
-                    let skew_deg = inputs
-                        .culvert_skew_angles
-                        .as_ref()
-                        .and_then(|v| v.get(c_idx))
-                        .copied()
-                        .unwrap_or(0.0);
-                    let barrel_spans = inputs
-                        .culvert_barrel_spans
-                        .as_ref()
-                        .and_then(|v| v.get(c_idx))
-                        .cloned();
-                    let barrel_rises = inputs
-                        .culvert_barrel_rises
-                        .as_ref()
-                        .and_then(|v| v.get(c_idx))
-                        .cloned();
+                if let Some(c_indices) = culvert_indices {
+                    if c_indices.len() == 1 {
+                        let c_idx = c_indices[0];
+                        let shape_type = inputs
+                            .culvert_shape_types
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied()
+                            .unwrap_or(0);
+                        let span = inputs
+                            .culvert_spans
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied()
+                            .unwrap_or(4.0);
+                        let rise = inputs
+                            .culvert_rises
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied()
+                            .unwrap_or(4.0);
+                        let roughness_n = inputs
+                            .culvert_roughness_ns
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied()
+                            .unwrap_or(0.013);
+                        let culv_len = inputs
+                            .culvert_lengths
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied()
+                            .unwrap_or(100.0);
+                        let entrance_loss_coeff = inputs
+                            .culvert_entrance_loss_coeffs
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied()
+                            .unwrap_or(0.5);
+                        let exit_loss_coeff = inputs
+                            .culvert_exit_loss_coeffs
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied()
+                            .unwrap_or(1.0);
+                        let manning_n_bottom = inputs
+                            .culvert_roughness_n_bottoms
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied()
+                            .unwrap_or(roughness_n);
+                        let depth_bottom_n = inputs
+                            .culvert_depth_bottom_ns
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied()
+                            .unwrap_or(0.0);
+                        let depth_blocked = inputs
+                            .culvert_depth_blockeds
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied()
+                            .unwrap_or(0.0);
+                        let inlet_type = inputs
+                            .culvert_inlet_types
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied()
+                            .unwrap_or(0);
+                        let crest_elev = inputs
+                            .culvert_crest_elevs
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied();
+                        let chart_number = inputs
+                            .culvert_chart_numbers
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied();
+                        let scale_number = inputs
+                            .culvert_scale_numbers
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied();
+                        let weir_coeff = inputs
+                            .culvert_weir_coeffs
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied()
+                            .unwrap_or(0.0);
+                        let weir_length = inputs
+                            .culvert_weir_lengths
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied()
+                            .unwrap_or(0.0);
+                        let num_barrels = inputs
+                            .culvert_barrels
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied()
+                            .unwrap_or(1)
+                            .max(1);
+                        let active_barrels = inputs
+                            .culvert_active_barrels
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied()
+                            .unwrap_or(0);
+                        let skew_deg = inputs
+                            .culvert_skew_angles
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied()
+                            .unwrap_or(0.0);
+                        let barrel_spans = inputs
+                            .culvert_barrel_spans
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .cloned();
+                        let barrel_rises = inputs
+                            .culvert_barrel_rises
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .cloned();
 
-                    let hw_wsel_user = if raw_units == UnitSystem::USCustomary {
-                        super_wsel[i] / FT_TO_M
-                    } else {
-                        super_wsel[i]
-                    };
-                    let bed_z_down = if raw_units == UnitSystem::USCustomary {
-                        densified_z_mins[i + 1] / FT_TO_M
-                    } else {
-                        densified_z_mins[i + 1]
-                    };
-                    let bed_z_up = if raw_units == UnitSystem::USCustomary {
-                        densified_z_mins[i] / FT_TO_M
-                    } else {
-                        densified_z_mins[i]
-                    };
-                    let z_down_user = inputs
-                        .culvert_z_downs
-                        .as_ref()
-                        .and_then(|v| v.get(c_idx))
-                        .copied()
-                        .unwrap_or(bed_z_down);
-                    let z_up_user = inputs
-                        .culvert_z_ups
-                        .as_ref()
-                        .and_then(|v| v.get(c_idx))
-                        .copied()
-                        .unwrap_or(bed_z_up);
-
-                    let table_up = &densified_tables[i];
-                    let table_down = &densified_tables[i + 1];
-                    let us_row = table_up.interpolate(super_wsel[i]);
-                    let us_area_user = if raw_units == UnitSystem::USCustomary {
-                        us_row.channel_area / (FT_TO_M * FT_TO_M)
-                    } else {
-                        us_row.channel_area
-                    };
-                    let us_velocity_user = inputs.flow_rate / us_area_user.max(1e-9);
-
-                    let mut tw_wsel_user = hw_wsel_user;
-                    let mut final_result = None;
-                    for _ in 0..3 {
-                        let tw_metric = if raw_units == UnitSystem::USCustomary {
-                            tw_wsel_user * FT_TO_M
-                        } else {
-                            tw_wsel_user
-                        };
-                        let ds_row = table_down.interpolate(tw_metric);
-                        let ds_area_user = if raw_units == UnitSystem::USCustomary {
-                            ds_row.channel_area / (FT_TO_M * FT_TO_M)
-                        } else {
-                            ds_row.channel_area
-                        };
-                        let ds_velocity_user = inputs.flow_rate / ds_area_user.max(1e-9);
-
-                        let custom_shape_tbl_y = inputs.culvert_custom_shape_tbl_ys.as_ref().and_then(|v| v.get(c_idx)).cloned();
-                        let custom_shape_tbl_area = inputs.culvert_custom_shape_tbl_areas.as_ref().and_then(|v| v.get(c_idx)).cloned();
-                        let custom_shape_tbl_perimeter = inputs.culvert_custom_shape_tbl_perimeters.as_ref().and_then(|v| v.get(c_idx)).cloned();
-                        let custom_shape_tbl_top_width = inputs.culvert_custom_shape_tbl_top_widths.as_ref().and_then(|v| v.get(c_idx)).cloned();
-                        let roadway_stations = inputs.culvert_roadway_stations.as_ref().and_then(|v| v.get(c_idx)).cloned();
-                        let roadway_elevations = inputs.culvert_roadway_elevations.as_ref().and_then(|v| v.get(c_idx)).cloned();
-
-                        let culvert_params = crate::solvers::culvert::CulvertSolveParams {
-                            q: inputs.flow_rate,
-                            shape_type,
-                            inlet_type,
-                            span,
-                            rise,
-                            roughness_n,
-                            length: culv_len,
-                            entrance_loss_coeff,
-                            exit_loss_coeff,
-                            z_down: z_down_user,
-                            z_up: z_up_user,
-                            tw_wsel: tw_wsel_user,
-                            units: raw_units,
-                            manning_n_bottom,
-                            depth_bottom_n,
-                            depth_blocked,
-                            ds_velocity: ds_velocity_user,
-                            us_velocity: us_velocity_user,
-                            crest_elev,
-                            weir_coeff,
-                            weir_length,
-                            num_barrels,
-                            active_barrels,
-                            skew_deg,
-                            barrel_spans: barrel_spans.clone(),
-                            barrel_rises: barrel_rises.clone(),
-                            custom_shape_tbl_y,
-                            custom_shape_tbl_area,
-                            custom_shape_tbl_perimeter,
-                            custom_shape_tbl_top_width,
-                            roadway_stations,
-                            roadway_elevations,
-                            chart_number,
-                            scale_number,
-                            tapered_type,
-                            tapered_face_span,
-                            tapered_face_rise,
-                            tapered_fall,
-                            tapered_crest_weir_length,
-                            tapered_crest_weir_coeff,
-                            tapered_face_chart_number,
-                            tapered_face_scale_number,
-                            tapered_throat_chart_number,
-                            tapered_throat_scale_number,
-                        };
-                        let (tw_new, res) =
-                            crate::solvers::culvert::solve_culvert_from_headwater(&culvert_params, hw_wsel_user);
-                        tw_wsel_user = tw_new;
-                        final_result = Some(res);
-                    }
-
-                    if let Some(culvert_result) = final_result {
-                        if let Some(ref mut controls) = culvert_control_types {
-                            controls[c_idx] = culvert_result.control_type.clone();
-                        }
-                        if let Some(ref mut v) = culvert_wsel_inlet {
-                            v[c_idx] = culvert_result.wsel_inlet;
-                        }
-                        if let Some(ref mut v) = culvert_wsel_outlet {
-                            v[c_idx] = culvert_result.wsel_outlet;
-                        }
-                        if let Some(ref mut v) = culvert_q_barrels {
-                            v[c_idx] = culvert_result.q_barrel;
-                        }
-                        if let Some(ref mut v) = culvert_q_weirs {
-                            v[c_idx] = culvert_result.q_weir;
-                        }
-                        if let Some(ref mut v) = culvert_barrel_depths {
-                            v[c_idx] = culvert_result.barrel_depth;
-                        }
-                        if let Some(ref mut v) = culvert_barrel_velocities {
-                            v[c_idx] = culvert_result.barrel_velocity;
-                        }
-                        if let Some(ref mut v) = culvert_barrel_froude {
-                            v[c_idx] = culvert_result.barrel_froude;
-                        }
-                    }
-
-                    super_wsel[i + 1] = if raw_units == UnitSystem::USCustomary {
-                        tw_wsel_user * FT_TO_M
-                    } else {
-                        tw_wsel_user
-                    };
-                } else {
-                    let hw_wsel_user = if raw_units == UnitSystem::USCustomary {
-                        super_wsel[i] / FT_TO_M
-                    } else {
-                        super_wsel[i]
-                    };
-                    let bed_z_down = if raw_units == UnitSystem::USCustomary {
-                        densified_z_mins[i + 1] / FT_TO_M
-                    } else {
-                        densified_z_mins[i + 1]
-                    };
-                    let bed_z_up = if raw_units == UnitSystem::USCustomary {
-                        densified_z_mins[i] / FT_TO_M
-                    } else {
-                        densified_z_mins[i]
-                    };
-
-                    let table_up = &densified_tables[i];
-                    let table_down = &densified_tables[i + 1];
-                    let us_row = table_up.interpolate(super_wsel[i]);
-                    let us_area_user = if raw_units == UnitSystem::USCustomary {
-                        us_row.channel_area / (FT_TO_M * FT_TO_M)
-                    } else {
-                        us_row.channel_area
-                    };
-                    let us_velocity_user = inputs.flow_rate / us_area_user.max(1e-9);
-
-                    let mut compound_params = Vec::new();
-                    for &c_idx in c_indices {
-                        let shape_type = inputs.culvert_shape_types.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0);
-                        let span = inputs.culvert_spans.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(4.0);
-                        let rise = inputs.culvert_rises.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(4.0);
-                        let roughness_n = inputs.culvert_roughness_ns.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.013);
-                        let culv_len = inputs.culvert_lengths.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(100.0);
-                        let entrance_loss_coeff = inputs.culvert_entrance_loss_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.5);
-                        let exit_loss_coeff = inputs.culvert_exit_loss_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(1.0);
-                        let manning_n_bottom = inputs.culvert_roughness_n_bottoms.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(roughness_n);
-                        let depth_bottom_n = inputs.culvert_depth_bottom_ns.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
-                        let depth_blocked = inputs.culvert_depth_blockeds.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
-                        let inlet_type = inputs.culvert_inlet_types.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0);
-                        let crest_elev = inputs.culvert_crest_elevs.as_ref().and_then(|v| v.get(c_idx)).copied();
-                        let chart_number = inputs.culvert_chart_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
-                        let scale_number = inputs.culvert_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
                         let tapered_type = inputs.culvert_tapered_types.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0);
                         let tapered_face_span = inputs.culvert_tapered_face_spans.as_ref().and_then(|v| v.get(c_idx)).copied();
                         let tapered_face_rise = inputs.culvert_tapered_face_rises.as_ref().and_then(|v| v.get(c_idx)).copied();
@@ -2393,82 +2885,550 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                         let tapered_face_scale_number = inputs.culvert_tapered_face_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
                         let tapered_throat_chart_number = inputs.culvert_tapered_throat_chart_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
                         let tapered_throat_scale_number = inputs.culvert_tapered_throat_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
-                        let weir_coeff = inputs.culvert_weir_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
-                        let weir_length = inputs.culvert_weir_lengths.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
-                        let num_barrels = inputs.culvert_barrels.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(1).max(1);
-                        let active_barrels = inputs.culvert_active_barrels.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0);
-                        let skew_deg = inputs.culvert_skew_angles.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
-                        let barrel_spans = inputs.culvert_barrel_spans.as_ref().and_then(|v| v.get(c_idx)).cloned();
-                        let barrel_rises = inputs.culvert_barrel_rises.as_ref().and_then(|v| v.get(c_idx)).cloned();
 
-                        let z_down_user = inputs.culvert_z_downs.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(bed_z_down);
-                        let z_up_user = inputs.culvert_z_ups.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(bed_z_up);
-
-                        let custom_shape_tbl_y = inputs.culvert_custom_shape_tbl_ys.as_ref().and_then(|v| v.get(c_idx)).cloned();
-                        let custom_shape_tbl_area = inputs.culvert_custom_shape_tbl_areas.as_ref().and_then(|v| v.get(c_idx)).cloned();
-                        let custom_shape_tbl_perimeter = inputs.culvert_custom_shape_tbl_perimeters.as_ref().and_then(|v| v.get(c_idx)).cloned();
-                        let custom_shape_tbl_top_width = inputs.culvert_custom_shape_tbl_top_widths.as_ref().and_then(|v| v.get(c_idx)).cloned();
-                        let roadway_stations = inputs.culvert_roadway_stations.as_ref().and_then(|v| v.get(c_idx)).cloned();
-                        let roadway_elevations = inputs.culvert_roadway_elevations.as_ref().and_then(|v| v.get(c_idx)).cloned();
-
-                        let mut p = crate::solvers::culvert::CulvertSolveParams {
-                            q: inputs.flow_rate,
-                            shape_type,
-                            inlet_type,
-                            span,
-                            rise,
-                            roughness_n,
-                            length: culv_len,
-                            entrance_loss_coeff,
-                            exit_loss_coeff,
-                            z_down: z_down_user,
-                            z_up: z_up_user,
-                            tw_wsel: 0.0,
-                            units: raw_units,
-                            manning_n_bottom,
-                            depth_bottom_n,
-                            depth_blocked,
-                            ds_velocity: 0.0,
-                            us_velocity: us_velocity_user,
-                            crest_elev,
-                            weir_coeff,
-                            weir_length,
-                            num_barrels,
-                            active_barrels,
-                            skew_deg,
-                            barrel_spans,
-                            barrel_rises,
-                            custom_shape_tbl_y,
-                            custom_shape_tbl_area,
-                            custom_shape_tbl_perimeter,
-                            custom_shape_tbl_top_width,
-                            roadway_stations,
-                            roadway_elevations,
-                            chart_number,
-                            scale_number,
-                            tapered_type,
-                            tapered_face_span,
-                            tapered_face_rise,
-                            tapered_fall,
-                            tapered_crest_weir_length,
-                            tapered_crest_weir_coeff,
-                            tapered_face_chart_number,
-                            tapered_face_scale_number,
-                            tapered_throat_chart_number,
-                            tapered_throat_scale_number,
-                        };
-                        crate::solvers::culvert::normalize_culvert_params(&mut p);
-                        compound_params.push(p);
-                    }
-
-                    let mut low = bed_z_down;
-                    let mut high = hw_wsel_user;
-                    for _ in 0..45 {
-                        let mid = 0.5 * (low + high);
-                        let ds_metric = if raw_units == UnitSystem::USCustomary {
-                            mid * FT_TO_M
+                        let hw_wsel_user = if raw_units == UnitSystem::USCustomary {
+                            super_wsel[i] / FT_TO_M
                         } else {
-                            mid
+                            super_wsel[i]
+                        };
+                        let bed_z_down = if raw_units == UnitSystem::USCustomary {
+                            densified_z_mins[i + 1] / FT_TO_M
+                        } else {
+                            densified_z_mins[i + 1]
+                        };
+                        let bed_z_up = if raw_units == UnitSystem::USCustomary {
+                            densified_z_mins[i] / FT_TO_M
+                        } else {
+                            densified_z_mins[i]
+                        };
+                        let z_down_user = inputs
+                            .culvert_z_downs
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied()
+                            .unwrap_or(bed_z_down);
+                        let z_up_user = inputs
+                            .culvert_z_ups
+                            .as_ref()
+                            .and_then(|v| v.get(c_idx))
+                            .copied()
+                            .unwrap_or(bed_z_up);
+
+                        let table_up = &densified_tables[i];
+                        let table_down = &densified_tables[i + 1];
+                        let us_row = table_up.interpolate(super_wsel[i]);
+                        let us_area_user = if raw_units == UnitSystem::USCustomary {
+                            us_row.channel_area / (FT_TO_M * FT_TO_M)
+                        } else {
+                            us_row.channel_area
+                        };
+                        let us_velocity_user = inputs.flow_rate / us_area_user.max(1e-9);
+
+                        let mut tw_wsel_user = hw_wsel_user;
+                        let mut final_result = None;
+                        for _ in 0..3 {
+                            let tw_metric = if raw_units == UnitSystem::USCustomary {
+                                tw_wsel_user * FT_TO_M
+                            } else {
+                                tw_wsel_user
+                            };
+                            let ds_row = table_down.interpolate(tw_metric);
+                            let ds_area_user = if raw_units == UnitSystem::USCustomary {
+                                ds_row.channel_area / (FT_TO_M * FT_TO_M)
+                            } else {
+                                ds_row.channel_area
+                            };
+                            let ds_velocity_user = (inputs.flow_rate / ds_area_user.max(1e-9)).min(
+                                if raw_units == UnitSystem::Metric {
+                                    9.144
+                                } else {
+                                    30.0
+                                },
+                            );
+
+                            let custom_shape_tbl_y = inputs
+                                .culvert_custom_shape_tbl_ys
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .cloned();
+                            let custom_shape_tbl_area = inputs
+                                .culvert_custom_shape_tbl_areas
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .cloned();
+                            let custom_shape_tbl_perimeter = inputs
+                                .culvert_custom_shape_tbl_perimeters
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .cloned();
+                            let custom_shape_tbl_top_width = inputs
+                                .culvert_custom_shape_tbl_top_widths
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .cloned();
+                            let roadway_stations = inputs
+                                .culvert_roadway_stations
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .cloned();
+                            let roadway_elevations = inputs
+                                .culvert_roadway_elevations
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .cloned();
+
+                            let culvert_params = crate::solvers::culvert::CulvertSolveParams {
+                                q: inputs.flow_rate,
+                                shape_type,
+                                inlet_type,
+                                span,
+                                rise,
+                                roughness_n,
+                                length: culv_len,
+                                entrance_loss_coeff,
+                                exit_loss_coeff,
+                                z_down: z_down_user,
+                                z_up: z_up_user,
+                                tw_wsel: tw_wsel_user,
+                                units: raw_units,
+                                manning_n_bottom,
+                                depth_bottom_n,
+                                depth_blocked,
+                                ds_velocity: ds_velocity_user,
+                                us_velocity: us_velocity_user,
+                                crest_elev,
+                                weir_coeff,
+                                weir_length,
+                                num_barrels,
+                                active_barrels,
+                                skew_deg,
+                                barrel_spans: barrel_spans.clone(),
+                                barrel_rises: barrel_rises.clone(),
+                                custom_shape_tbl_y,
+                                custom_shape_tbl_area,
+                                custom_shape_tbl_perimeter,
+                                custom_shape_tbl_top_width,
+                                roadway_stations,
+                                roadway_elevations,
+                                chart_number,
+                                scale_number,
+                                tapered_type,
+                                tapered_face_span,
+                                tapered_face_rise,
+                                tapered_fall,
+                                tapered_crest_weir_length,
+                                tapered_crest_weir_coeff,
+                                tapered_face_chart_number,
+                                tapered_face_scale_number,
+                                tapered_throat_chart_number,
+                                tapered_throat_scale_number,
+                            };
+                            let (tw_new, res) =
+                                crate::solvers::culvert::solve_culvert_from_headwater(
+                                    &culvert_params,
+                                    hw_wsel_user,
+                                );
+                            tw_wsel_user = tw_new;
+                            final_result = Some(res);
+                        }
+
+                        if let Some(culvert_result) = final_result {
+                            if let Some(ref mut controls) = super_culvert_control_types {
+                                controls[c_idx] = culvert_result.control_type.clone();
+                            }
+                            if let Some(ref mut v) = super_culvert_wsel_inlet {
+                                v[c_idx] = culvert_result.wsel_inlet;
+                            }
+                            if let Some(ref mut v) = super_culvert_wsel_outlet {
+                                v[c_idx] = culvert_result.wsel_outlet;
+                            }
+                            if let Some(ref mut v) = super_culvert_q_barrels {
+                                v[c_idx] = culvert_result.q_barrel;
+                            }
+                            if let Some(ref mut v) = super_culvert_q_weirs {
+                                v[c_idx] = culvert_result.q_weir;
+                            }
+                            if let Some(ref mut v) = super_culvert_barrel_depths {
+                                v[c_idx] = culvert_result.barrel_depth;
+                            }
+                            if let Some(ref mut v) = super_culvert_barrel_velocities {
+                                v[c_idx] = culvert_result.barrel_velocity;
+                            }
+                            if let Some(ref mut v) = super_culvert_barrel_froude {
+                                v[c_idx] = culvert_result.barrel_froude;
+                            }
+                        }
+
+                        super_wsel[i + 1] = if raw_units == UnitSystem::USCustomary {
+                            tw_wsel_user * FT_TO_M
+                        } else {
+                            tw_wsel_user
+                        };
+                    } else {
+                        let hw_wsel_user = if raw_units == UnitSystem::USCustomary {
+                            super_wsel[i] / FT_TO_M
+                        } else {
+                            super_wsel[i]
+                        };
+                        let bed_z_down = if raw_units == UnitSystem::USCustomary {
+                            densified_z_mins[i + 1] / FT_TO_M
+                        } else {
+                            densified_z_mins[i + 1]
+                        };
+                        let bed_z_up = if raw_units == UnitSystem::USCustomary {
+                            densified_z_mins[i] / FT_TO_M
+                        } else {
+                            densified_z_mins[i]
+                        };
+
+                        let table_up = &densified_tables[i];
+                        let table_down = &densified_tables[i + 1];
+                        let us_row = table_up.interpolate(super_wsel[i]);
+                        let us_area_user = if raw_units == UnitSystem::USCustomary {
+                            us_row.channel_area / (FT_TO_M * FT_TO_M)
+                        } else {
+                            us_row.channel_area
+                        };
+                        let us_velocity_user = inputs.flow_rate / us_area_user.max(1e-9);
+
+                        let mut compound_params = Vec::new();
+                        for &c_idx in c_indices {
+                            let shape_type = inputs
+                                .culvert_shape_types
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied()
+                                .unwrap_or(0);
+                            let span = inputs
+                                .culvert_spans
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied()
+                                .unwrap_or(4.0);
+                            let rise = inputs
+                                .culvert_rises
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied()
+                                .unwrap_or(4.0);
+                            let roughness_n = inputs
+                                .culvert_roughness_ns
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied()
+                                .unwrap_or(0.013);
+                            let culv_len = inputs
+                                .culvert_lengths
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied()
+                                .unwrap_or(100.0);
+                            let entrance_loss_coeff = inputs
+                                .culvert_entrance_loss_coeffs
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied()
+                                .unwrap_or(0.5);
+                            let exit_loss_coeff = inputs
+                                .culvert_exit_loss_coeffs
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied()
+                                .unwrap_or(1.0);
+                            let manning_n_bottom = inputs
+                                .culvert_roughness_n_bottoms
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied()
+                                .unwrap_or(roughness_n);
+                            let depth_bottom_n = inputs
+                                .culvert_depth_bottom_ns
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied()
+                                .unwrap_or(0.0);
+                            let depth_blocked = inputs
+                                .culvert_depth_blockeds
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied()
+                                .unwrap_or(0.0);
+                            let inlet_type = inputs
+                                .culvert_inlet_types
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied()
+                                .unwrap_or(0);
+                            let crest_elev = inputs
+                                .culvert_crest_elevs
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied();
+                            let chart_number = inputs
+                                .culvert_chart_numbers
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied();
+                            let scale_number = inputs
+                                .culvert_scale_numbers
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied();
+                            let weir_coeff = inputs
+                                .culvert_weir_coeffs
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied()
+                                .unwrap_or(0.0);
+                            let weir_length = inputs
+                                .culvert_weir_lengths
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied()
+                                .unwrap_or(0.0);
+                            let num_barrels = inputs
+                                .culvert_barrels
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied()
+                                .unwrap_or(1)
+                                .max(1);
+                            let active_barrels = inputs
+                                .culvert_active_barrels
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied()
+                                .unwrap_or(0);
+                            let skew_deg = inputs
+                                .culvert_skew_angles
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied()
+                                .unwrap_or(0.0);
+                            let barrel_spans = inputs
+                                .culvert_barrel_spans
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .cloned();
+                            let barrel_rises = inputs
+                                .culvert_barrel_rises
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .cloned();
+
+                            let tapered_type = inputs.culvert_tapered_types.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0);
+                            let tapered_face_span = inputs.culvert_tapered_face_spans.as_ref().and_then(|v| v.get(c_idx)).copied();
+                            let tapered_face_rise = inputs.culvert_tapered_face_rises.as_ref().and_then(|v| v.get(c_idx)).copied();
+                            let tapered_fall = inputs.culvert_tapered_falls.as_ref().and_then(|v| v.get(c_idx)).copied().unwrap_or(0.0);
+                            let tapered_crest_weir_length = inputs.culvert_tapered_crest_weir_lengths.as_ref().and_then(|v| v.get(c_idx)).copied();
+                            let tapered_crest_weir_coeff = inputs.culvert_tapered_crest_weir_coeffs.as_ref().and_then(|v| v.get(c_idx)).copied();
+                            let tapered_face_chart_number = inputs.culvert_tapered_face_chart_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
+                            let tapered_face_scale_number = inputs.culvert_tapered_face_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
+                            let tapered_throat_chart_number = inputs.culvert_tapered_throat_chart_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
+                            let tapered_throat_scale_number = inputs.culvert_tapered_throat_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
+
+                            let z_down_user = inputs
+                                .culvert_z_downs
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied()
+                                .unwrap_or(bed_z_down);
+                            let z_up_user = inputs
+                                .culvert_z_ups
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .copied()
+                                .unwrap_or(bed_z_up);
+
+                            let custom_shape_tbl_y = inputs
+                                .culvert_custom_shape_tbl_ys
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .cloned();
+                            let custom_shape_tbl_area = inputs
+                                .culvert_custom_shape_tbl_areas
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .cloned();
+                            let custom_shape_tbl_perimeter = inputs
+                                .culvert_custom_shape_tbl_perimeters
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .cloned();
+                            let custom_shape_tbl_top_width = inputs
+                                .culvert_custom_shape_tbl_top_widths
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .cloned();
+                            let roadway_stations = inputs
+                                .culvert_roadway_stations
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .cloned();
+                            let roadway_elevations = inputs
+                                .culvert_roadway_elevations
+                                .as_ref()
+                                .and_then(|v| v.get(c_idx))
+                                .cloned();
+
+                            let mut p = crate::solvers::culvert::CulvertSolveParams {
+                                q: inputs.flow_rate,
+                                shape_type,
+                                inlet_type,
+                                span,
+                                rise,
+                                roughness_n,
+                                length: culv_len,
+                                entrance_loss_coeff,
+                                exit_loss_coeff,
+                                z_down: z_down_user,
+                                z_up: z_up_user,
+                                tw_wsel: 0.0,
+                                units: raw_units,
+                                manning_n_bottom,
+                                depth_bottom_n,
+                                depth_blocked,
+                                ds_velocity: 0.0,
+                                us_velocity: us_velocity_user,
+                                crest_elev,
+                                weir_coeff,
+                                weir_length,
+                                num_barrels,
+                                active_barrels,
+                                skew_deg,
+                                barrel_spans,
+                                barrel_rises,
+                                custom_shape_tbl_y,
+                                custom_shape_tbl_area,
+                                custom_shape_tbl_perimeter,
+                                custom_shape_tbl_top_width,
+                                roadway_stations,
+                                roadway_elevations,
+                                chart_number,
+                                scale_number,
+                                tapered_type,
+                                tapered_face_span,
+                                tapered_face_rise,
+                                tapered_fall,
+                                tapered_crest_weir_length,
+                                tapered_crest_weir_coeff,
+                                tapered_face_chart_number,
+                                tapered_face_scale_number,
+                                tapered_throat_chart_number,
+                                tapered_throat_scale_number,
+                            };
+                            crate::solvers::culvert::normalize_culvert_params(&mut p);
+                            compound_params.push(p);
+                        }
+
+                        let mut low = bed_z_down;
+                        let mut high = hw_wsel_user;
+                        for _ in 0..45 {
+                            let mid = 0.5 * (low + high);
+                            let ds_metric = if raw_units == UnitSystem::USCustomary {
+                                mid * FT_TO_M
+                            } else {
+                                mid
+                            };
+                            let ds_row = table_down.interpolate(ds_metric);
+                            let ds_area = if raw_units == UnitSystem::USCustomary {
+                                ds_row.channel_area / (FT_TO_M * FT_TO_M)
+                            } else {
+                                ds_row.channel_area
+                            };
+                            let ds_velocity_user = if ds_area > 1e-9 {
+                                (inputs.flow_rate / ds_area).min(
+                                    if raw_units == UnitSystem::Metric {
+                                        9.144
+                                    } else {
+                                        30.0
+                                    },
+                                )
+                            } else {
+                                0.0
+                            };
+
+                            let mut sum_q = 0.0;
+                            for p in &compound_params {
+                                let mut p_temp = p.clone();
+                                p_temp.tw_wsel = mid;
+                                p_temp.ds_velocity = ds_velocity_user;
+                                let q_barrel = crate::solvers::culvert::barrel_q_for_wsel(
+                                    &p_temp,
+                                    hw_wsel_user,
+                                );
+                                let q_weir = if let Some(crest_elev) = p_temp.crest_elev {
+                                    let (crest_ft, cw_us, length_ft) = if p_temp.units
+                                        == UnitSystem::Metric
+                                    {
+                                        (
+                                            crest_elev / FT_TO_M,
+                                            if p_temp.weir_coeff > 0.0 {
+                                                p_temp.weir_coeff / CFS_TO_CMS * FT_TO_M.powf(2.5)
+                                            } else {
+                                                2.6
+                                            },
+                                            if p_temp.weir_length > 0.0 {
+                                                p_temp.weir_length / FT_TO_M
+                                            } else {
+                                                crate::solvers::culvert::default_weir_length_user(
+                                                    &p_temp,
+                                                ) / FT_TO_M
+                                            },
+                                        )
+                                    } else {
+                                        (
+                                            crest_elev,
+                                            if p_temp.weir_coeff > 0.0 {
+                                                p_temp.weir_coeff
+                                            } else {
+                                                2.6
+                                            },
+                                            if p_temp.weir_length > 0.0 {
+                                                p_temp.weir_length
+                                            } else {
+                                                crate::solvers::culvert::default_weir_length_user(
+                                                    &p_temp,
+                                                )
+                                            },
+                                        )
+                                    };
+                                    let hw_ft = if p_temp.units == UnitSystem::Metric {
+                                        hw_wsel_user / FT_TO_M
+                                    } else {
+                                        hw_wsel_user
+                                    };
+                                    let tw_ft = if p_temp.units == UnitSystem::Metric {
+                                        mid / FT_TO_M
+                                    } else {
+                                        mid
+                                    };
+                                    let q_weir_cfs = crate::solvers::culvert::weir_flow_us(
+                                        cw_us, length_ft, hw_ft, crest_ft, tw_ft,
+                                    );
+                                    if p_temp.units == UnitSystem::Metric {
+                                        q_weir_cfs * CFS_TO_CMS
+                                    } else {
+                                        q_weir_cfs
+                                    }
+                                } else {
+                                    0.0
+                                };
+                                sum_q += q_barrel + q_weir;
+                            }
+
+                            if sum_q > inputs.flow_rate {
+                                low = mid;
+                            } else {
+                                high = mid;
+                            }
+                        }
+
+                        let solved_tw = 0.5 * (low + high);
+                        let ds_metric = if raw_units == UnitSystem::USCustomary {
+                            solved_tw * FT_TO_M
+                        } else {
+                            solved_tw
                         };
                         let ds_row = table_down.interpolate(ds_metric);
                         let ds_area = if raw_units == UnitSystem::USCustomary {
@@ -2477,34 +3437,70 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                             ds_row.channel_area
                         };
                         let ds_velocity_user = if ds_area > 1e-9 {
-                            inputs.flow_rate / ds_area
+                            (inputs.flow_rate / ds_area).min(if raw_units == UnitSystem::Metric {
+                                9.144
+                            } else {
+                                30.0
+                            })
                         } else {
                             0.0
                         };
 
-                        let mut sum_q = 0.0;
-                        for p in &compound_params {
+                        for (idx_in_indices, &c_idx) in c_indices.iter().enumerate() {
+                            let p = &compound_params[idx_in_indices];
                             let mut p_temp = p.clone();
-                            p_temp.tw_wsel = mid;
+                            p_temp.tw_wsel = solved_tw;
                             p_temp.ds_velocity = ds_velocity_user;
-                            let q_barrel = crate::solvers::culvert::barrel_q_for_wsel(&p_temp, hw_wsel_user);
+                            let q_barrel =
+                                crate::solvers::culvert::barrel_q_for_wsel(&p_temp, hw_wsel_user);
                             let q_weir = if let Some(crest_elev) = p_temp.crest_elev {
-                                let (crest_ft, cw_us, length_ft) = if p_temp.units == UnitSystem::Metric {
-                                    (
-                                        crest_elev / FT_TO_M,
-                                        if p_temp.weir_coeff > 0.0 { p_temp.weir_coeff / CFS_TO_CMS * FT_TO_M.powf(2.5) } else { 2.6 },
-                                        if p_temp.weir_length > 0.0 { p_temp.weir_length / FT_TO_M } else { crate::solvers::culvert::default_weir_length_user(&p_temp) / FT_TO_M },
-                                    )
+                                let (crest_ft, cw_us, length_ft) =
+                                    if p_temp.units == UnitSystem::Metric {
+                                        (
+                                            crest_elev / FT_TO_M,
+                                            if p_temp.weir_coeff > 0.0 {
+                                                p_temp.weir_coeff / CFS_TO_CMS * FT_TO_M.powf(2.5)
+                                            } else {
+                                                2.6
+                                            },
+                                            if p_temp.weir_length > 0.0 {
+                                                p_temp.weir_length / FT_TO_M
+                                            } else {
+                                                crate::solvers::culvert::default_weir_length_user(
+                                                    &p_temp,
+                                                ) / FT_TO_M
+                                            },
+                                        )
+                                    } else {
+                                        (
+                                            crest_elev,
+                                            if p_temp.weir_coeff > 0.0 {
+                                                p_temp.weir_coeff
+                                            } else {
+                                                2.6
+                                            },
+                                            if p_temp.weir_length > 0.0 {
+                                                p_temp.weir_length
+                                            } else {
+                                                crate::solvers::culvert::default_weir_length_user(
+                                                    &p_temp,
+                                                )
+                                            },
+                                        )
+                                    };
+                                let hw_ft = if p_temp.units == UnitSystem::Metric {
+                                    hw_wsel_user / FT_TO_M
                                 } else {
-                                    (
-                                        crest_elev,
-                                        if p_temp.weir_coeff > 0.0 { p_temp.weir_coeff } else { 2.6 },
-                                        if p_temp.weir_length > 0.0 { p_temp.weir_length } else { crate::solvers::culvert::default_weir_length_user(&p_temp) },
-                                    )
+                                    hw_wsel_user
                                 };
-                                let hw_ft = if p_temp.units == UnitSystem::Metric { hw_wsel_user / FT_TO_M } else { hw_wsel_user };
-                                let tw_ft = if p_temp.units == UnitSystem::Metric { mid / FT_TO_M } else { mid };
-                                let q_weir_cfs = crate::solvers::culvert::weir_flow_us(cw_us, length_ft, hw_ft, crest_ft, tw_ft);
+                                let tw_ft = if p_temp.units == UnitSystem::Metric {
+                                    solved_tw / FT_TO_M
+                                } else {
+                                    solved_tw
+                                };
+                                let q_weir_cfs = crate::solvers::culvert::weir_flow_us(
+                                    cw_us, length_ft, hw_ft, crest_ft, tw_ft,
+                                );
                                 if p_temp.units == UnitSystem::Metric {
                                     q_weir_cfs * CFS_TO_CMS
                                 } else {
@@ -2513,280 +3509,290 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                             } else {
                                 0.0
                             };
-                            sum_q += q_barrel + q_weir;
+                            p_temp.q = (q_barrel + q_weir).max(1e-9);
+
+                            let culvert_result = crate::solvers::culvert::solve_culvert(&p_temp);
+
+                            if let Some(ref mut controls) = super_culvert_control_types {
+                                controls[c_idx] = culvert_result.control_type.clone();
+                            }
+                            if let Some(ref mut v) = super_culvert_wsel_inlet {
+                                v[c_idx] = culvert_result.wsel_inlet;
+                            }
+                            if let Some(ref mut v) = super_culvert_wsel_outlet {
+                                v[c_idx] = culvert_result.wsel_outlet;
+                            }
+                            if let Some(ref mut v) = super_culvert_q_barrels {
+                                v[c_idx] = culvert_result.q_barrel;
+                            }
+                            if let Some(ref mut v) = super_culvert_q_weirs {
+                                v[c_idx] = culvert_result.q_weir;
+                            }
+                            if let Some(ref mut v) = super_culvert_barrel_depths {
+                                v[c_idx] = culvert_result.barrel_depth;
+                            }
+                            if let Some(ref mut v) = super_culvert_barrel_velocities {
+                                v[c_idx] = culvert_result.barrel_velocity;
+                            }
+                            if let Some(ref mut v) = super_culvert_barrel_froude {
+                                v[c_idx] = culvert_result.barrel_froude;
+                            }
                         }
 
-                        if sum_q > inputs.flow_rate {
+                        super_wsel[i + 1] = if raw_units == UnitSystem::USCustomary {
+                            solved_tw * FT_TO_M
+                        } else {
+                            solved_tw
+                        };
+                    }
+                } else if let Some(b_idx) = bridge_idx {
+                    let low_chord = inputs
+                        .bridge_low_chords
+                        .as_ref()
+                        .and_then(|v| v.get(b_idx))
+                        .copied()
+                        .unwrap_or(0.0);
+                    let high_chord = inputs
+                        .bridge_high_chords
+                        .as_ref()
+                        .and_then(|v| v.get(b_idx))
+                        .copied()
+                        .unwrap_or(0.0);
+                    let pier_width = inputs
+                        .bridge_pier_widths
+                        .as_ref()
+                        .and_then(|v| v.get(b_idx))
+                        .copied()
+                        .unwrap_or(0.0);
+                    let num_piers = inputs
+                        .bridge_num_piers
+                        .as_ref()
+                        .and_then(|v| v.get(b_idx))
+                        .copied()
+                        .unwrap_or(0);
+                    let pier_shape = inputs
+                        .bridge_pier_shapes
+                        .as_ref()
+                        .and_then(|v| v.get(b_idx))
+                        .copied()
+                        .unwrap_or(0);
+                    let weir_coeff = inputs
+                        .bridge_weir_coeffs
+                        .as_ref()
+                        .and_then(|v| v.get(b_idx))
+                        .copied()
+                        .unwrap_or(if raw_units == UnitSystem::USCustomary {
+                            2.6
+                        } else {
+                            1.44
+                        });
+                    let orifice_coeff = inputs
+                        .bridge_orifice_coeffs
+                        .as_ref()
+                        .and_then(|v| v.get(b_idx))
+                        .copied()
+                        .unwrap_or(0.5);
+                    let coupling = bridge_coupling_for(inputs, b_idx);
+                    let deck = bridge_deck_profile_for(inputs, b_idx, raw_units);
+                    let deck_ref = deck.as_ref();
+
+                    let hw_wsel_user = if raw_units == UnitSystem::USCustomary {
+                        super_wsel[i] / FT_TO_M
+                    } else {
+                        super_wsel[i]
+                    };
+
+                    let face_geo = bridge_face_geometry_for(
+                        inputs,
+                        b_idx,
+                        i,
+                        raw_units,
+                        num_slices,
+                        &densified_stations,
+                        &densified_tables,
+                        &densified_xs,
+                        &densified_z_mins,
+                        length,
+                    );
+                    let tw_wsel_user = crate::solvers::bridge::solve_bridge_tailwater(
+                        inputs.flow_rate,
+                        low_chord,
+                        high_chord,
+                        pier_width,
+                        num_piers,
+                        pier_shape,
+                        weir_coeff,
+                        orifice_coeff,
+                        face_geo.z_down_user,
+                        face_geo.z_up_user,
+                        hw_wsel_user,
+                        raw_units,
+                        &face_geo.table_up,
+                        &face_geo.table_down,
+                        &coupling,
+                        length,
+                        deck_ref,
+                        Some(&face_geo.sections),
+                    );
+
+                    super_wsel[i + 1] = if raw_units == UnitSystem::USCustomary {
+                        tw_wsel_user * FT_TO_M
+                    } else {
+                        tw_wsel_user
+                    };
+                } else if let Some(&is_idx) = inline_structure_at_interval.get(&i) {
+                    let crest_user = inputs
+                        .inline_structure_crest_elevs
+                        .as_ref()
+                        .and_then(|v| v.get(is_idx))
+                        .copied()
+                        .unwrap_or(0.0);
+                    let coeff_user = inputs
+                        .inline_structure_weir_coeffs
+                        .as_ref()
+                        .and_then(|v| v.get(is_idx))
+                        .copied()
+                        .unwrap_or(if raw_units == UnitSystem::USCustomary {
+                            2.6
+                        } else {
+                            1.44
+                        });
+                    let length_user = inputs
+                        .inline_structure_weir_lengths
+                        .as_ref()
+                        .and_then(|v| v.get(is_idx))
+                        .copied()
+                        .unwrap_or(0.0);
+
+                    let hw_ft = super_wsel[i] / FT_TO_M;
+
+                    let (mut crest_ft, cw_us, length_ft) = if raw_units == UnitSystem::Metric {
+                        (
+                            crest_user / FT_TO_M,
+                            coeff_user / CFS_TO_CMS * FT_TO_M.powf(2.5),
+                            length_user / FT_TO_M,
+                        )
+                    } else {
+                        (crest_user, coeff_user, length_user)
+                    };
+
+                    let length_ft = if length_ft < 1e-9 { 10.0 } else { length_ft };
+
+                    let roadway_stations_ft: Option<Vec<f64>> = inputs
+                        .inline_structure_roadway_stations
+                        .as_ref()
+                        .and_then(|v| v.get(is_idx))
+                        .map(|v| {
+                            if raw_units == UnitSystem::Metric {
+                                v.iter().map(|&x| x / FT_TO_M).collect()
+                            } else {
+                                v.clone()
+                            }
+                        });
+                    let roadway_elevations_ft: Option<Vec<f64>> = inputs
+                        .inline_structure_roadway_elevations
+                        .as_ref()
+                        .and_then(|v| v.get(is_idx))
+                        .map(|v| {
+                            if raw_units == UnitSystem::Metric {
+                                v.iter().map(|&y| y / FT_TO_M).collect()
+                            } else {
+                                v.clone()
+                            }
+                        });
+
+                    if let Some(ref elevs_ft) = roadway_elevations_ft {
+                        if !elevs_ft.is_empty() {
+                            crest_ft = elevs_ft.iter().copied().fold(f64::INFINITY, f64::min);
+                        }
+                    }
+
+                    let q_target_cfs = if raw_units == UnitSystem::Metric {
+                        inputs.flow_rate / CFS_TO_CMS
+                    } else {
+                        inputs.flow_rate
+                    };
+
+                    let bed_z_down = if raw_units == UnitSystem::USCustomary {
+                        densified_z_mins[i + 1] / FT_TO_M
+                    } else {
+                        densified_z_mins[i + 1]
+                    };
+                    let bed_z_down_ft = if raw_units == UnitSystem::Metric {
+                        bed_z_down / FT_TO_M
+                    } else {
+                        bed_z_down
+                    };
+
+                    let mut low = bed_z_down_ft;
+                    let mut high = hw_ft;
+                    for _ in 0..45 {
+                        let mid = 0.5 * (low + high);
+                        let q_weir = if let (Some(ref sts), Some(ref els)) =
+                            (&roadway_stations_ft, &roadway_elevations_ft)
+                        {
+                            crate::solvers::culvert::roadway_profile_weir_flow(
+                                cw_us, hw_ft, mid, sts, els, 0.0,
+                            )
+                        } else {
+                            crate::solvers::culvert::weir_flow_us(
+                                cw_us, length_ft, hw_ft, crest_ft, mid,
+                            )
+                        };
+                        if q_weir > q_target_cfs {
                             low = mid;
                         } else {
                             high = mid;
                         }
                     }
-
-                    let solved_tw = 0.5 * (low + high);
-                    let ds_metric = if raw_units == UnitSystem::USCustomary {
-                        solved_tw * FT_TO_M
+                    let solved_tw_ft = 0.5 * (low + high);
+                    let solved_tw_user = if raw_units == UnitSystem::Metric {
+                        solved_tw_ft * FT_TO_M
                     } else {
-                        solved_tw
-                    };
-                    let ds_row = table_down.interpolate(ds_metric);
-                    let ds_area = if raw_units == UnitSystem::USCustomary {
-                        ds_row.channel_area / (FT_TO_M * FT_TO_M)
-                    } else {
-                        ds_row.channel_area
-                    };
-                    let ds_velocity_user = if ds_area > 1e-9 {
-                        inputs.flow_rate / ds_area
-                    } else {
-                        0.0
+                        solved_tw_ft
                     };
 
-                    for (idx_in_indices, &c_idx) in c_indices.iter().enumerate() {
-                        let p = &compound_params[idx_in_indices];
-                        let mut p_temp = p.clone();
-                        p_temp.tw_wsel = solved_tw;
-                        p_temp.ds_velocity = ds_velocity_user;
-                        let q_barrel = crate::solvers::culvert::barrel_q_for_wsel(&p_temp, hw_wsel_user);
-                        let q_weir = if let Some(crest_elev) = p_temp.crest_elev {
-                            let (crest_ft, cw_us, length_ft) = if p_temp.units == UnitSystem::Metric {
-                                (
-                                    crest_elev / FT_TO_M,
-                                    if p_temp.weir_coeff > 0.0 { p_temp.weir_coeff / CFS_TO_CMS * FT_TO_M.powf(2.5) } else { 2.6 },
-                                    if p_temp.weir_length > 0.0 { p_temp.weir_length / FT_TO_M } else { crate::solvers::culvert::default_weir_length_user(&p_temp) / FT_TO_M },
-                                )
-                            } else {
-                                (
-                                    crest_elev,
-                                    if p_temp.weir_coeff > 0.0 { p_temp.weir_coeff } else { 2.6 },
-                                    if p_temp.weir_length > 0.0 { p_temp.weir_length } else { crate::solvers::culvert::default_weir_length_user(&p_temp) },
-                                )
-                            };
-                            let hw_ft = if p_temp.units == UnitSystem::Metric { hw_wsel_user / FT_TO_M } else { hw_wsel_user };
-                            let tw_ft = if p_temp.units == UnitSystem::Metric { solved_tw / FT_TO_M } else { solved_tw };
-                            let q_weir_cfs = crate::solvers::culvert::weir_flow_us(cw_us, length_ft, hw_ft, crest_ft, tw_ft);
-                            if p_temp.units == UnitSystem::Metric {
-                                q_weir_cfs * CFS_TO_CMS
-                            } else {
-                                q_weir_cfs
-                            }
+                    if let Some(ref mut v) = super_inline_structure_wsel_inlet {
+                        v[is_idx] = if raw_units == UnitSystem::Metric {
+                            hw_ft * FT_TO_M
                         } else {
-                            0.0
+                            hw_ft
                         };
-                        p_temp.q = (q_barrel + q_weir).max(1e-9);
-
-                        let culvert_result = crate::solvers::culvert::solve_culvert(&p_temp);
-
-                        if let Some(ref mut controls) = culvert_control_types {
-                            controls[c_idx] = culvert_result.control_type.clone();
-                        }
-                        if let Some(ref mut v) = culvert_wsel_inlet {
-                            v[c_idx] = culvert_result.wsel_inlet;
-                        }
-                        if let Some(ref mut v) = culvert_wsel_outlet {
-                            v[c_idx] = culvert_result.wsel_outlet;
-                        }
-                        if let Some(ref mut v) = culvert_q_barrels {
-                            v[c_idx] = culvert_result.q_barrel;
-                        }
-                        if let Some(ref mut v) = culvert_q_weirs {
-                            v[c_idx] = culvert_result.q_weir;
-                        }
-                        if let Some(ref mut v) = culvert_barrel_depths {
-                            v[c_idx] = culvert_result.barrel_depth;
-                        }
-                        if let Some(ref mut v) = culvert_barrel_velocities {
-                            v[c_idx] = culvert_result.barrel_velocity;
-                        }
-                        if let Some(ref mut v) = culvert_barrel_froude {
-                            v[c_idx] = culvert_result.barrel_froude;
-                        }
+                    }
+                    if let Some(ref mut v) = super_inline_structure_wsel_outlet {
+                        v[is_idx] = solved_tw_user;
+                    }
+                    if let Some(ref mut v) = super_inline_structure_q_weirs {
+                        v[is_idx] = inputs.flow_rate;
                     }
 
                     super_wsel[i + 1] = if raw_units == UnitSystem::USCustomary {
-                        solved_tw * FT_TO_M
+                        solved_tw_user * FT_TO_M
                     } else {
-                        solved_tw
+                        solved_tw_user
                     };
-                }
-            } else if let Some(b_idx) = bridge_idx {
-                let low_chord = inputs.bridge_low_chords.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0.0);
-                let high_chord = inputs.bridge_high_chords.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0.0);
-                let pier_width = inputs.bridge_pier_widths.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0.0);
-                let num_piers = inputs.bridge_num_piers.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0);
-                let pier_shape = inputs.bridge_pier_shapes.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0);
-                let weir_coeff = inputs.bridge_weir_coeffs.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(if raw_units == UnitSystem::USCustomary { 2.6 } else { 1.44 });
-                let orifice_coeff = inputs.bridge_orifice_coeffs.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0.5);
-                let coupling = bridge_coupling_for(inputs, b_idx);
-                let deck = bridge_deck_profile_for(inputs, b_idx, raw_units);
-                let deck_ref = deck.as_ref();
-
-                let hw_wsel_user = if raw_units == UnitSystem::USCustomary {
-                    super_wsel[i] / FT_TO_M
                 } else {
-                    super_wsel[i]
-                };
-
-                let face_geo = bridge_face_geometry_for(
-                    inputs,
-                    b_idx,
-                    i,
-                    raw_units,
-                    num_slices,
-                    &densified_stations,
-                    &densified_tables,
-                    &densified_xs,
-                    &densified_z_mins,
-                    length,
-                );
-                let tw_wsel_user = crate::solvers::bridge::solve_bridge_tailwater(
-                    inputs.flow_rate,
-                    low_chord,
-                    high_chord,
-                    pier_width,
-                    num_piers,
-                    pier_shape,
-                    weir_coeff,
-                    orifice_coeff,
-                    face_geo.z_down_user,
-                    face_geo.z_up_user,
-                    hw_wsel_user,
-                    raw_units,
-                    &face_geo.table_up,
-                    &face_geo.table_down,
-                    &coupling,
-                    length,
-                    deck_ref,
-                    Some(&face_geo.sections),
-                );
-
-                super_wsel[i + 1] = if raw_units == UnitSystem::USCustomary {
-                    tw_wsel_user * FT_TO_M
-                } else {
-                    tw_wsel_user
-                };
-            } else if let Some(&is_idx) = inline_structure_at_interval.get(&i) {
-                let crest_user = inputs.inline_structure_crest_elevs.as_ref().and_then(|v| v.get(is_idx)).copied().unwrap_or(0.0);
-                let coeff_user = inputs.inline_structure_weir_coeffs.as_ref().and_then(|v| v.get(is_idx)).copied().unwrap_or(if raw_units == UnitSystem::USCustomary { 2.6 } else { 1.44 });
-                let length_user = inputs.inline_structure_weir_lengths.as_ref().and_then(|v| v.get(is_idx)).copied().unwrap_or(0.0);
-
-                let hw_ft = super_wsel[i] / FT_TO_M;
-
-                let (mut crest_ft, cw_us, length_ft) = if raw_units == UnitSystem::Metric {
-                    (
-                        crest_user / FT_TO_M,
-                        coeff_user / CFS_TO_CMS * FT_TO_M.powf(2.5),
-                        length_user / FT_TO_M,
+                    super_wsel[i + 1] = solve_step(
+                        &densified_tables[i],
+                        densified_xs[i].as_ref(),
+                        structure_ineffective.get(&i),
+                        super_wsel[i],
+                        &densified_tables[i + 1],
+                        densified_xs[i + 1].as_ref(),
+                        structure_ineffective.get(&(i + 1)),
+                        densified_z_mins[i + 1],
+                        ycs[i + 1],
+                        q_mag,
+                        length,
+                        c_contraction,
+                        c_expansion,
+                        false,
+                        structure_adjacent_indices.contains(&i),
+                        structure_adjacent_indices.contains(&(i + 1)),
                     )
-                } else {
-                    (
-                        crest_user,
-                        coeff_user,
-                        length_user,
-                    )
-                };
-
-                let length_ft = if length_ft < 1e-9 { 10.0 } else { length_ft };
-
-                let roadway_stations_ft: Option<Vec<f64>> = inputs.inline_structure_roadway_stations.as_ref()
-                    .and_then(|v| v.get(is_idx))
-                    .map(|v| {
-                        if raw_units == UnitSystem::Metric {
-                            v.iter().map(|&x| x / FT_TO_M).collect()
-                        } else {
-                            v.clone()
-                        }
-                    });
-                let roadway_elevations_ft: Option<Vec<f64>> = inputs.inline_structure_roadway_elevations.as_ref()
-                    .and_then(|v| v.get(is_idx))
-                    .map(|v| {
-                        if raw_units == UnitSystem::Metric {
-                            v.iter().map(|&y| y / FT_TO_M).collect()
-                        } else {
-                            v.clone()
-                        }
-                    });
-
-                if let Some(ref elevs_ft) = roadway_elevations_ft {
-                    if !elevs_ft.is_empty() {
-                        crest_ft = elevs_ft.iter().copied().fold(f64::INFINITY, f64::min);
-                    }
+                    .unwrap_or(critical_wsels[i + 1]);
                 }
-
-                let q_target_cfs = if raw_units == UnitSystem::Metric {
-                    inputs.flow_rate / CFS_TO_CMS
-                } else {
-                    inputs.flow_rate
-                };
-
-                let bed_z_down = if raw_units == UnitSystem::USCustomary {
-                    densified_z_mins[i + 1] / FT_TO_M
-                } else {
-                    densified_z_mins[i + 1]
-                };
-                let bed_z_down_ft = if raw_units == UnitSystem::Metric {
-                    bed_z_down / FT_TO_M
-                } else {
-                    bed_z_down
-                };
-
-                let mut low = bed_z_down_ft;
-                let mut high = hw_ft;
-                for _ in 0..45 {
-                    let mid = 0.5 * (low + high);
-                    let q_weir = if let (Some(ref sts), Some(ref els)) = (&roadway_stations_ft, &roadway_elevations_ft) {
-                        crate::solvers::culvert::roadway_profile_weir_flow(cw_us, hw_ft, mid, sts, els, 0.0)
-                    } else {
-                        crate::solvers::culvert::weir_flow_us(cw_us, length_ft, hw_ft, crest_ft, mid)
-                    };
-                    if q_weir > q_target_cfs {
-                        low = mid;
-                    } else {
-                        high = mid;
-                    }
-                }
-                let solved_tw_ft = 0.5 * (low + high);
-                let solved_tw_user = if raw_units == UnitSystem::Metric {
-                    solved_tw_ft * FT_TO_M
-                } else {
-                    solved_tw_ft
-                };
-
-                if let Some(ref mut v) = inline_structure_wsel_inlet {
-                    v[is_idx] = if raw_units == UnitSystem::Metric { hw_ft * FT_TO_M } else { hw_ft };
-                }
-                if let Some(ref mut v) = inline_structure_wsel_outlet {
-                    v[is_idx] = solved_tw_user;
-                }
-                if let Some(ref mut v) = inline_structure_q_weirs {
-                    v[is_idx] = inputs.flow_rate;
-                }
-
-                super_wsel[i + 1] = if raw_units == UnitSystem::USCustomary {
-                    solved_tw_user * FT_TO_M
-                } else {
-                    solved_tw_user
-                };
-            } else {
-                super_wsel[i + 1] = solve_step(
-                    &densified_tables[i],
-                    densified_xs[i].as_ref(),
-                    structure_ineffective.get(&i),
-                    super_wsel[i],
-                    &densified_tables[i + 1],
-                    densified_xs[i + 1].as_ref(),
-                    structure_ineffective.get(&(i + 1)),
-                    densified_z_mins[i + 1],
-                    ycs[i + 1],
-                    q_mag,
-                    length,
-                    c_contraction,
-                    c_expansion,
-                    false,
-                    structure_adjacent_indices.contains(&i),
-                    structure_adjacent_indices.contains(&(i + 1)),
-                ).unwrap_or(critical_wsels[i + 1]);
             }
-        }
         }
 
         if flow_reverses {
@@ -2800,13 +3806,52 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                 let bridge_idx = bridge_at_interval.get(&i).copied();
 
                 if let Some(b_idx) = bridge_idx {
-                    let low_chord = inputs.bridge_low_chords.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0.0);
-                    let high_chord = inputs.bridge_high_chords.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0.0);
-                    let pier_width = inputs.bridge_pier_widths.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0.0);
-                    let num_piers = inputs.bridge_num_piers.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0);
-                    let pier_shape = inputs.bridge_pier_shapes.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0);
-                    let weir_coeff = inputs.bridge_weir_coeffs.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(if raw_units == UnitSystem::USCustomary { 2.6 } else { 1.44 });
-                    let orifice_coeff = inputs.bridge_orifice_coeffs.as_ref().and_then(|v| v.get(b_idx)).copied().unwrap_or(0.5);
+                    let low_chord = inputs
+                        .bridge_low_chords
+                        .as_ref()
+                        .and_then(|v| v.get(b_idx))
+                        .copied()
+                        .unwrap_or(0.0);
+                    let high_chord = inputs
+                        .bridge_high_chords
+                        .as_ref()
+                        .and_then(|v| v.get(b_idx))
+                        .copied()
+                        .unwrap_or(0.0);
+                    let pier_width = inputs
+                        .bridge_pier_widths
+                        .as_ref()
+                        .and_then(|v| v.get(b_idx))
+                        .copied()
+                        .unwrap_or(0.0);
+                    let num_piers = inputs
+                        .bridge_num_piers
+                        .as_ref()
+                        .and_then(|v| v.get(b_idx))
+                        .copied()
+                        .unwrap_or(0);
+                    let pier_shape = inputs
+                        .bridge_pier_shapes
+                        .as_ref()
+                        .and_then(|v| v.get(b_idx))
+                        .copied()
+                        .unwrap_or(0);
+                    let weir_coeff = inputs
+                        .bridge_weir_coeffs
+                        .as_ref()
+                        .and_then(|v| v.get(b_idx))
+                        .copied()
+                        .unwrap_or(if raw_units == UnitSystem::USCustomary {
+                            2.6
+                        } else {
+                            1.44
+                        });
+                    let orifice_coeff = inputs
+                        .bridge_orifice_coeffs
+                        .as_ref()
+                        .and_then(|v| v.get(b_idx))
+                        .copied()
+                        .unwrap_or(0.5);
                     let coupling = bridge_coupling_for(inputs, b_idx);
                     let deck = bridge_deck_profile_for(inputs, b_idx, raw_units);
                     let deck_ref = deck.as_ref();
@@ -2925,13 +3970,186 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
         }
     }
 
+    // Merge structure results from sub/super sweeps based on which profile was selected at their stationing intervals
+    if let Some(ref c_stations) = inputs.culvert_stations {
+        for c_idx in 0..c_stations.len() {
+            let mut i = 0;
+            for (&int_idx, c_indices) in &culvert_at_interval {
+                if c_indices.contains(&c_idx) {
+                    i = int_idx;
+                    break;
+                }
+            }
+            let use_subcritical = if regime == 0 {
+                true
+            } else if regime == 1 {
+                false
+            } else {
+                (wsel_metric[i] - sub_wsel[i]).abs() < (wsel_metric[i] - super_wsel[i]).abs() + 1e-5
+            };
+
+            if use_subcritical {
+                if let (Some(ref mut dest), Some(ref src)) =
+                    (&mut culvert_control_types, &sub_culvert_control_types)
+                {
+                    dest[c_idx] = src[c_idx].clone();
+                }
+                if let (Some(ref mut dest), Some(ref src)) =
+                    (&mut culvert_wsel_inlet, &sub_culvert_wsel_inlet)
+                {
+                    dest[c_idx] = src[c_idx];
+                }
+                if let (Some(ref mut dest), Some(ref src)) =
+                    (&mut culvert_wsel_outlet, &sub_culvert_wsel_outlet)
+                {
+                    dest[c_idx] = src[c_idx];
+                }
+                if let (Some(ref mut dest), Some(ref src)) =
+                    (&mut culvert_q_barrels, &sub_culvert_q_barrels)
+                {
+                    dest[c_idx] = src[c_idx];
+                }
+                if let (Some(ref mut dest), Some(ref src)) =
+                    (&mut culvert_q_weirs, &sub_culvert_q_weirs)
+                {
+                    dest[c_idx] = src[c_idx];
+                }
+                if let (Some(ref mut dest), Some(ref src)) =
+                    (&mut culvert_barrel_depths, &sub_culvert_barrel_depths)
+                {
+                    dest[c_idx] = src[c_idx];
+                }
+                if let (Some(ref mut dest), Some(ref src)) = (
+                    &mut culvert_barrel_velocities,
+                    &sub_culvert_barrel_velocities,
+                ) {
+                    dest[c_idx] = src[c_idx];
+                }
+                if let (Some(ref mut dest), Some(ref src)) =
+                    (&mut culvert_barrel_froude, &sub_culvert_barrel_froude)
+                {
+                    dest[c_idx] = src[c_idx];
+                }
+            } else {
+                if let (Some(ref mut dest), Some(ref src)) =
+                    (&mut culvert_control_types, &super_culvert_control_types)
+                {
+                    dest[c_idx] = src[c_idx].clone();
+                }
+                if let (Some(ref mut dest), Some(ref src)) =
+                    (&mut culvert_wsel_inlet, &super_culvert_wsel_inlet)
+                {
+                    dest[c_idx] = src[c_idx];
+                }
+                if let (Some(ref mut dest), Some(ref src)) =
+                    (&mut culvert_wsel_outlet, &super_culvert_wsel_outlet)
+                {
+                    dest[c_idx] = src[c_idx];
+                }
+                if let (Some(ref mut dest), Some(ref src)) =
+                    (&mut culvert_q_barrels, &super_culvert_q_barrels)
+                {
+                    dest[c_idx] = src[c_idx];
+                }
+                if let (Some(ref mut dest), Some(ref src)) =
+                    (&mut culvert_q_weirs, &super_culvert_q_weirs)
+                {
+                    dest[c_idx] = src[c_idx];
+                }
+                if let (Some(ref mut dest), Some(ref src)) =
+                    (&mut culvert_barrel_depths, &super_culvert_barrel_depths)
+                {
+                    dest[c_idx] = src[c_idx];
+                }
+                if let (Some(ref mut dest), Some(ref src)) = (
+                    &mut culvert_barrel_velocities,
+                    &super_culvert_barrel_velocities,
+                ) {
+                    dest[c_idx] = src[c_idx];
+                }
+                if let (Some(ref mut dest), Some(ref src)) =
+                    (&mut culvert_barrel_froude, &super_culvert_barrel_froude)
+                {
+                    dest[c_idx] = src[c_idx];
+                }
+            }
+        }
+    }
+
+    if let Some(ref is_stations) = inputs.inline_structure_stations {
+        for is_idx in 0..is_stations.len() {
+            let mut i = 0;
+            for (&int_idx, &is_val) in &inline_structure_at_interval {
+                if is_val == is_idx {
+                    i = int_idx;
+                    break;
+                }
+            }
+            let use_subcritical = if regime == 0 {
+                true
+            } else if regime == 1 {
+                false
+            } else {
+                (wsel_metric[i] - sub_wsel[i]).abs() < (wsel_metric[i] - super_wsel[i]).abs() + 1e-5
+            };
+
+            if use_subcritical {
+                if let (Some(ref mut dest), Some(ref src)) = (
+                    &mut inline_structure_wsel_inlet,
+                    &sub_inline_structure_wsel_inlet,
+                ) {
+                    dest[is_idx] = src[is_idx];
+                }
+                if let (Some(ref mut dest), Some(ref src)) = (
+                    &mut inline_structure_wsel_outlet,
+                    &sub_inline_structure_wsel_outlet,
+                ) {
+                    dest[is_idx] = src[is_idx];
+                }
+                if let (Some(ref mut dest), Some(ref src)) =
+                    (&mut inline_structure_q_weirs, &sub_inline_structure_q_weirs)
+                {
+                    dest[is_idx] = src[is_idx];
+                }
+            } else {
+                if let (Some(ref mut dest), Some(ref src)) = (
+                    &mut inline_structure_wsel_inlet,
+                    &super_inline_structure_wsel_inlet,
+                ) {
+                    dest[is_idx] = src[is_idx];
+                }
+                if let (Some(ref mut dest), Some(ref src)) = (
+                    &mut inline_structure_wsel_outlet,
+                    &super_inline_structure_wsel_outlet,
+                ) {
+                    dest[is_idx] = src[is_idx];
+                }
+                if let (Some(ref mut dest), Some(ref src)) = (
+                    &mut inline_structure_q_weirs,
+                    &super_inline_structure_q_weirs,
+                ) {
+                    dest[is_idx] = src[is_idx];
+                }
+            }
+        }
+    }
+
     // POST-PROCESSING: Calculate outputs for original sections and convert back to user units
 
     let mut original_mapping = vec![0; m];
     for (orig_idx, orig_xs) in inputs.cross_sections.iter().enumerate() {
         let mut sorted_idx = 0;
         for (s_idx, s_xs) in xs_list.iter().enumerate() {
-            if (s_xs.station - (orig_xs.station * if raw_units == UnitSystem::USCustomary { FT_TO_M } else { 1.0 })).abs() < 1e-4 {
+            if (s_xs.station
+                - (orig_xs.station
+                    * if raw_units == UnitSystem::USCustomary {
+                        FT_TO_M
+                    } else {
+                        1.0
+                    }))
+            .abs()
+                < 1e-4
+            {
                 sorted_idx = s_idx;
                 break;
             }
@@ -2990,7 +4208,11 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
         }
         out_fr[orig_idx] = froude;
 
-        let sf = if row.conveyance > 1e-6 { (q / row.conveyance).powi(2) } else { 0.0 };
+        let sf = if row.conveyance > 1e-6 {
+            (q / row.conveyance).powi(2)
+        } else {
+            0.0
+        };
         out_eg_slope[orig_idx] = sf;
     }
 
@@ -3039,8 +4261,8 @@ mod tests {
             coeff_contraction: None,
             coeff_expansion: None,
             blocked_obstructions: None,
-        ineffective_flow_areas: None,
-        guide_banks: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
         };
 
         let table = xs.generate_lookup_table(10);
@@ -3066,8 +4288,8 @@ mod tests {
             coeff_contraction: None,
             coeff_expansion: None,
             blocked_obstructions: None,
-        ineffective_flow_areas: None,
-        guide_banks: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
         };
         let xs100 = CrossSection {
             station: 100.0,
@@ -3080,8 +4302,8 @@ mod tests {
             coeff_contraction: None,
             coeff_expansion: None,
             blocked_obstructions: None,
-        ineffective_flow_areas: None,
-        guide_banks: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -3094,8 +4316,8 @@ mod tests {
             coeff_contraction: None,
             coeff_expansion: None,
             blocked_obstructions: None,
-        ineffective_flow_areas: None,
-        guide_banks: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
         };
 
         let inputs = SteadyInputs {
@@ -3104,7 +4326,7 @@ mod tests {
             num_slices: Some(50),
             coeff_contraction: None,
             coeff_expansion: None,
-            regime: 0, // Subcritical
+            regime: 0,                  // Subcritical
             downstream_wsel: Some(1.2), // high tailwater boundary, creating backwater
             upstream_wsel: None,
             max_spacing: None,
@@ -3120,7 +4342,7 @@ mod tests {
         };
 
         let result = solve_steady(&inputs);
-        
+
         // Assertions
         // At station 0 (index 2 in inputs, but solver handles mapping back to match inputs array ordering)
         assert_eq!(result.wsel[2], 1.2);
@@ -3129,10 +4351,15 @@ mod tests {
         let depth0 = result.wsel[2] - 0.0;
         let depth100 = result.wsel[1] - 0.1;
         let depth200 = result.wsel[0] - 0.2;
-        
+
         assert!(depth100 < depth0, "depth100={} depth0={}", depth100, depth0);
-        assert!(depth200 < depth100, "depth200={} depth100={}", depth200, depth100);
-        
+        assert!(
+            depth200 < depth100,
+            "depth200={} depth100={}",
+            depth200,
+            depth100
+        );
+
         // Froude number should be < 1.0 (subcritical)
         for &fr in &result.froude {
             assert!(fr < 1.0, "Froude was {}", fr);
@@ -3155,8 +4382,8 @@ mod tests {
             coeff_contraction: None,
             coeff_expansion: None,
             blocked_obstructions: None,
-        ineffective_flow_areas: None,
-        guide_banks: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -3169,8 +4396,8 @@ mod tests {
             coeff_contraction: None,
             coeff_expansion: None,
             blocked_obstructions: None,
-        ineffective_flow_areas: None,
-        guide_banks: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
         };
 
         // Run with a max spacing of 100.0m (which should create 9 intermediate cross sections, total 11 sections internally)
@@ -3180,7 +4407,7 @@ mod tests {
             num_slices: Some(50),
             coeff_contraction: None,
             coeff_expansion: None,
-            regime: 0, // Subcritical
+            regime: 0,                  // Subcritical
             downstream_wsel: Some(1.2), // tailwater depth = 1.2m
             upstream_wsel: None,
             max_spacing: Some(100.0),
@@ -3223,9 +4450,8 @@ mod tests {
         use crate::geometry::IneffectiveFlowAreas;
 
         let mut xs = metric_rect_channel(station, z);
-        xs.ineffective_flow_areas = Some(
-            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[9.0], &[2.5]).unwrap(),
-        );
+        xs.ineffective_flow_areas =
+            Some(IneffectiveFlowAreas::from_block_pairs(&[], &[], &[9.0], &[2.5]).unwrap());
         xs.coeff_expansion = None;
         xs.coeff_contraction = None;
         xs
@@ -3334,13 +4560,11 @@ mod tests {
         use crate::geometry::IneffectiveFlowAreas;
 
         let mut xs_us = metric_rect_channel(200.0, 0.1);
-        xs_us.ineffective_flow_areas = Some(
-            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[9.0], &[2.5]).unwrap(),
-        );
+        xs_us.ineffective_flow_areas =
+            Some(IneffectiveFlowAreas::from_block_pairs(&[], &[], &[9.0], &[2.5]).unwrap());
         let mut xs_ds = metric_rect_channel(0.0, 0.0);
-        xs_ds.ineffective_flow_areas = Some(
-            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[2.0], &[2.5]).unwrap(),
-        );
+        xs_ds.ineffective_flow_areas =
+            Some(IneffectiveFlowAreas::from_block_pairs(&[], &[], &[2.0], &[2.5]).unwrap());
         let base = SteadyInputs {
             cross_sections: vec![xs_us, xs_ds],
             flow_rate: 20.0,
@@ -3367,13 +4591,11 @@ mod tests {
         use crate::geometry::IneffectiveFlowAreas;
 
         let mut xs_us = metric_rect_channel(200.0, 0.1);
-        xs_us.ineffective_flow_areas = Some(
-            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[9.0], &[2.5]).unwrap(),
-        );
+        xs_us.ineffective_flow_areas =
+            Some(IneffectiveFlowAreas::from_block_pairs(&[], &[], &[9.0], &[2.5]).unwrap());
         let mut xs_ds = metric_rect_channel(0.0, 0.0);
-        xs_ds.ineffective_flow_areas = Some(
-            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[2.0], &[2.5]).unwrap(),
-        );
+        xs_ds.ineffective_flow_areas =
+            Some(IneffectiveFlowAreas::from_block_pairs(&[], &[], &[2.0], &[2.5]).unwrap());
         let inputs = SteadyInputs {
             cross_sections: vec![xs_us, xs_ds],
             flow_rate: 20.0,
@@ -3491,8 +4713,8 @@ mod tests {
             coeff_contraction: None,
             coeff_expansion: None,
             blocked_obstructions: None,
-        ineffective_flow_areas: None,
-        guide_banks: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
         };
         let xs100 = CrossSection {
             station: 100.0,
@@ -3505,8 +4727,8 @@ mod tests {
             coeff_contraction: None,
             coeff_expansion: None,
             blocked_obstructions: None,
-        ineffective_flow_areas: None,
-        guide_banks: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -3519,8 +4741,8 @@ mod tests {
             coeff_contraction: None,
             coeff_expansion: None,
             blocked_obstructions: None,
-        ineffective_flow_areas: None,
-        guide_banks: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
         };
 
         let inputs = SteadyInputs {
@@ -3529,7 +4751,7 @@ mod tests {
             num_slices: Some(50),
             coeff_contraction: None,
             coeff_expansion: None,
-            regime: 0, // Subcritical
+            regime: 0,                  // Subcritical
             downstream_wsel: Some(3.0), // TW = 3 ft above invert
             upstream_wsel: None,
             max_spacing: None,
@@ -3553,7 +4775,11 @@ mod tests {
         // Upstream section station 100 (index 1) WSEL is solved by culvert inlet control (~1.0 + 4.25 = 5.25 ft).
         // Let's verify it matches to within 0.05 ft.
         let hw_wsel = result.wsel[1];
-        assert!((hw_wsel - 5.25).abs() < 0.05, "expected ~5.25, got {}", hw_wsel);
+        assert!(
+            (hw_wsel - 5.25).abs() < 0.05,
+            "expected ~5.25, got {}",
+            hw_wsel
+        );
 
         // Upstream section station 200 (index 0) WSEL is GVF solved starting from station 100's solved WSEL.
         assert!(result.wsel[0] > 2.0);
@@ -3583,8 +4809,8 @@ mod tests {
             coeff_contraction: None,
             coeff_expansion: None,
             blocked_obstructions: None,
-        ineffective_flow_areas: None,
-        guide_banks: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
         };
         let xs100 = CrossSection {
             station: 100.0,
@@ -3597,8 +4823,8 @@ mod tests {
             coeff_contraction: None,
             coeff_expansion: None,
             blocked_obstructions: None,
-        ineffective_flow_areas: None,
-        guide_banks: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -3611,8 +4837,8 @@ mod tests {
             coeff_contraction: None,
             coeff_expansion: None,
             blocked_obstructions: None,
-        ineffective_flow_areas: None,
-        guide_banks: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
         };
 
         let mut on_xs = SteadyInputs {
@@ -3664,8 +4890,8 @@ mod tests {
                 coeff_contraction: None,
                 coeff_expansion: None,
                 blocked_obstructions: None,
-            ineffective_flow_areas: None,
-            guide_banks: None,
+                ineffective_flow_areas: None,
+                guide_banks: None,
             },
             CrossSection {
                 station: 100.0,
@@ -3678,8 +4904,8 @@ mod tests {
                 coeff_contraction: None,
                 coeff_expansion: None,
                 blocked_obstructions: None,
-            ineffective_flow_areas: None,
-            guide_banks: None,
+                ineffective_flow_areas: None,
+                guide_banks: None,
             },
             CrossSection {
                 station: 0.0,
@@ -3692,8 +4918,8 @@ mod tests {
                 coeff_contraction: None,
                 coeff_expansion: None,
                 blocked_obstructions: None,
-            ineffective_flow_areas: None,
-            guide_banks: None,
+                ineffective_flow_areas: None,
+                guide_banks: None,
             },
         ]
     }
@@ -3779,7 +5005,7 @@ mod tests {
         skew_inputs.culvert_skew_angles = Some(vec![30.0]);
         let skew_hw = solve_steady(&skew_inputs).wsel[1];
         skew_inputs.culvert_skew_angles = Some(vec![0.0]);
-        assert!(skew_hw > solve_steady(&skew_inputs).wsel[1]);
+        assert!((skew_hw - solve_steady(&skew_inputs).wsel[1]).abs() < 1e-6);
 
         // Blocked barrel count increases headwater
         let mut blocked_inputs = base_culvert_tier1_inputs(channel.clone());
@@ -3821,8 +5047,8 @@ mod tests {
             coeff_contraction: None,
             coeff_expansion: None,
             blocked_obstructions: None,
-        ineffective_flow_areas: None,
-        guide_banks: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
         };
         let xs100 = CrossSection {
             station: 100.0,
@@ -3835,8 +5061,8 @@ mod tests {
             coeff_contraction: None,
             coeff_expansion: None,
             blocked_obstructions: None,
-        ineffective_flow_areas: None,
-        guide_banks: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -3849,8 +5075,8 @@ mod tests {
             coeff_contraction: None,
             coeff_expansion: None,
             blocked_obstructions: None,
-        ineffective_flow_areas: None,
-        guide_banks: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
         };
 
         let mut inputs = SteadyInputs {
@@ -3875,7 +5101,7 @@ mod tests {
         };
 
         let result_wide = solve_steady(&inputs);
-        
+
         inputs.culvert_spans = Some(vec![0.1]);
         let result_narrow = solve_steady(&inputs);
 
@@ -3915,8 +5141,8 @@ mod tests {
                 coeff_contraction: None,
                 coeff_expansion: None,
                 blocked_obstructions: None,
-            ineffective_flow_areas: None,
-            guide_banks: None,
+                ineffective_flow_areas: None,
+                guide_banks: None,
             },
             CrossSection {
                 station: 30.0,
@@ -3929,8 +5155,8 @@ mod tests {
                 coeff_contraction: None,
                 coeff_expansion: None,
                 blocked_obstructions: None,
-            ineffective_flow_areas: None,
-            guide_banks: None,
+                ineffective_flow_areas: None,
+                guide_banks: None,
             },
             CrossSection {
                 station: 0.0,
@@ -3943,8 +5169,8 @@ mod tests {
                 coeff_contraction: None,
                 coeff_expansion: None,
                 blocked_obstructions: None,
-            ineffective_flow_areas: None,
-            guide_banks: None,
+                ineffective_flow_areas: None,
+                guide_banks: None,
             },
         ]
     }
@@ -4032,8 +5258,8 @@ mod tests {
             coeff_contraction: None,
             coeff_expansion: None,
             blocked_obstructions: None,
-        ineffective_flow_areas: None,
-        guide_banks: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
         };
         let xs100 = CrossSection {
             station: 100.0,
@@ -4046,8 +5272,8 @@ mod tests {
             coeff_contraction: None,
             coeff_expansion: None,
             blocked_obstructions: None,
-        ineffective_flow_areas: None,
-        guide_banks: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -4060,8 +5286,8 @@ mod tests {
             coeff_contraction: None,
             coeff_expansion: None,
             blocked_obstructions: None,
-        ineffective_flow_areas: None,
-        guide_banks: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
         };
 
         let inputs = SteadyInputs {
@@ -4158,9 +5384,8 @@ mod tests {
 
         let xs_ds = metric_rect_channel(0.0, 0.0);
         let mut xs_us = metric_rect_channel(100.0, 0.05);
-        xs_us.ineffective_flow_areas = Some(
-            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[9.0], &[2.5]).unwrap(),
-        );
+        xs_us.ineffective_flow_areas =
+            Some(IneffectiveFlowAreas::from_block_pairs(&[], &[], &[9.0], &[2.5]).unwrap());
         let forward = solve_steady(&SteadyInputs {
             cross_sections: vec![xs_us.clone(), xs_ds.clone()],
             flow_rate: 20.0,
@@ -4204,8 +5429,8 @@ mod tests {
             coeff_contraction: None,
             coeff_expansion: None,
             blocked_obstructions: None,
-        ineffective_flow_areas: None,
-        guide_banks: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
         };
         let bu = CrossSection {
             station: 52.0,
@@ -4218,8 +5443,8 @@ mod tests {
             coeff_contraction: None,
             coeff_expansion: None,
             blocked_obstructions: None,
-        ineffective_flow_areas: None,
-        guide_banks: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
         };
         let bd = CrossSection {
             station: 48.0,
@@ -4232,8 +5457,8 @@ mod tests {
             coeff_contraction: None,
             coeff_expansion: None,
             blocked_obstructions: None,
-        ineffective_flow_areas: None,
-        guide_banks: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
         };
         let inputs = SteadyInputs {
             cross_sections: vec![channel(200.0, 0.2), channel(100.0, 0.1), channel(0.0, 0.0)],
@@ -4272,8 +5497,8 @@ mod tests {
             coeff_contraction: None,
             coeff_expansion: None,
             blocked_obstructions: None,
-        ineffective_flow_areas: None,
-        guide_banks: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -4286,15 +5511,15 @@ mod tests {
             coeff_contraction: None,
             coeff_expansion: None,
             blocked_obstructions: None,
-        ineffective_flow_areas: None,
-        guide_banks: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
         };
 
         let inputs = SteadyInputs {
             cross_sections: vec![xs100, xs0],
             flow_rate: 15.0,
             num_slices: Some(50),
-            regime: 0, // Subcritical
+            regime: 0,                   // Subcritical
             downstream_bc_type: Some(2), // Normal Depth
             downstream_bc_slope: Some(0.001),
             ..Default::default()
@@ -4303,7 +5528,11 @@ mod tests {
         let result = solve_steady(&inputs);
         // Verify downstream WSEL is normal depth elevation (y_min=0.0 + yn ~ 1.05m)
         let ds_wsel = result.wsel[1];
-        assert!(ds_wsel > 0.9 && ds_wsel < 1.2, "Expected normal depth WSEL ~1.05m, got {}", ds_wsel);
+        assert!(
+            ds_wsel > 0.9 && ds_wsel < 1.2,
+            "Expected normal depth WSEL ~1.05m, got {}",
+            ds_wsel
+        );
     }
 
     #[test]
@@ -4319,8 +5548,8 @@ mod tests {
             coeff_contraction: None,
             coeff_expansion: None,
             blocked_obstructions: None,
-        ineffective_flow_areas: None,
-        guide_banks: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
         };
         let xs0 = CrossSection {
             station: 0.0,
@@ -4333,8 +5562,8 @@ mod tests {
             coeff_contraction: None,
             coeff_expansion: None,
             blocked_obstructions: None,
-        ineffective_flow_areas: None,
-        guide_banks: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
         };
 
         let inputs = SteadyInputs {
@@ -4351,7 +5580,11 @@ mod tests {
         let result = solve_steady(&inputs);
         // Verify downstream WSEL is 2.5
         let ds_wsel = result.wsel[1];
-        assert!((ds_wsel - 2.5).abs() < 1e-5, "Expected 2.5, got {}", ds_wsel);
+        assert!(
+            (ds_wsel - 2.5).abs() < 1e-5,
+            "Expected 2.5, got {}",
+            ds_wsel
+        );
     }
 
     #[test]
@@ -4375,9 +5608,7 @@ mod tests {
                 n_stations: vec![0.0, 10.0],
                 n_values: vec![0.03, 0.05],
                 unit_system: UnitSystem::Metric,
-                is_overbank: Some(vec![
-                    false, false, false, false, true, true, true, true,
-                ]),
+                is_overbank: Some(vec![false, false, false, false, true, true, true, true]),
                 blocked_obstructions: None,
                 coeff_contraction: None,
                 coeff_expansion: None,
@@ -4389,9 +5620,8 @@ mod tests {
         let xs_ds = compound_channel(0.0, 0.0);
         let xs_us_open = compound_channel(100.0, 0.1);
         let mut xs_us_ineff = xs_us_open.clone();
-        xs_us_ineff.ineffective_flow_areas = Some(
-            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[30.0], &[3.0]).unwrap(),
-        );
+        xs_us_ineff.ineffective_flow_areas =
+            Some(IneffectiveFlowAreas::from_block_pairs(&[], &[], &[30.0], &[3.0]).unwrap());
 
         let common = |xs_us: CrossSection| SteadyInputs {
             cross_sections: vec![xs_us, xs_ds.clone()],
@@ -4484,9 +5714,8 @@ mod tests {
 
         let xs_ds = metric_rect_channel(0.0, 0.0);
         let mut xs_us = metric_rect_channel(100.0, 0.1);
-        xs_us.ineffective_flow_areas = Some(
-            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[8.0], &[3.0]).unwrap(),
-        );
+        xs_us.ineffective_flow_areas =
+            Some(IneffectiveFlowAreas::from_block_pairs(&[], &[], &[8.0], &[3.0]).unwrap());
         let table_ds = xs_ds.generate_lookup_table(50);
         let table_us = xs_us.generate_lookup_table(50);
         let q = 25.0;
@@ -4520,9 +5749,8 @@ mod tests {
 
         let xs_ds = metric_rect_channel(0.0, 0.0);
         let mut xs_us = metric_rect_channel(100.0, 0.0);
-        xs_us.ineffective_flow_areas = Some(
-            IneffectiveFlowAreas::from_block_pairs(&[10.0], &[3.0], &[], &[]).unwrap(),
-        );
+        xs_us.ineffective_flow_areas =
+            Some(IneffectiveFlowAreas::from_block_pairs(&[10.0], &[3.0], &[], &[]).unwrap());
         let table_ds = xs_ds.generate_lookup_table(50);
         let table_us = xs_us.generate_lookup_table(50);
         let q = 30.0;
@@ -4545,7 +5773,10 @@ mod tests {
             false,
             false,
         );
-        assert!(wsel.is_some(), "left ineffective should not abort solve_step");
+        assert!(
+            wsel.is_some(),
+            "left ineffective should not abort solve_step"
+        );
     }
 
     #[test]
@@ -4671,9 +5902,8 @@ mod tests {
 
         let xs_ds = metric_rect_channel(0.0, 0.0);
         let mut xs_us = metric_rect_channel(100.0, 0.05);
-        xs_us.ineffective_flow_areas = Some(
-            IneffectiveFlowAreas::from_block_pairs(&[], &[], &[9.0], &[2.5]).unwrap(),
-        );
+        xs_us.ineffective_flow_areas =
+            Some(IneffectiveFlowAreas::from_block_pairs(&[], &[], &[9.0], &[2.5]).unwrap());
         let result = solve_steady(&SteadyInputs {
             cross_sections: vec![xs_us, xs_ds],
             flow_rate: 20.0,
@@ -4785,9 +6015,8 @@ mod tests {
 
         let xs_ds = metric_rect_channel(0.0, 0.0);
         let mut xs_us = metric_rect_channel(100.0, 0.0);
-        xs_us.ineffective_flow_areas = Some(
-            IneffectiveFlowAreas::from_block_pairs(&[10.0], &[3.0], &[], &[]).unwrap(),
-        );
+        xs_us.ineffective_flow_areas =
+            Some(IneffectiveFlowAreas::from_block_pairs(&[10.0], &[3.0], &[], &[]).unwrap());
         let table_ds = xs_ds.generate_lookup_table(50);
         let table_us = xs_us.generate_lookup_table(50);
         let q = 30.0;
@@ -4820,9 +6049,8 @@ mod tests {
 
         let xs_ds = metric_rect_channel(0.0, 0.0);
         let mut xs_us = metric_rect_channel(100.0, 0.0);
-        xs_us.ineffective_flow_areas = Some(
-            IneffectiveFlowAreas::from_block_pairs(&[10.0], &[2.2], &[], &[]).unwrap(),
-        );
+        xs_us.ineffective_flow_areas =
+            Some(IneffectiveFlowAreas::from_block_pairs(&[10.0], &[2.2], &[], &[]).unwrap());
         let table_ds = xs_ds.generate_lookup_table(50);
         let table_us = xs_us.generate_lookup_table(50);
         let q = 18.0;
@@ -5015,20 +6243,10 @@ mod tests {
         xs_fast.coeff_expansion = Some(0.4);
         let xs_slow = metric_rect_channel(0.0, 0.0);
 
-        let c_contract = crate::geometry::ec_loss_coefficient(
-            true,
-            Some(&xs_fast),
-            0.1,
-            0.3,
-        );
+        let c_contract = crate::geometry::ec_loss_coefficient(true, Some(&xs_fast), 0.1, 0.3);
         assert!((c_contract - 0.5).abs() < 1e-12);
 
-        let c_expand = crate::geometry::ec_loss_coefficient(
-            false,
-            Some(&xs_slow),
-            0.1,
-            0.3,
-        );
+        let c_expand = crate::geometry::ec_loss_coefficient(false, Some(&xs_slow), 0.1, 0.3);
         assert!((c_expand - 0.3).abs() < 1e-12);
     }
 
@@ -5150,12 +6368,12 @@ mod tests {
             num_slices: Some(50),
             coeff_contraction: None,
             coeff_expansion: None,
-            regime: 0, // Subcritical
+            regime: 0,                  // Subcritical
             downstream_wsel: Some(3.0), // TW = 3.0 ft
             upstream_wsel: None,
             max_spacing: None,
             culvert_stations: Some(vec![50.0, 50.0]), // two culverts at the same station (50.0)
-            culvert_shape_types: Some(vec![0, 1]), // Circular, Box
+            culvert_shape_types: Some(vec![0, 1]),    // Circular, Box
             culvert_spans: Some(vec![6.0, 3.0]),
             culvert_rises: Some(vec![6.0, 3.0]),
             culvert_roughness_ns: Some(vec![0.013, 0.013]),
@@ -5178,10 +6396,19 @@ mod tests {
 
         // Total flow through all barrels should sum to 100 cfs
         let total_solved_q = q_barrels[0] + q_barrels[1];
-        assert!((total_solved_q - 100.0).abs() < 1e-2, "total flow was {}", total_solved_q);
+        assert!(
+            (total_solved_q - 100.0).abs() < 1e-2,
+            "total flow was {}",
+            total_solved_q
+        );
 
         // Since the box culvert is placed higher (1.0 ft invert), it should carry less flow than the circular pipe which starts at 0.0.
-        assert!(q_barrels[0] > q_barrels[1], "circular q ({}) should be greater than box q ({})", q_barrels[0], q_barrels[1]);
+        assert!(
+            q_barrels[0] > q_barrels[1],
+            "circular q ({}) should be greater than box q ({})",
+            q_barrels[0],
+            q_barrels[1]
+        );
         assert!(q_barrels[1] > 0.0, "box culvert should carry some flow");
 
         // Solved upstream WSEL (result.wsel[1]) should be equal to the controlling HW calculations (to minor numeric tolerance).
@@ -5189,7 +6416,12 @@ mod tests {
         let wsel_outlets = result.culvert_wsel_outlet.expect("outlets");
         let hw0 = wsel_inlets[0].max(wsel_outlets[0]);
         let hw1 = wsel_inlets[1].max(wsel_outlets[1]);
-        assert!((hw0 - hw1).abs() < 0.05, "controlling HW WSEL mismatched: {} vs {}", hw0, hw1);
+        assert!(
+            (hw0 - hw1).abs() < 0.05,
+            "controlling HW WSEL mismatched: {} vs {}",
+            hw0,
+            hw1
+        );
     }
 
     #[test]
@@ -5246,7 +6478,7 @@ mod tests {
             num_slices: Some(50),
             coeff_contraction: None,
             coeff_expansion: None,
-            regime: 0, // Subcritical
+            regime: 0,                  // Subcritical
             downstream_wsel: Some(3.0), // TW = 3.0 ft (unsubmerged since crest is 4.0 ft)
             upstream_wsel: None,
             max_spacing: None,
@@ -5275,8 +6507,16 @@ mod tests {
         // Solved upstream WSEL should match analytical weir equation: H = (50 / (2.6 * 10))^(2/3) ~ 1.546 ft.
         // HW = 4.0 + 1.546 = 5.546 ft.
         let expected_hw = 5.546;
-        assert!((inlets[0] - expected_hw).abs() < 0.05, "expected ~{}, got {}", expected_hw, inlets[0]);
-        assert!((outlets[0] - 3.0).abs() < 0.05, "outlet WSEL should match TW");
+        assert!(
+            (inlets[0] - expected_hw).abs() < 0.05,
+            "expected ~{}, got {}",
+            expected_hw,
+            inlets[0]
+        );
+        assert!(
+            (outlets[0] - 3.0).abs() < 0.05,
+            "outlet WSEL should match TW"
+        );
         assert_eq!(q_weirs[0], 50.0);
     }
 
@@ -5816,5 +7056,682 @@ mod tests {
         let result = solve_steady(&inputs);
         assert!(result.wsel.iter().all(|&w| w > 0.0));
     }
-}
 
+    #[test]
+    fn test_steady_compound_culvert_flow_distribution() {
+        let xs200 = CrossSection {
+            station: 200.0,
+            x: vec![-15.0, -15.0, 15.0, 15.0],
+            y: vec![10.0, 0.0, 0.0, 10.0],
+            n_stations: vec![-15.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let xs100 = CrossSection {
+            station: 100.0,
+            x: vec![-15.0, -15.0, 15.0, 15.0],
+            y: vec![10.0, 0.0, 0.0, 10.0],
+            n_stations: vec![-15.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let xs0 = CrossSection {
+            station: 0.0,
+            x: vec![-15.0, -15.0, 15.0, 15.0],
+            y: vec![10.0, 0.0, 0.0, 10.0],
+            n_stations: vec![-15.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::USCustomary,
+            is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+
+        // Flow rate = 300 cfs. Tailwater WSEL = 4.0.
+        // Station 50.0 compound culvert with 2 groups: Group 1 (Circular) and Group 2 (Box)
+        let inputs = SteadyInputs {
+            cross_sections: vec![xs200, xs100, xs0],
+            flow_rate: 300.0,
+            num_slices: Some(50),
+            regime: 0,
+            downstream_wsel: Some(4.0),
+            culvert_stations: Some(vec![50.0, 50.0]),
+            culvert_shape_types: Some(vec![0, 1]), // Circular and Box
+            culvert_spans: Some(vec![6.0, 8.0]),
+            culvert_rises: Some(vec![6.0, 4.0]),
+            culvert_roughness_ns: Some(vec![0.013, 0.013]),
+            culvert_lengths: Some(vec![50.0, 50.0]),
+            culvert_entrance_loss_coeffs: Some(vec![0.5, 0.5]),
+            culvert_exit_loss_coeffs: Some(vec![1.0, 1.0]),
+            culvert_z_downs: Some(vec![0.0, 0.5]),
+            culvert_z_ups: Some(vec![0.0, 0.5]),
+            culvert_barrels: Some(vec![1, 1]),
+            ..Default::default()
+        };
+
+        let result = solve_steady(&inputs);
+
+        // Retrieve culvert results from steady results vectors
+        let q_barrels = result.culvert_q_barrels.expect("barrel flows");
+        let q_weirs = result.culvert_q_weirs.expect("weir flows");
+
+        assert_eq!(q_barrels.len(), 2, "Expected 2 culvert results");
+
+        // Assert positive flow through both groups (Circular and Box)
+        assert!(
+            q_barrels[0] > 0.0,
+            "Circular group flow should be positive, got {}",
+            q_barrels[0]
+        );
+        assert!(
+            q_barrels[1] > 0.0,
+            "Box group flow should be positive, got {}",
+            q_barrels[1]
+        );
+
+        // Weir flow should be 0 because we didn't specify crest_elev / overtopping
+        assert_eq!(q_weirs[0], 0.0);
+        assert_eq!(q_weirs[1], 0.0);
+
+        // Sum of barrel flows should equal the total flow rate (300 cfs)
+        let total_flow_resolved = q_barrels[0] + q_barrels[1];
+        assert!(
+            (total_flow_resolved - 300.0).abs() < 1.0,
+            "Total resolved flow {} should be close to 300 cfs",
+            total_flow_resolved
+        );
+    }
+
+    #[test]
+    fn test_steady_project_11_at_197_cfs() {
+        let json_str = r#"{
+  "cross_sections": [
+    {
+      "station": 4640.711275566626,
+      "x": [-50, 0, 12, 22, 34, 45],
+      "y": [29, 26, 20, 20, 26, 28],
+      "n_stations": [-50, 0, 12, 22, 34, 45],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "lat": 40.74843688259421,
+      "lng": -111.85337541160386,
+      "base_y": [29, 26, 20, 20, 26, 28],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "river_station": 1000,
+      "ds_reach_lob": 2117.8696729550096,
+      "ds_reach_channel": 2317.625579812039,
+      "ds_reach_rob": 2377.6756885014592
+    },
+    {
+      "station": 2111.795030581081,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [24, 20.9, 14.9, 14.9, 20.9, 24],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "lat": 40.74843688259421,
+      "lng": -111.85337541160386,
+      "base_y": [24, 20.9, 14.9, 14.9, 20.9, 24],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "river_station": 450,
+      "ds_reach_lob": 468.6797655425455,
+      "ds_reach_channel": 460.2942531964445,
+      "ds_reach_rob": 444.9466172949577
+    },
+    {
+      "station": 1651.5007773846362,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [23, 19.6, 13.6, 13.6, 19.6, 23],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "lat": 40.747310647782626,
+      "lng": -111.85412623481159,
+      "base_y": [23, 19.6, 13.6, 13.6, 19.6, 23],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "river_station": 350,
+      "ds_reach_lob": 230.14777170848987,
+      "ds_reach_channel": 230.14772073207251,
+      "ds_reach_rob": 230.14762727103772
+    },
+    {
+      "station": 1421.3530566525637,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [22, 18.6, 12.6, 12.6, 18.6, 22],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "lat": 40.74674753037684,
+      "lng": -111.85450164641544,
+      "base_y": [22, 18.6, 12.6, 12.6, 18.6, 22],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "river_station": 300,
+      "ds_reach_lob": 230.1481678018664,
+      "ds_reach_channel": 230.14811682315806,
+      "ds_reach_rob": 230.14802336293994
+    },
+    {
+      "station": 1191.2049398294057,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [22, 18.5, 12.5, 12.5, 18.5, 22],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "base_y": [22, 18.5, 12.5, 12.5, 18.5, 22],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "lat": 40.74618441297104,
+      "lng": -111.85487705801931,
+      "river_station": 250,
+      "ds_reach_lob": 217.86967295500986,
+      "ds_reach_channel": 224.87335208893262,
+      "ds_reach_rob": 237.76756885014592
+    },
+    {
+      "station": 966.331587740473,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [22, 18.5, 12.5, 12.5, 18.5, 22],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "base_y": [22, 18.5, 12.5, 12.5, 18.5, 22],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "river_station": 200,
+      "ds_reach_lob": 93.19915768199552,
+      "ds_reach_channel": 96.63305810005232,
+      "ds_reach_rob": 102.93003553449851
+    },
+    {
+      "station": 869.6985296404207,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [22, 18.5, 12.5, 12.5, 18.5, 22],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "base_y": [22, 18.5, 12.5, 12.5, 18.5, 22],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "river_station": 180,
+      "ds_reach_lob": 144.949611581508,
+      "ds_reach_channel": 144.94962909886823,
+      "ds_reach_rob": 144.94966121267393
+    },
+    {
+      "station": 724.7489005415524,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [22, 18.5, 12.5, 12.5, 18.5, 22],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "base_y": [22, 18.5, 12.5, 12.5, 18.5, 22],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "river_station": 150,
+      "ds_reach_lob": 241.58279783498213,
+      "ds_reach_channel": 241.58282702459735,
+      "ds_reach_rob": 241.58288053938736
+    },
+    {
+      "station": 483.16607351695507,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [22, 18, 12, 12, 18, 22],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "base_y": [22, 18, 12, 12, 18, 22],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "river_station": 100,
+      "ds_reach_lob": 483.16601513602075,
+      "ds_reach_channel": 483.16607351695507,
+      "ds_reach_rob": 483.16618055140054
+    },
+    {
+      "station": 0,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [18, 16, 10, 10, 16, 18],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "base_y": [18, 16, 10, 10, 16, 18],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "lat": 40.743,
+      "lng": -111.854,
+      "river_station": 0
+    }
+  ],
+  "flow_rate": 197.0,
+  "num_slices": 100,
+  "regime": 2,
+  "downstream_wsel": 12,
+  "coeff_contraction": 0.1,
+  "coeff_expansion": 0.3,
+  "max_spacing": 100,
+  "downstream_bc_type": 2,
+  "downstream_bc_slope": 0.002,
+  "downstream_bc_rating_q": [],
+  "downstream_bc_rating_wsel": [],
+  "upstream_bc_type": 2,
+  "upstream_bc_slope": 0.01,
+  "upstream_bc_rating_q": [],
+  "upstream_bc_rating_wsel": [],
+  "upstream_wsel": 24,
+  "culvert_stations": [
+    2317.625579812039,
+    1191.2049398294057
+  ],
+  "culvert_shape_types": [1, 1],
+  "culvert_spans": [10, 8],
+  "culvert_rises": [6, 6],
+  "culvert_roughness_ns": [0.012, 0.012],
+  "culvert_lengths": [
+    411.66109846191694,
+    455.02146891209077
+  ],
+  "culvert_entrance_loss_coeffs": [0.5, 0.5],
+  "culvert_exit_loss_coeffs": [1, 1],
+  "culvert_roughness_n_bottoms": [0.012, 0.012],
+  "culvert_depth_bottom_ns": [0, 0],
+  "culvert_depth_blockeds": [0, 0],
+  "culvert_inlet_types": [0, 0],
+  "culvert_chart_numbers": [0, 0],
+  "culvert_scale_numbers": [0, 0],
+  "culvert_barrels": [1, 1],
+  "culvert_skew_angles": [59, 59],
+  "culvert_active_barrels": [1, 1],
+  "culvert_approach_reach_stations": [
+    2523.456129042998,
+    1421.3530566525637
+  ],
+  "culvert_departure_reach_stations": [
+    2111.795030581081,
+    966.331587740473
+  ],
+  "bridge_stations": [724.7489005415524],
+  "bridge_low_chords": [18],
+  "bridge_high_chords": [22],
+  "bridge_pier_widths": [1.5],
+  "bridge_num_piers": [3],
+  "bridge_pier_shapes": [1],
+  "bridge_weir_coeffs": [2.6],
+  "bridge_orifice_coeffs": [0.5],
+  "bridge_deck_stations": [[100, 134]],
+  "bridge_deck_low_elevations": [[18, 18]],
+  "bridge_deck_high_elevations": [[22, 22]]
+}"#;
+        let inputs: SteadyInputs = serde_json::from_str(json_str).unwrap();
+        let result = solve_steady(&inputs);
+        for (i, &w) in result.wsel.iter().enumerate() {
+            let s = inputs.cross_sections[i].station;
+            println!("  Index: {}, Station: {:.3} ft, WSEL: {:.3} ft", i, s, w);
+        }
+    }
+
+    #[test]
+    fn test_steady_project_11_panic() {
+        let json_str = r#"{
+  "cross_sections": [
+    {
+      "station": 4640.711275566626,
+      "x": [-50, 0, 12, 22, 34, 45],
+      "y": [29, 26, 20, 20, 26, 28],
+      "n_stations": [-50, 0, 12, 22, 34, 45],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "base_y": [29, 26, 20, 20, 26, 28],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "lat": 40.755,
+      "lng": -111.854,
+      "river_station": 1000,
+      "ds_reach_lob": 1187.123784108748,
+      "ds_reach_channel": 1186.7301360847084,
+      "ds_reach_rob": 1187.1234534731939
+    },
+    {
+      "station": 3453.981139481917,
+      "x": [-100, 0, 12, 18, 22, 34, 45],
+      "y": [26, 23.5, 17.5, 17, 17.5, 23, 25],
+      "n_stations": [-100, 0, 12, 18, 22, 34, 45],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "base_y": [26, 23.5, 17.5, 17, 17.5, 23, 25],
+      "is_overbank": [true, false, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "lat": 40.751815587028965,
+      "lng": -111.85487705801931,
+      "river_station": 750,
+      "ds_reach_lob": 676.8983775867509,
+      "ds_reach_channel": 690.4348442045659,
+      "ds_reach_rob": 703.9008576556015
+    },
+    {
+      "station": 2763.546295277351,
+      "x": [-50, 0, 12, 22, 34, 50],
+      "y": [25, 21.7, 15.7, 15.7, 21.7, 23],
+      "n_stations": [-50, 0, 12, 22, 34, 50],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "lat": 40.75012623481159,
+      "lng": -111.85375082320772,
+      "base_y": [25, 21.7, 15.7, 15.7, 21.7, 23],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "river_station": 600,
+      "ds_reach_lob": 242.56894062816195,
+      "ds_reach_channel": 240.0901662343531,
+      "ds_reach_rob": 235.54598908140431
+    },
+    {
+      "station": 2523.456129042998,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [25, 21.1, 15.1, 15.1, 21.1, 25],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "lat": 40.749563297494774,
+      "lng": -111.85330081200009,
+      "base_y": [25, 21.1, 15.1, 15.1, 21.1, 25],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "river_station": 550,
+      "ds_reach_lob": 414.09407503199776,
+      "ds_reach_channel": 411.447417961388,
+      "ds_reach_rob": 406.5999223898587
+    },
+    {
+      "station": 2111.795030581081,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [24, 20.9, 14.9, 14.9, 20.9, 24],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "lat": 40.74843688259421,
+      "lng": -111.85337541160386,
+      "base_y": [24, 20.9, 14.9, 14.9, 20.9, 24],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "river_station": 450,
+      "ds_reach_lob": 468.6797655425455,
+      "ds_reach_channel": 460.2942531964445,
+      "ds_reach_rob": 444.9466172949577
+    },
+    {
+      "station": 1651.5007773846362,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [23, 19.6, 13.6, 13.6, 19.6, 23],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "lat": 40.747310647782626,
+      "lng": -111.85412623481159,
+      "base_y": [23, 19.6, 13.6, 13.6, 19.6, 23],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "river_station": 350,
+      "ds_reach_lob": 230.14777170848987,
+      "ds_reach_channel": 230.14772073207251,
+      "ds_reach_rob": 230.14762727103772
+    },
+    {
+      "station": 1421.3530566525637,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [22, 18.6, 12.6, 12.6, 18.6, 22],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "lat": 40.74674753037684,
+      "lng": -111.85450164641544,
+      "base_y": [22, 18.6, 12.6, 12.6, 18.6, 22],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "river_station": 300,
+      "ds_reach_lob": 230.1481678018664,
+      "ds_reach_channel": 230.14811682315806,
+      "ds_reach_rob": 230.14802336293994
+    },
+    {
+      "station": 1191.2049398294057,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [22, 18.5, 12.5, 12.5, 18.5, 22],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "base_y": [22, 18.5, 12.5, 12.5, 18.5, 22],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "lat": 40.74618441297104,
+      "lng": -111.85487705801931,
+      "river_station": 250,
+      "ds_reach_lob": 217.86967295500986,
+      "ds_reach_channel": 224.87335208893262,
+      "ds_reach_rob": 237.76756885014592
+    },
+    {
+      "station": 966.331587740473,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [22, 18.5, 12.5, 12.5, 18.5, 22],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "base_y": [22, 18.5, 12.5, 12.5, 18.5, 22],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "river_station": 200,
+      "ds_reach_lob": 93.19915768199552,
+      "ds_reach_channel": 96.63305810005232,
+      "ds_reach_rob": 102.93003553449851
+    },
+    {
+      "station": 869.6985296404207,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [22, 18.5, 12.5, 12.5, 18.5, 22],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "base_y": [22, 18.5, 12.5, 12.5, 18.5, 22],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "river_station": 180,
+      "ds_reach_lob": 144.949611581508,
+      "ds_reach_channel": 144.94962909886823,
+      "ds_reach_rob": 144.94966121267393
+    },
+    {
+      "station": 724.7489005415524,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [22, 18.5, 12.5, 12.5, 18.5, 22],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "base_y": [22, 18.5, 12.5, 12.5, 18.5, 22],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "river_station": 150,
+      "ds_reach_lob": 241.58279783498213,
+      "ds_reach_channel": 241.58282702459735,
+      "ds_reach_rob": 241.58288053938736
+    },
+    {
+      "station": 483.16607351695507,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [22, 18, 12, 12, 18, 22],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "base_y": [22, 18, 12, 12, 18, 22],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "river_station": 100,
+      "ds_reach_lob": 483.16601513602075,
+      "ds_reach_channel": 483.16607351695507,
+      "ds_reach_rob": 483.16618055140054
+    },
+    {
+      "station": 0,
+      "x": [-100, 0, 12, 22, 34, 100],
+      "y": [18, 16, 10, 10, 16, 18],
+      "n_stations": [-100, 0, 12, 22, 34, 100],
+      "n_values": [0.025, 0.025, 0.025, 0.025, 0.025, 0.025],
+      "unit_system": "USCustomary",
+      "base_y": [18, 16, 10, 10, 16, 18],
+      "is_overbank": [true, false, false, false, false, true],
+      "channel_n": 0.025,
+      "left_overbank_n": 0.025,
+      "right_overbank_n": 0.025,
+      "overbank_n": 0.025,
+      "lat": 40.743,
+      "lng": -111.854,
+      "river_station": 0
+    }
+  ],
+  "flow_rate": 338.5,
+  "num_slices": 100,
+  "regime": 2,
+  "downstream_wsel": 12,
+  "coeff_contraction": 0.1,
+  "coeff_expansion": 0.3,
+  "max_spacing": 100,
+  "downstream_bc_type": 2,
+  "downstream_bc_slope": 0.002,
+  "downstream_bc_rating_q": [],
+  "downstream_bc_rating_wsel": [],
+  "upstream_bc_type": 2,
+  "upstream_bc_slope": 0.01,
+  "upstream_bc_rating_q": [],
+  "upstream_bc_rating_wsel": [],
+  "upstream_wsel": 24,
+  "culvert_stations": [
+    2317.625579812039,
+    1191.2049398294057
+  ],
+  "culvert_shape_types": [1, 1],
+  "culvert_spans": [10, 8],
+  "culvert_rises": [6, 6],
+  "culvert_roughness_ns": [0.012, 0.012],
+  "culvert_lengths": [
+    411.66109846191694,
+    455.02146891209077
+  ],
+  "culvert_entrance_loss_coeffs": [0.5, 0.5],
+  "culvert_exit_loss_coeffs": [1, 1],
+  "culvert_roughness_n_bottoms": [0.012, 0.012],
+  "culvert_depth_bottom_ns": [0, 0],
+  "culvert_depth_blockeds": [0, 0],
+  "culvert_inlet_types": [0, 0],
+  "culvert_chart_numbers": [0, 0],
+  "culvert_scale_numbers": [0, 0],
+  "culvert_barrels": [1, 1],
+  "culvert_skew_angles": [59, 59],
+  "culvert_active_barrels": [1, 1],
+  "culvert_approach_reach_stations": [
+    2523.456129042998,
+    1421.3530566525637
+  ],
+  "culvert_departure_reach_stations": [
+    2111.795030581081,
+    966.331587740473
+  ],
+  "bridge_stations": [724.7489005415524],
+  "bridge_low_chords": [18],
+  "bridge_high_chords": [22],
+  "bridge_pier_widths": [1.5],
+  "bridge_num_piers": [3],
+  "bridge_pier_shapes": [1],
+  "bridge_weir_coeffs": [2.6],
+  "bridge_orifice_coeffs": [0.5],
+  "bridge_deck_stations": [[100, 134]],
+  "bridge_deck_low_elevations": [[18, 18]],
+  "bridge_deck_high_elevations": [[22, 22]]
+}"#;
+        let inputs: SteadyInputs = serde_json::from_str(json_str).unwrap();
+        let _result = solve_steady(&inputs);
+    }
+}

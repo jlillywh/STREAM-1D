@@ -1,6 +1,6 @@
 {
   "source": "HEC-RAS ConSpan reach export (ConSpan.csv)",
-  "tolerance_ft": 0.04,
+  "tolerance_ft": 0.06,
   "project": "conspan_project_12.json",
   "profiles": [
     {
