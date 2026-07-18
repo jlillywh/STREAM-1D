@@ -96,7 +96,8 @@ pub fn build_api_metadata() -> WasmApiMetadata {
             EnumEntry {
                 code: 4,
                 name: "PipeArch".to_string(),
-                description: "Corrugated pipe-arch; span = spring-line width, rise = total height".to_string(),
+                description: "Corrugated pipe-arch; span = spring-line width, rise = total height"
+                    .to_string(),
             },
             EnumEntry {
                 code: 5,
@@ -111,14 +112,16 @@ pub fn build_api_metadata() -> WasmApiMetadata {
             EnumEntry {
                 code: 7,
                 name: "Custom".to_string(),
-                description: "User-defined shape using area, perimeter, and top width tables".to_string(),
+                description: "User-defined shape using area, perimeter, and top width tables"
+                    .to_string(),
             },
         ],
         culvert_inlet_types: vec![
             EnumEntry {
                 code: 0,
                 name: "LegacyKeThreshold".to_string(),
-                description: "Infer nomograph from entrance loss Ke (backward compatible)".to_string(),
+                description: "Infer nomograph from entrance loss Ke (backward compatible)"
+                    .to_string(),
             },
             EnumEntry {
                 code: 1,
@@ -377,17 +380,20 @@ pub fn build_api_metadata() -> WasmApiMetadata {
             EnumEntry {
                 code: 0,
                 name: "CombinedDownstream".to_string(),
-                description: "Merge culverts and bridges; couple downstream structures first".to_string(),
+                description: "Merge culverts and bridges; couple downstream structures first"
+                    .to_string(),
             },
             EnumEntry {
                 code: 1,
                 name: "CulvertsFirst".to_string(),
-                description: "All culverts (downstream-first), then all bridges (downstream-first)".to_string(),
+                description: "All culverts (downstream-first), then all bridges (downstream-first)"
+                    .to_string(),
             },
             EnumEntry {
                 code: 2,
                 name: "BridgesFirst".to_string(),
-                description: "All bridges (downstream-first), then all culverts (downstream-first)".to_string(),
+                description: "All bridges (downstream-first), then all culverts (downstream-first)"
+                    .to_string(),
             },
         ],
     }
@@ -402,7 +408,7 @@ mod tests {
     fn test_api_metadata_serializes() {
         let json = serde_json::to_string(&build_api_metadata()).unwrap();
         assert!(json.contains("culvert_inlet_types"));
-        assert!(json.contains("\"api_version\":37"));
+        assert!(json.contains("\"api_version\":38"));
         assert!(json.contains("structure_coupling_orders"));
     }
 

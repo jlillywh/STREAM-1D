@@ -2,8 +2,8 @@
 
 use stream1d::geometry::CrossSection;
 use stream1d::solvers::culvert::{solve_culvert, CulvertSolveParams};
-use stream1d::solvers::steady::SteadyInputs;
 use stream1d::solvers::solve_steady;
+use stream1d::solvers::steady::SteadyInputs;
 use stream1d::utils::UnitSystem;
 
 #[derive(serde::Deserialize)]
@@ -85,14 +85,9 @@ fn build_conspan_inputs_from_json(v: &serde_json::Value) -> SteadyInputs {
                 .map(|n| n.as_f64().unwrap())
                 .collect(),
             unit_system: UnitSystem::USCustomary,
-            is_overbank: xs.get("is_overbank").and_then(|v| {
-                Some(
-                    v.as_array()?
-                        .iter()
-                        .map(|b| b.as_bool().unwrap())
-                        .collect(),
-                )
-            }),
+            is_overbank: xs
+                .get("is_overbank")
+                .and_then(|v| Some(v.as_array()?.iter().map(|b| b.as_bool().unwrap()).collect())),
             coeff_contraction: None,
             coeff_expansion: None,
             blocked_obstructions: None,
@@ -232,6 +227,8 @@ fn calibrate_point_benchmarks_print() {
             custom_shape_tbl_top_width: None,
             roadway_stations: None,
             roadway_elevations: None,
+            chart_number: None,
+            scale_number: None,
         });
         eprintln!(
             "{}: control={} wsel={:.3}",
@@ -279,6 +276,8 @@ fn test_culvert_point_benchmarks() {
             custom_shape_tbl_top_width: None,
             roadway_stations: None,
             roadway_elevations: None,
+            chart_number: None,
+            scale_number: None,
         });
 
         assert_eq!(

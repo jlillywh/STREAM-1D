@@ -1,9 +1,10 @@
 # API changelog
 
-JSON/Python input schema version (`api_version` in WASM metadata). Current version: **37**.
+JSON/Python input schema version (`api_version` in WASM metadata). Current version: **38**.
 
 | Version | Change |
 |---------|--------|
+| 38 | Direct FHWA HDS-5 chart and scale selection for culverts: `culvert_chart_numbers`, `culvert_scale_numbers` in steady/unsteady inputs and metadata |
 | 37 | Culvert HEC-RAS inline structure reach: `culvert_approach_reach_stations`, `culvert_departure_reach_stations` — inserts US/DS bounding nodes on the densified grid and couples culverts on that interval (mirrors bridge approach/departure reach) |
 | 36 | Unsteady structure coupling modes **`3`** (`MonolithicNewton`, experimental) and **`4`** (`QuasiSteadyParticular`, quasi-steady re-anchor + mode-2 physics — recommended for culvert approach backwater on Q ramps); WASM metadata entries for both modes |
 | 35 | Unsteady downstream BC types mirror steady: `downstream_bc_type` (`0` WSEL hydrograph default, `1` critical depth, `2` dynamic friction slope, `3` rating curve), `downstream_bc_slope`, `downstream_bc_rating_*`; reserved upstream stage fields; `theta` default **0.6** (clamp $[0.55,1.0]$) — see [`equations.md` §4](equations.md) |
