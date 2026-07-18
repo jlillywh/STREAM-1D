@@ -232,6 +232,7 @@ fn calibrate_point_benchmarks_print() {
             custom_shape_tbl_top_width: None,
             roadway_stations: None,
             roadway_elevations: None,
+            ..Default::default()
         });
         eprintln!(
             "{}: control={} wsel={:.3}",
@@ -279,6 +280,7 @@ fn test_culvert_point_benchmarks() {
             custom_shape_tbl_top_width: None,
             roadway_stations: None,
             roadway_elevations: None,
+            ..Default::default()
         });
 
         assert_eq!(
