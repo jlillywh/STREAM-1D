@@ -1715,7 +1715,7 @@ fn compute_gvf_outlet_control(
                 true,
                 yc,
             );
-            if y_next <= yc + 1e-4 {
+            if y_next <= yc + 1e-4 && yc <= rise {
                 return z_down_ft; // Subcritical GVF profile drew down to critical depth; wave cannot propagate upstream
             }
             y_curr = y_next;

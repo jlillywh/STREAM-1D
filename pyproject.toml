@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "stream1d"
-version = "0.1.1"
+version = "0.1.2"
 description = "Stateless open-channel and river hydraulics solver"
 readme = "README.md"
 license = { text = "MIT" }

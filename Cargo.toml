@@ -1,6 +1,6 @@
 [package]
 name = "stream1d"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 description = "STREAM-1D: stateless 1D open-channel hydraulics engine (WASM and Python)"
 license = "MIT"
