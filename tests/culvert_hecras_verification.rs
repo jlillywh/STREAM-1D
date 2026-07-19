@@ -292,3 +292,41 @@ fn test_culvert_point_benchmarks() {
         );
     }
 }
+
+#[test]
+fn test_conspan_high_flow_no_drawdown_drop() {
+    let mut base = load_conspan_project();
+    let station_list: Vec<f64> = base.cross_sections.iter().map(|xs| xs.station).collect();
+
+    // Set high flow rate from the first screenshot
+    base.flow_rate = 1399.0;
+    base.downstream_wsel = Some(31.3);
+
+    let result = solve_steady(&base);
+
+    // Culvert lies between station 1200 (downstream) and 1257 (upstream)
+    let idx_us = station_list.iter().position(|s| (*s - 1257.0).abs() < 0.5).unwrap();
+    let idx_ds = station_list.iter().position(|s| (*s - 1200.0).abs() < 0.5).unwrap();
+
+    let wsel_us = result.wsel[idx_us];
+    let wsel_ds = result.wsel[idx_ds];
+
+    println!("High flow 1399 cfs: US WSEL = {:.3}, DS WSEL = {:.3}", wsel_us, wsel_ds);
+
+    // Assert WSEL doesn't drop going upstream
+    assert!(
+        wsel_us >= wsel_ds,
+        "Upstream WSEL ({:.3}) should be >= downstream WSEL ({:.3})",
+        wsel_us,
+        wsel_ds
+    );
+
+    // Before the fix, US WSEL evaluated to ~33.05 ft. With correct overtopping/outlet control,
+    // it should be at least 34.0 ft.
+    assert!(
+        wsel_us > 34.0,
+        "Upstream WSEL ({:.3}) should be > 34.0 ft (overtopping control should govern)",
+        wsel_us
+    );
+}
+
