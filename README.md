@@ -104,7 +104,7 @@ More verification scenarios: [`verification/README.md`](verification/README.md).
 
 **Cross sections** — river station; (*x*, *y*) polyline; Manning *n* zones; optional `is_overbank`, `blocked_obstructions`, `ineffective_flow_areas`, `guide_banks`. Modifier semantics: [`docs/reference/equations.md`](docs/reference/equations.md) §H0.
 
-**Steady** — `flow_rate`, `regime` (0 subcritical, 1 supercritical, 2 mixed), downstream boundary (`downstream_wsel`, normal depth, rating curve, etc.), optional `max_spacing` and `densify_reach_modifier_policy` (0 none, 1 upstream, 2 downstream, 3 nearest). Structure fields: `culvert_*` (including direct FHWA HDS-5 `culvert_chart_numbers` and `culvert_scale_numbers`), `bridge_*`. Pier, deck vent, ice, reverse-flow extensions: [`docs/development/bridge_extensions.md`](docs/development/bridge_extensions.md).
+**Steady** — `flow_rate` (default global flow rate), `flow_rates` (optional list of flow rates matching `cross_sections` 1-to-1 to specify downstream-varying flows/tributary inflows), `regime` (0 subcritical, 1 supercritical, 2 mixed), downstream boundary (`downstream_wsel`, normal depth, rating curve, etc.), optional `max_spacing` and `densify_reach_modifier_policy` (0 none, 1 upstream, 2 downstream, 3 nearest). Structure fields: `culvert_*` (including direct FHWA HDS-5 `culvert_chart_numbers` and `culvert_scale_numbers`), `bridge_*`. Pier, deck vent, ice, reverse-flow extensions: [`docs/development/bridge_extensions.md`](docs/development/bridge_extensions.md).
 
 **Results** — `wsel`, `velocity` as lists of floats (one value per cross section). With culverts: control type, inlet/outlet HW, barrel and weir discharge. With bridges: flow regime, head loss.
 
