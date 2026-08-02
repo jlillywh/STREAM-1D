@@ -12,6 +12,9 @@ pub struct SteadyInputs {
     pub cross_sections: Vec<CrossSection>,
     /// Flow rate (in cfs if unit_system is USCustomary, cms if Metric).
     pub flow_rate: f64,
+    /// Cross-section specific flow rates (matching cross_sections 1-to-1).
+    #[serde(default)]
+    pub flow_rates: Option<Vec<f64>>,
     /// Number of uniform vertical intervals to slice cross-sections (default 100).
     pub num_slices: Option<usize>,
     /// Contraction loss coefficient (default 0.1).
@@ -1126,7 +1129,6 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
         inputs.flow_rate
     };
     let flow_reverses = q < -1e-12;
-    let q_mag = q.abs();
 
     let num_slices = inputs.num_slices.unwrap_or(100);
     let c_contraction = inputs
@@ -1146,6 +1148,23 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
     // Upstream has larger station numbers, index 0 is most upstream.
     xs_with_indices.sort_by(|a, b| b.1.station.partial_cmp(&a.1.station).unwrap());
     let m = xs_with_indices.len();
+
+    let q_sorted: Vec<f64> = xs_with_indices
+        .iter()
+        .map(|(orig_idx, _)| {
+            let flow_val = inputs
+                .flow_rates
+                .as_ref()
+                .and_then(|qs| qs.get(*orig_idx))
+                .copied()
+                .unwrap_or(inputs.flow_rate);
+            if raw_units == UnitSystem::USCustomary {
+                flow_val * crate::utils::CFS_TO_CMS
+            } else {
+                flow_val
+            }
+        })
+        .collect();
 
     let xs_list: Vec<CrossSection> = xs_with_indices.iter().map(|(_, xs)| xs.clone()).collect();
 
@@ -1306,12 +1325,30 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
         .into_iter()
         .collect();
 
+    const STATION_TOL: f64 = 1e-4;
+    let mut densified_q = Vec::with_capacity(densified_stations.len());
+    for &s in &densified_stations {
+        let mut q_val = q_sorted[0];
+        for i in 0..m {
+            if xs_list[i].station >= s - STATION_TOL {
+                q_val = q_sorted[i];
+            } else {
+                break;
+            }
+        }
+        densified_q.push(q_val);
+    }
+
     let dm = densified_tables.len();
 
     // Calculate critical depths and elevations for the densified grid
     let ycs: Vec<f64> = densified_tables
         .iter()
-        .map(|table| solve_critical_depth_table(table, q_mag))
+        .enumerate()
+        .map(|(idx, table)| {
+            let q_local_mag = densified_q[idx].abs();
+            solve_critical_depth_table(table, q_local_mag)
+        })
         .collect();
     let critical_wsels: Vec<f64> = densified_z_mins
         .iter()
@@ -1328,9 +1365,10 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
         1 => Some(critical_wsels[dm - 1]),
         2 => {
             let slope = inputs.downstream_bc_slope.unwrap_or(0.01);
+            let q_local = densified_q[dm - 1];
             Some(solve_normal_depth_table(
                 &densified_tables[dm - 1],
-                q,
+                q_local,
                 slope,
             ))
         }
@@ -1339,7 +1377,12 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                 &inputs.downstream_bc_rating_q,
                 &inputs.downstream_bc_rating_wsel,
             ) {
-                interpolate_rating_curve(inputs.flow_rate, rq, rw).map(|w| {
+                let q_local_user = if raw_units == UnitSystem::USCustomary {
+                    densified_q[dm - 1] / CFS_TO_CMS
+                } else {
+                    densified_q[dm - 1]
+                };
+                interpolate_rating_curve(q_local_user, rq, rw).map(|w| {
                     if raw_units == UnitSystem::USCustomary {
                         w * FT_TO_M
                     } else {
@@ -1365,14 +1408,20 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
         1 => Some(critical_wsels[0]),
         2 => {
             let slope = inputs.upstream_bc_slope.unwrap_or(0.01);
-            Some(solve_normal_depth_table(&densified_tables[0], q, slope))
+            let q_local = densified_q[0];
+            Some(solve_normal_depth_table(&densified_tables[0], q_local, slope))
         }
         3 => {
             if let (Some(rq), Some(rw)) = (
                 &inputs.upstream_bc_rating_q,
                 &inputs.upstream_bc_rating_wsel,
             ) {
-                interpolate_rating_curve(inputs.flow_rate, rq, rw).map(|w| {
+                let q_local_user = if raw_units == UnitSystem::USCustomary {
+                    densified_q[0] / CFS_TO_CMS
+                } else {
+                    densified_q[0]
+                };
+                interpolate_rating_curve(q_local_user, rq, rw).map(|w| {
                     if raw_units == UnitSystem::USCustomary {
                         w * FT_TO_M
                     } else {
@@ -1515,6 +1564,8 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
             }
 
             for i in (0..dm - 1).rev() {
+                let q_local = densified_q[i];
+                let q_local_user = if raw_units == UnitSystem::USCustomary { q_local / CFS_TO_CMS } else { q_local };
                 let length = densified_stations[i] - densified_stations[i + 1];
 
                 let bridge_idx = bridge_at_interval.get(&i).copied();
@@ -1591,7 +1642,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                         length,
                     );
                     let coupled = crate::solvers::bridge::solve_bridge_coupled(
-                        inputs.flow_rate,
+                        q_local_user,
                         low_chord,
                         high_chord,
                         pier_width,
@@ -1788,7 +1839,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                             ds_row.channel_area
                         };
                         let ds_velocity_user = if ds_area_user > 1e-9 {
-                            (inputs.flow_rate / ds_area_user).min(
+                            (q_local_user / ds_area_user).min(
                                 if raw_units == UnitSystem::Metric {
                                     9.144
                                 } else {
@@ -1826,7 +1877,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                                 us_row.channel_area
                             };
                             let us_velocity_user = if us_area_user > 1e-9 {
-                                inputs.flow_rate / us_area_user
+                                q_local_user / us_area_user
                             } else {
                                 0.0
                             };
@@ -1863,7 +1914,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                                 .cloned();
                             culvert_result = crate::solvers::culvert::solve_culvert(
                                 &crate::solvers::culvert::CulvertSolveParams {
-                                    q: inputs.flow_rate,
+                                    q: q_local_user,
                                     shape_type,
                                     inlet_type,
                                     span,
@@ -1967,7 +2018,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                             ds_row.channel_area
                         };
                         let ds_velocity_user = if ds_area_user > 1e-9 {
-                            (inputs.flow_rate / ds_area_user).min(
+                            (q_local_user / ds_area_user).min(
                                 if raw_units == UnitSystem::Metric {
                                     9.144
                                 } else {
@@ -2158,7 +2209,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                             let tapered_throat_chart_number = inputs.culvert_tapered_throat_chart_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
                             let tapered_throat_scale_number = inputs.culvert_tapered_throat_scale_numbers.as_ref().and_then(|v| v.get(c_idx)).copied();
                             let mut p = crate::solvers::culvert::CulvertSolveParams {
-                                q: inputs.flow_rate,
+                                q: q_local_user,
                                 shape_type,
                                 inlet_type,
                                 span,
@@ -2230,7 +2281,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                                 us_row.channel_area
                             };
                             let us_velocity_user = if us_area_user > 1e-9 {
-                                inputs.flow_rate / us_area_user
+                                q_local_user / us_area_user
                             } else {
                                 0.0
                             };
@@ -2301,7 +2352,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                                 sum_q += q_barrel + q_weir;
                             }
 
-                            if sum_q < inputs.flow_rate {
+                            if sum_q < q_local_user {
                                 low = mid;
                             } else {
                                 high = mid;
@@ -2321,7 +2372,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                             us_row.channel_area
                         };
                         let us_velocity_user = if us_area_user > 1e-9 {
-                            inputs.flow_rate / us_area_user
+                            q_local_user / us_area_user
                         } else {
                             0.0
                         };
@@ -2448,11 +2499,6 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                         .copied()
                         .unwrap_or(0.0);
 
-                    let tw_wsel_user = if raw_units == UnitSystem::USCustomary {
-                        sub_wsel[i + 1] / FT_TO_M
-                    } else {
-                        sub_wsel[i + 1]
-                    };
 
                     let (mut crest_ft, cw_us, length_ft) = if raw_units == UnitSystem::Metric {
                         (
@@ -2496,9 +2542,9 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                     }
 
                     let q_target_cfs = if raw_units == UnitSystem::Metric {
-                        inputs.flow_rate / CFS_TO_CMS
+                        q_local_user / CFS_TO_CMS
                     } else {
-                        inputs.flow_rate
+                        q_local_user
                     };
 
                     let tw_ft = sub_wsel[i + 1] / FT_TO_M;
@@ -2542,7 +2588,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                         };
                     }
                     if let Some(ref mut v) = sub_inline_structure_q_weirs {
-                        v[is_idx] = inputs.flow_rate;
+                        v[is_idx] = q_local_user;
                     }
 
                     sub_wsel[i] = if raw_units == UnitSystem::USCustomary {
@@ -2561,7 +2607,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                         structure_ineffective.get(&i),
                         densified_z_mins[i],
                         ycs[i],
-                        q_mag,
+                        q_local.abs(),
                         length,
                         c_contraction,
                         c_expansion,
@@ -2583,12 +2629,12 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                         // (iterate once to improve), which is conservative but smooth.
                         let ds_row = densified_tables[i + 1].interpolate(sub_wsel[i + 1]);
                         let ds_area = ds_row.area.max(1e-6);
-                        let hv_ds = (q_mag * q_mag) / (2.0 * G_METRIC * ds_area * ds_area);
+                        let hv_ds = (q_local.abs() * q_local.abs()) / (2.0 * G_METRIC * ds_area * ds_area);
                         let egl_ds = sub_wsel[i + 1] + hv_ds;
 
                         // Estimate friction slope from downstream conveyance
                         let k_ds = ds_row.conveyance.max(1e-9);
-                        let sf = (q_mag / k_ds).powi(2);
+                        let sf = (q_local.abs() / k_ds).powi(2);
                         let egl_us = egl_ds + sf * length;
 
                         // First-pass upstream WSE (assume same velocity head as DS)
@@ -2597,7 +2643,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                         // One refinement: use upstream area at y_us_guess
                         let us_row = densified_tables[i].interpolate(y_us_guess);
                         let us_area = us_row.area.max(1e-6);
-                        let hv_us = (q_mag * q_mag) / (2.0 * G_METRIC * us_area * us_area);
+                        let hv_us = (q_local.abs() * q_local.abs()) / (2.0 * G_METRIC * us_area * us_area);
                         let y_us = (egl_us - hv_us).max(densified_z_mins[i] + ycs[i]);
 
                         y_us
@@ -2613,6 +2659,8 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
             }
 
             for i in 0..dm - 1 {
+                let q_local = densified_q[i];
+                let q_local_user = if raw_units == UnitSystem::USCustomary { q_local / CFS_TO_CMS } else { q_local };
                 let length = densified_stations[i] - densified_stations[i + 1];
                 let bridge_idx = bridge_at_interval.get(&i).copied();
 
@@ -2684,7 +2732,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                         length,
                     );
                     let coupled = crate::solvers::bridge::solve_bridge_coupled(
-                        inputs.flow_rate,
+                        q_local_user,
                         low_chord,
                         high_chord,
                         pier_width,
@@ -2719,7 +2767,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                         structure_ineffective.get(&(i + 1)),
                         densified_z_mins[i + 1],
                         ycs[i + 1],
-                        q_mag,
+                        q_local.abs(),
                         length,
                         c_contraction,
                         c_expansion,
@@ -2743,6 +2791,8 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
             }
 
             for i in 0..dm - 1 {
+                let q_local = densified_q[i];
+                let q_local_user = if raw_units == UnitSystem::USCustomary { q_local / CFS_TO_CMS } else { q_local };
                 let length = densified_stations[i] - densified_stations[i + 1];
 
                 let bridge_idx = bridge_at_interval.get(&i).copied();
@@ -2922,7 +2972,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                         } else {
                             us_row.channel_area
                         };
-                        let us_velocity_user = inputs.flow_rate / us_area_user.max(1e-9);
+                        let us_velocity_user = q_local_user / us_area_user.max(1e-9);
                         let mut tw_wsel_user = hw_wsel_user;
                         let mut final_result = None;
                         for _ in 0..3 {
@@ -2937,7 +2987,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                             } else {
                                 ds_row.channel_area
                             };
-                            let ds_velocity_user = (inputs.flow_rate / ds_area_user.max(1e-9)).min(
+                            let ds_velocity_user = (q_local_user / ds_area_user.max(1e-9)).min(
                                 if raw_units == UnitSystem::Metric {
                                     9.144
                                 } else {
@@ -2977,7 +3027,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                                 .cloned();
 
                             let culvert_params = crate::solvers::culvert::CulvertSolveParams {
-                                q: inputs.flow_rate,
+                                q: q_local_user,
                                 shape_type,
                                 inlet_type,
                                 span,
@@ -3088,7 +3138,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                         } else {
                             us_row.channel_area
                         };
-                        let us_velocity_user = inputs.flow_rate / us_area_user.max(1e-9);
+                        let us_velocity_user = q_local_user / us_area_user.max(1e-9);
 
                         let mut compound_params = Vec::new();
                         for &c_idx in c_indices {
@@ -3270,7 +3320,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                                 .cloned();
 
                             let mut p = crate::solvers::culvert::CulvertSolveParams {
-                                q: inputs.flow_rate,
+                                q: q_local_user,
                                 shape_type,
                                 inlet_type,
                                 span,
@@ -3335,7 +3385,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                                 ds_row.channel_area
                             };
                             let ds_velocity_user = if ds_area > 1e-9 {
-                                (inputs.flow_rate / ds_area).min(
+                                (q_local_user / ds_area).min(
                                     if raw_units == UnitSystem::Metric {
                                         9.144
                                     } else {
@@ -3415,7 +3465,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                                 sum_q += q_barrel + q_weir;
                             }
 
-                            if sum_q > inputs.flow_rate {
+                            if sum_q > q_local_user {
                                 low = mid;
                             } else {
                                 high = mid;
@@ -3435,7 +3485,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                             ds_row.channel_area
                         };
                         let ds_velocity_user = if ds_area > 1e-9 {
-                            (inputs.flow_rate / ds_area).min(if raw_units == UnitSystem::Metric {
+                            (q_local_user / ds_area).min(if raw_units == UnitSystem::Metric {
                                 9.144
                             } else {
                                 30.0
@@ -3613,7 +3663,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                         length,
                     );
                     let tw_wsel_user = crate::solvers::bridge::solve_bridge_tailwater(
-                        inputs.flow_rate,
+                        q_local_user,
                         low_chord,
                         high_chord,
                         pier_width,
@@ -3706,9 +3756,9 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                     }
 
                     let q_target_cfs = if raw_units == UnitSystem::Metric {
-                        inputs.flow_rate / CFS_TO_CMS
+                        q_local_user / CFS_TO_CMS
                     } else {
-                        inputs.flow_rate
+                        q_local_user
                     };
 
                     let bed_z_down = if raw_units == UnitSystem::USCustomary {
@@ -3761,7 +3811,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                         v[is_idx] = solved_tw_user;
                     }
                     if let Some(ref mut v) = super_inline_structure_q_weirs {
-                        v[is_idx] = inputs.flow_rate;
+                        v[is_idx] = q_local_user;
                     }
 
                     super_wsel[i + 1] = if raw_units == UnitSystem::USCustomary {
@@ -3780,7 +3830,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                         structure_ineffective.get(&(i + 1)),
                         densified_z_mins[i + 1],
                         ycs[i + 1],
-                        q_mag,
+                        q_local.abs(),
                         length,
                         c_contraction,
                         c_expansion,
@@ -3800,6 +3850,8 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
             }
 
             for i in (0..dm - 1).rev() {
+                let q_local = densified_q[i];
+                let q_local_user = if raw_units == UnitSystem::USCustomary { q_local / CFS_TO_CMS } else { q_local };
                 let length = densified_stations[i] - densified_stations[i + 1];
                 let bridge_idx = bridge_at_interval.get(&i).copied();
 
@@ -3871,7 +3923,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                         length,
                     );
                     let tw_wsel_user = crate::solvers::bridge::solve_bridge_tailwater(
-                        inputs.flow_rate,
+                        q_local_user,
                         low_chord,
                         high_chord,
                         pier_width,
@@ -3906,7 +3958,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                         structure_ineffective.get(&i),
                         densified_z_mins[i],
                         ycs[i],
-                        q_mag,
+                        q_local.abs(),
                         length,
                         c_contraction,
                         c_expansion,
@@ -3929,11 +3981,12 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
         // Mixed regime selection
         let mut super_failed = false;
         for i in 0..dm {
+            let q_local_mag = densified_q[i].abs();
             let sub_m = specific_force_at_elevation(
                 &densified_tables[i],
                 densified_xs[i].as_ref(),
                 sub_wsel[i],
-                q_mag,
+                q_local_mag,
                 structure_ineffective.get(&i),
                 None,
             );
@@ -3941,7 +3994,7 @@ pub fn solve_steady_single_reach(inputs: &SteadyInputs) -> SteadyResult {
                 &densified_tables[i],
                 densified_xs[i].as_ref(),
                 super_wsel[i],
-                q_mag,
+                q_local_mag,
                 structure_ineffective.get(&i),
                 None,
             );
@@ -4362,6 +4415,68 @@ mod tests {
         for &fr in &result.froude {
             assert!(fr < 1.0, "Froude was {}", fr);
         }
+    }
+
+    #[test]
+    fn test_steady_varying_flow_rates() {
+        let xs200 = CrossSection {
+            station: 200.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![5.0 + 0.2, 0.2, 0.2, 5.0 + 0.2],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let xs100 = CrossSection {
+            station: 100.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![5.0 + 0.1, 0.1, 0.1, 5.0 + 0.1],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+        let xs0 = CrossSection {
+            station: 0.0,
+            x: vec![0.0, 0.0, 10.0, 10.0],
+            y: vec![5.0, 0.0, 0.0, 5.0],
+            n_stations: vec![0.0],
+            n_values: vec![0.02],
+            unit_system: UnitSystem::Metric,
+            is_overbank: None,
+            coeff_contraction: None,
+            coeff_expansion: None,
+            blocked_obstructions: None,
+            ineffective_flow_areas: None,
+            guide_banks: None,
+        };
+
+        let inputs = SteadyInputs {
+            cross_sections: vec![xs200, xs100, xs0],
+            flow_rate: 15.0,
+            flow_rates: Some(vec![5.0, 10.0, 15.0]), // 5 cms at 200, 10 cms at 100, 15 cms at 0
+            num_slices: Some(50),
+            regime: 0, // Subcritical
+            downstream_wsel: Some(1.2),
+            ..Default::default()
+        };
+
+        let result = solve_steady(&inputs);
+
+        assert_eq!(result.wsel[2], 1.2);
+        assert!(result.wsel[1] > 0.1);
+        assert!(result.wsel[0] > 0.2);
     }
 
     #[test]
